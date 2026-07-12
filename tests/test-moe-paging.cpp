@@ -21,6 +21,7 @@
 
 int main() {
     const char * path = "test-moe-paging-fixture.bin";
+    const char * shard_path = "test-moe-paging-fixture-shard-1.bin";
 
     ggml_init_params metadata_params{};
     metadata_params.mem_size = ggml_tensor_overhead() * 4;
@@ -31,6 +32,10 @@ int main() {
     auto * original = ggml_new_tensor_3d(metadata.get(), GGML_TYPE_F32, 2, 2, 4);
     ggml_set_name(original, "blk.0.ffn_up_exps.weight");
     REQUIRE(original->nb[2] == 4 * sizeof(float));
+
+    auto * sharded = ggml_new_tensor_3d(metadata.get(), GGML_TYPE_F32, 2, 2, 4);
+    ggml_set_name(sharded, "blk.1.ffn_down_exps.weight");
+    REQUIRE(sharded->nb[2] == original->nb[2]);
 
     std::vector<uint8_t> file_bytes(64 + ggml_nbytes(original), 0);
     for (int expert = 0; expert < 4; ++expert) {
@@ -45,11 +50,28 @@ int main() {
         output.write_raw(file_bytes.data(), file_bytes.size());
     }
 
+    std::vector<uint8_t> shard_bytes(32 + ggml_nbytes(sharded), 0);
+    for (int expert = 0; expert < 4; ++expert) {
+        float values[4];
+        for (int i = 0; i < 4; ++i) {
+            values[i] = static_cast<float>(100 + expert * 10 + i);
+        }
+        std::memcpy(shard_bytes.data() + 32 + expert * sharded->nb[2], values, sizeof(values));
+    }
+    {
+        llama_file output(shard_path, "wb");
+        output.write_raw(shard_bytes.data(), shard_bytes.size());
+    }
+
     llama_moe::model_index index;
     index.add_tensor(original->name, 0, 64, original);
+    index.add_tensor(sharded->name, 1, 32, sharded);
     std::vector<std::unique_ptr<llama_file>> files;
     files.push_back(std::make_unique<llama_file>(path, "rb"));
+    files.push_back(std::make_unique<llama_file>(shard_path, "rb"));
     index.open_files(files);
+    REQUIRE(index.tensor_count() == 2);
+    REQUIRE(index.layer_count() == 2);
 
     llama_backend_init();
     ggml_backend_ptr backend(ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr));
@@ -67,9 +89,17 @@ int main() {
     for (int request = 0; request < 2; ++request) {
         const auto * values = reinterpret_cast<const float *>(
             static_cast<const uint8_t *>(pool->data) + first_slots[request] * pool->nb[2]);
+        const auto * resident_values = reinterpret_cast<const float *>(
+            file_bytes.data() + 64 + first_ids[request] * original->nb[2]);
+        const float input[] = {0.5f, -1.0f, 2.0f, 0.25f};
+        float resident_output = 0.0f;
+        float paged_output = 0.0f;
         for (int i = 0; i < 4; ++i) {
             REQUIRE(values[i] == static_cast<float>(first_ids[request] * 10 + i));
+            resident_output += resident_values[i] * input[i];
+            paged_output += values[i] * input[i];
         }
+        REQUIRE(paged_output == resident_output);
     }
 
     int32_t hit_slot = -1;
@@ -126,6 +156,21 @@ int main() {
     REQUIRE(invalid_id_rejected);
     }
 
+    {
+    llama_moe::layer_cache shard_cache(1, 4, 2, 2, 30000, index, backend.get());
+    auto * shard_pool = shard_cache.bind_tensor(sharded, *index.find(sharded->name));
+    REQUIRE(shard_pool && shard_pool->data);
+    const int32_t shard_expert = 3;
+    int32_t shard_slot = -1;
+    shard_cache.resolve(&shard_expert, 1, &shard_slot);
+    const auto * values = reinterpret_cast<const float *>(
+        static_cast<const uint8_t *>(shard_pool->data) + shard_slot * shard_pool->nb[2]);
+    for (int i = 0; i < 4; ++i) {
+        REQUIRE(values[i] == static_cast<float>(130 + i));
+    }
+    REQUIRE(shard_cache.get_stats().snapshot().bytes_read == sharded->nb[2]);
+    }
+
     bool small_budget_rejected = false;
     try {
         llama_moe_paging_params params{};
@@ -155,5 +200,6 @@ int main() {
     llama_backend_free();
     files.clear();
     std::remove(path);
+    std::remove(shard_path);
     return 0;
 }
