@@ -7,6 +7,7 @@ llama_add_compile_flags()
 # llama
 
 file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")
+file(GLOB LLAMA_MOE_PAGING_SOURCES "moe-paging/*.cpp")
 
 add_library(llama
             ../include/llama.h
@@ -41,6 +42,7 @@ add_library(llama
             unicode.cpp
             unicode.h
             ${LLAMA_MODELS_SOURCES}
+            ${LLAMA_MOE_PAGING_SOURCES}
             )
 
 set_target_properties(llama PROPERTIES
@@ -50,6 +52,7 @@ set_target_properties(llama PROPERTIES
 )
 
 target_include_directories(llama PRIVATE .)
+target_include_directories(llama PRIVATE moe-paging)
 target_include_directories(llama PUBLIC ../include)
 target_compile_features   (llama PRIVATE cxx_std_17) # don't bump
 

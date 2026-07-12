@@ -235,6 +235,11 @@ set_tests_properties(test-thread-safety PROPERTIES FIXTURES_REQUIRED test-downlo
 
 llama_build_and_test(test-arg-parser.cpp)
 
+add_executable(test-moe-paging test-moe-paging.cpp)
+target_link_libraries(test-moe-paging PRIVATE llama)
+target_include_directories(test-moe-paging PRIVATE ${PROJECT_SOURCE_DIR}/src)
+llama_test(test-moe-paging LABEL "moe-paging")
+
 if (NOT LLAMA_SANITIZE_ADDRESS AND NOT GGML_SCHED_NO_REALLOC)
   # TODO: repair known memory leaks
   llama_build_and_test(test-opt.cpp)

@@ -7,6 +7,7 @@
 #include "llama-adapter.h"
 #include "llama-impl.h"
 #include "llama-memory.h"
+#include "moe-paging/moe-paging.h"
 
 #include "ggml-cpp.h"
 #include "ggml-opt.h"
@@ -253,6 +254,9 @@ public:
 
     bool set_sampler(llama_seq_id seq_id, llama_sampler * sampler);
 
+    bool moe_paging_get_stats(llama_moe_paging_stats * stats) const;
+    void moe_paging_reset_stats();
+
 private:
     llm_graph_params graph_params(
                         llm_graph_result * res,
@@ -347,6 +351,7 @@ private:
 
     ggml_backend_t backend_cpu = nullptr;
     std::vector<ggml_backend_ptr> backends;
+    std::unique_ptr<llama_moe::paging_manager> moe_paging;
 
     // training
     ggml_opt_context_t opt_ctx = nullptr;

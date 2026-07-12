@@ -4,6 +4,7 @@
 #include "llama-batch.h"
 #include "llama-hparams.h"
 #include "llama-adapter.h"
+#include "moe-paging/moe-paging.h"
 
 #include <cstdint>
 #include <vector>
@@ -687,6 +688,8 @@ struct llm_graph_params {
 
     std::map<llama_seq_id, llama_sampler *> samplers;
 
+    llama_moe::paging_manager * moe_paging;
+
     static bool samplers_equal(
           const std::map<llama_seq_id, llama_sampler *> & lhs,
           const std::map<llama_seq_id, llama_sampler *> & rhs) {
@@ -927,6 +930,8 @@ struct llm_graph_context {
 
     std::map<llama_seq_id, llama_sampler *> samplers;
 
+    llama_moe::paging_manager * moe_paging;
+
     const llm_graph_cb & cb_func;
 
     llm_graph_result * res;
@@ -955,10 +960,11 @@ struct llm_graph_context {
 
     // do mat_mul_id, while optionally apply lora and per-expert scale
     ggml_tensor * build_lora_mm_id(
-              ggml_tensor * w,   // ggml_tensor * as
-              ggml_tensor * cur, // ggml_tensor * b
-              ggml_tensor * ids,
-              ggml_tensor * w_s = nullptr) const;
+          ggml_tensor * w,   // ggml_tensor * as
+          ggml_tensor * cur, // ggml_tensor * b
+          ggml_tensor * ids,
+          ggml_tensor * w_s = nullptr,
+          ggml_tensor * auxiliary_ids = nullptr) const;
 
     ggml_tensor * build_norm(
              ggml_tensor * cur,

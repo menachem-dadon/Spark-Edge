@@ -1551,6 +1551,23 @@ void common_set_adapter_lora(struct llama_context * ctx, std::vector<common_adap
 struct llama_model_params common_model_params_to_llama(common_params & params) {
     auto mparams = llama_model_default_params();
 
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_AUTO) {
+        params.moe_paging.mode = params.moe_paging.n_slots > 0 || params.moe_paging.cache_bytes > 0 ?
+            LLAMA_MOE_PAGING_MODE_EXPLICIT : LLAMA_MOE_PAGING_MODE_OS;
+        LOG_INF("MoE paging auto selected %s mode because %s\n",
+            params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT ? "explicit" : "os",
+            params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT ? "a cache limit was provided" : "no explicit cache limit was provided");
+    }
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT &&
+            params.moe_paging.n_slots <= 0 && params.moe_paging.cache_bytes == 0) {
+        params.moe_paging.n_slots = 8;
+        LOG_INF("MoE paging: using 8 slots per layer; the active expert count can raise this minimum\n");
+    }
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_OS) {
+        params.use_mmap = true;
+        params.use_direct_io = false;
+    }
+
     if (!params.devices.empty()) {
         mparams.devices = params.devices.data();
     }
@@ -1565,6 +1582,7 @@ struct llama_model_params common_model_params_to_llama(common_params & params) {
     mparams.check_tensors   = params.check_tensors;
     mparams.use_extra_bufts = !params.no_extra_bufts;
     mparams.no_host         = params.no_host;
+    mparams.moe_paging      = params.moe_paging;
 
     if (params.kv_overrides.empty()) {
         mparams.kv_overrides = NULL;
@@ -1599,6 +1617,7 @@ struct llama_context_params common_context_params_to_llama(const common_params &
     cparams.n_threads         = params.cpuparams.n_threads;
     cparams.n_threads_batch   = params.cpuparams_batch.n_threads == -1 ?
                                 params.cpuparams.n_threads : params.cpuparams_batch.n_threads;
+    cparams.moe_paging        = params.moe_paging;
     cparams.embeddings        = params.embedding;
     cparams.rope_scaling_type = params.rope_scaling_type;
     cparams.rope_freq_base    = params.rope_freq_base;

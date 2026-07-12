@@ -133,6 +133,10 @@ struct server_routes {
     server_http_context::handler_t post_slots;
     server_http_context::handler_t get_props;
     server_http_context::handler_t post_props;
+    server_http_context::handler_t get_qwenstream_status;
+    server_http_context::handler_t get_qwenstream_paging;
+    server_http_context::handler_t post_qwenstream_reset_stats;
+    server_http_context::handler_t get_qwenstream_config;
     server_http_context::handler_t post_infill;
     server_http_context::handler_t post_completions;
     server_http_context::handler_t post_completions_oai;
@@ -175,6 +179,7 @@ private:
 
     const common_params & params;
     const server_context_impl & ctx_server;
+    server_context & ctx_server_api;
 
     server_queue & queue_tasks;
     server_response & queue_results;

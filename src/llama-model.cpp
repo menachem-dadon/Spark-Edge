@@ -1331,6 +1331,22 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
 
         layers.resize(n_layer_all);
 
+        if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT) {
+            if (arch != LLM_ARCH_QWEN35MOE) {
+                throw std::runtime_error("explicit MoE paging currently supports Qwen3.5/3.6 MoE models only");
+            }
+            if (params.moe_paging.io_mode == LLAMA_MOE_IO_MODE_DIRECT) {
+                throw std::runtime_error("direct MoE paging I/O is not implemented; use buffered I/O");
+            }
+            ggml_init_params paged_params{};
+            paged_params.mem_size = ggml_tensor_overhead() * (ml.weights_map.size() + 32);
+            paged_params.no_alloc = true;
+            ml.ctx_paged.reset(ggml_init(paged_params));
+            if (!ml.ctx_paged) {
+                throw std::runtime_error("failed to allocate paged tensor metadata context");
+            }
+        }
+
         // call the per-model loading function
         load_arch_tensors(ml);
 
@@ -1489,6 +1505,15 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     }
     ml.done_getting_tensors();
 
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT) {
+        if (ml.paged_index.tensor_count() == 0) {
+            throw std::runtime_error("no routed expert tensors were indexed for explicit paging");
+        }
+        ml.paged_index.open_files(ml.files);
+        moe_index = std::move(ml.paged_index);
+        moe_paged_ctx = std::move(ml.ctx_paged);
+    }
+
     // Tied NVFP4 output is valid when no separate LM-head scale tensors are present.
     // If sidecar scales exist, the output weight must be an actual output tensor.
     GGML_ASSERT(!(output && tok_embd &&
@@ -1498,6 +1523,11 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     // populate tensors_by_name
     for (auto & [_, ctx_ptr] : ml.ctx_map) {
         for (auto * cur = ggml_get_first_tensor(ctx_ptr.get()); cur != NULL; cur = ggml_get_next_tensor(ctx_ptr.get(), cur)) {
+            tensors_by_name.emplace_back(ggml_get_name(cur), cur);
+        }
+    }
+    if (moe_paged_ctx) {
+        for (auto * cur = ggml_get_first_tensor(moe_paged_ctx.get()); cur != nullptr; cur = ggml_get_next_tensor(moe_paged_ctx.get(), cur)) {
             tensors_by_name.emplace_back(ggml_get_name(cur), cur);
         }
     }
@@ -2316,6 +2346,15 @@ llama_model_params llama_model_default_params() {
         /*.use_extra_bufts             =*/ true,
         /*.no_host                     =*/ false,
         /*.no_alloc                    =*/ false,
+        /*.moe_paging                  =*/ {
+            LLAMA_MOE_PAGING_MODE_OFF,
+            LLAMA_MOE_IO_MODE_BUFFERED,
+            0,
+            0,
+            1,
+            0,
+            30000,
+        },
     };
 
     return result;
@@ -2705,6 +2744,26 @@ int32_t llama_model_n_expert(const struct llama_model * model) {
     return model->hparams.n_expert;
 }
 
+bool llama_model_moe_paging_capabilities(
+        const struct llama_model * model,
+        struct llama_moe_paging_capabilities * capabilities) {
+    if (!model || !capabilities) {
+        return false;
+    }
+    *capabilities = {};
+    capabilities->supported = model->arch == LLM_ARCH_QWEN35MOE;
+    capabilities->explicit_mode_available = capabilities->supported;
+    capabilities->os_mode_available = llama_mmap::SUPPORTED;
+    capabilities->layer_count = static_cast<int32_t>(model->hparams.n_layer());
+    capabilities->expert_count = model->hparams.n_expert;
+    capabilities->active_expert_count = model->hparams.n_expert_used;
+    capabilities->indexed_tensor_count = model->moe_index.tensor_count();
+    if (model->moe_index.layer_count() > 0) {
+        capabilities->bytes_per_expert_first_layer = model->moe_index.bytes_per_expert(0);
+    }
+    return true;
+}
+
 int32_t llama_model_n_devices(const struct llama_model * model) {
     return (int32_t)model->devices.size();
 }
@@ -2724,7 +2783,8 @@ llama_model_base::llama_model_base(const struct llama_model_params & params) : l
     TENSOR_DUPLICATED     (llama_model_loader::TENSOR_DUPLICATED),
     TENSOR_NOT_REQUIRED   (llama_model_loader::TENSOR_NOT_REQUIRED),
     TENSOR_SKIP           (llama_model_loader::TENSOR_SKIP),
-    TENSOR_SKIP_IF_VIRTUAL(llama_model_loader::TENSOR_SKIP_IF_VIRTUAL) {}
+    TENSOR_SKIP_IF_VIRTUAL(llama_model_loader::TENSOR_SKIP_IF_VIRTUAL),
+    TENSOR_PAGED          (llama_model_loader::TENSOR_PAGED) {}
 
 ggml_tensor * llama_model_base::create_tensor(const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne, int flags) {
     GGML_ASSERT(ml != nullptr);
@@ -2732,7 +2792,7 @@ ggml_tensor * llama_model_base::create_tensor(const LLM_TN_IMPL & tn, const std:
 }
 
 void llama_model_base::create_tensor_gate_up_exps(llama_layer & layer, int bid, int64_t n_embd_, int64_t n_ff_, int64_t n_expert_, int flags) {
-    layer.ffn_gate_up_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_UP_EXPS, "weight", bid), {n_embd_, n_ff_ * 2, n_expert_}, TENSOR_NOT_REQUIRED);
+    layer.ffn_gate_up_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_UP_EXPS, "weight", bid), {n_embd_, n_ff_ * 2, n_expert_}, TENSOR_NOT_REQUIRED | flags);
     if (layer.ffn_gate_up_exps == nullptr) {
         layer.ffn_gate_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_EXPS, "weight", bid), {n_embd_, n_ff_, n_expert_}, flags);
         layer.ffn_up_exps   = create_tensor(tn(LLM_TENSOR_FFN_UP_EXPS,   "weight", bid), {n_embd_, n_ff_, n_expert_}, flags);

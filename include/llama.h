@@ -292,6 +292,50 @@ extern "C" {
         ggml_backend_buffer_type_t buft;
     };
 
+    enum llama_moe_paging_mode {
+        LLAMA_MOE_PAGING_MODE_OFF = 0,
+        LLAMA_MOE_PAGING_MODE_EXPLICIT = 1,
+        LLAMA_MOE_PAGING_MODE_OS = 2,
+        LLAMA_MOE_PAGING_MODE_AUTO = 3,
+    };
+
+    enum llama_moe_io_mode {
+        LLAMA_MOE_IO_MODE_BUFFERED = 0,
+        LLAMA_MOE_IO_MODE_DIRECT = 1,
+    };
+
+    struct llama_moe_paging_params {
+        enum llama_moe_paging_mode mode;
+        enum llama_moe_io_mode io_mode;
+        uint64_t cache_bytes;
+        int32_t n_slots;
+        int32_t io_threads;
+        int32_t n_layers;
+        uint32_t io_timeout_ms;
+    };
+
+    struct llama_moe_paging_stats {
+        uint64_t cache_hits;
+        uint64_t cache_misses;
+        uint64_t bytes_read;
+        uint64_t read_count;
+        uint64_t read_latency_us;
+        uint64_t evictions;
+        uint64_t waits;
+        uint64_t duplicate_requests;
+    };
+
+    struct llama_moe_paging_capabilities {
+        bool supported;
+        bool explicit_mode_available;
+        bool os_mode_available;
+        int32_t layer_count;
+        int32_t expert_count;
+        int32_t active_expert_count;
+        uint64_t indexed_tensor_count;
+        uint64_t bytes_per_expert_first_layer;
+    };
+
     struct llama_model_params {
         // NULL-terminated list of devices to use for offloading (if NULL, all available devices are used)
         ggml_backend_dev_t * devices;
@@ -328,6 +372,8 @@ extern "C" {
         bool use_extra_bufts; // use extra buffer types (used for weight repacking)
         bool no_host;         // bypass host buffer allowing extra buffers to be used
         bool no_alloc;        // only load metadata and simulate memory allocations
+
+        struct llama_moe_paging_params moe_paging;
     };
 
     struct llama_sampler_seq_config {
@@ -346,6 +392,8 @@ extern "C" {
         uint32_t n_outputs_max;     // max outputs in a ubatch (0 = n_batch)
         int32_t  n_threads;         // number of threads to use for generation
         int32_t  n_threads_batch;   // number of threads to use for batch processing
+
+        struct llama_moe_paging_params moe_paging;
 
         enum llama_context_type      ctx_type;          // set the context type (e.g. MTP)
         enum llama_rope_scaling_type rope_scaling_type; // RoPE scaling type, from `enum llama_rope_scaling_type`
@@ -571,6 +619,16 @@ extern "C" {
     LLAMA_API int32_t llama_model_n_head       (const struct llama_model * model);
     LLAMA_API int32_t llama_model_n_head_kv    (const struct llama_model * model);
     LLAMA_API int32_t llama_model_n_swa        (const struct llama_model * model);
+
+    LLAMA_API bool llama_model_moe_paging_capabilities(
+        const struct llama_model * model,
+        struct llama_moe_paging_capabilities * capabilities);
+
+    LLAMA_API bool llama_context_moe_paging_get_stats(
+        const struct llama_context * ctx,
+        struct llama_moe_paging_stats * stats);
+
+    LLAMA_API void llama_context_moe_paging_reset_stats(struct llama_context * ctx);
 
     // Get the model's RoPE frequency scaling factor
     LLAMA_API float llama_model_rope_freq_scale_train(const struct llama_model * model);

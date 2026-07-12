@@ -39,6 +39,44 @@ using json = nlohmann::ordered_json;
 
 constexpr int HTTP_POLLING_SECONDS = 1;
 
+static const char * qwenstream_paging_mode_name(enum llama_moe_paging_mode mode) {
+    switch (mode) {
+        case LLAMA_MOE_PAGING_MODE_OFF:      return "off";
+        case LLAMA_MOE_PAGING_MODE_EXPLICIT: return "explicit";
+        case LLAMA_MOE_PAGING_MODE_OS:       return "os";
+        case LLAMA_MOE_PAGING_MODE_AUTO:     return "auto";
+    }
+    return "unknown";
+}
+
+static const char * qwenstream_io_mode_name(enum llama_moe_io_mode mode) {
+    switch (mode) {
+        case LLAMA_MOE_IO_MODE_BUFFERED: return "buffered";
+        case LLAMA_MOE_IO_MODE_DIRECT:   return "direct";
+    }
+    return "unknown";
+}
+
+static json qwenstream_paging_stats_json(const llama_context * ctx) {
+    llama_moe_paging_stats stats{};
+    const bool enabled = llama_context_moe_paging_get_stats(ctx, &stats);
+    const uint64_t accesses = stats.cache_hits + stats.cache_misses;
+
+    return {
+        {"enabled", enabled},
+        {"cache_hits", stats.cache_hits},
+        {"cache_misses", stats.cache_misses},
+        {"cache_hit_rate", accesses == 0 ? 0.0 : (double) stats.cache_hits / (double) accesses},
+        {"bytes_read", stats.bytes_read},
+        {"read_count", stats.read_count},
+        {"read_latency_us", stats.read_latency_us},
+        {"average_read_latency_us", stats.read_count == 0 ? 0.0 : (double) stats.read_latency_us / (double) stats.read_count},
+        {"evictions", stats.evictions},
+        {"waits", stats.waits},
+        {"duplicate_requests", stats.duplicate_requests},
+    };
+}
+
 static uint32_t server_n_outputs_max(const common_params & params) {
     const uint32_t n_batch  = params.n_batch;
 
@@ -4290,6 +4328,7 @@ std::unique_ptr<server_res_generator> server_routes::create_response(bool bypass
 server_routes::server_routes(const common_params & params, server_context & ctx_server)
         : params(params),
           ctx_server(*ctx_server.impl),
+          ctx_server_api(ctx_server),
           queue_tasks(ctx_server.impl->queue_tasks),
           queue_results(ctx_server.impl->queue_results) {
     init_routes();
@@ -4309,6 +4348,48 @@ void server_routes::init_routes() {
         GGML_UNUSED(ctx_server);
 
         res->ok({{"status", "ok"}});
+        return res;
+    };
+
+    this->get_qwenstream_status = [this](const server_http_req &) {
+        auto res = create_response();
+        res->ok({
+            {"status", "ok"},
+            {"paging", {
+                {"enabled", params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT},
+                {"mode", qwenstream_paging_mode_name(params.moe_paging.mode)},
+            }},
+        });
+        return res;
+    };
+
+    this->get_qwenstream_paging = [this](const server_http_req &) {
+        auto res = create_response();
+        res->ok(qwenstream_paging_stats_json(ctx_server_api.get_llama_context()));
+        return res;
+    };
+
+    this->post_qwenstream_reset_stats = [this](const server_http_req &) {
+        auto res = create_response();
+        llama_context_moe_paging_reset_stats(ctx_server_api.get_llama_context());
+        res->ok({
+            {"ok", true},
+            {"paging", qwenstream_paging_stats_json(ctx_server_api.get_llama_context())},
+        });
+        return res;
+    };
+
+    this->get_qwenstream_config = [this](const server_http_req &) {
+        auto res = create_response();
+        res->ok({
+            {"mode", qwenstream_paging_mode_name(params.moe_paging.mode)},
+            {"io_mode", qwenstream_io_mode_name(params.moe_paging.io_mode)},
+            {"cache_bytes", params.moe_paging.cache_bytes},
+            {"slots_per_layer", params.moe_paging.n_slots},
+            {"io_threads", params.moe_paging.io_threads},
+            {"paged_layers", params.moe_paging.n_layers},
+            {"io_timeout_ms", params.moe_paging.io_timeout_ms},
+        });
         return res;
     };
 

@@ -6,6 +6,7 @@
 #include "llama-hparams.h"
 #include "llama-memory.h"
 #include "llama-vocab.h"
+#include "moe-paging/moe-model-index.h"
 
 #include <map>
 #include <memory>
@@ -629,6 +630,9 @@ struct llama_model {
     int64_t t_load_us  = 0;
     int64_t t_start_us = 0;
 
+    ggml_context_ptr moe_paged_ctx;
+    llama_moe::model_index moe_index;
+
     explicit llama_model(const llama_model_params & params);
     virtual ~llama_model();
 
@@ -705,6 +709,7 @@ struct llama_model_base : public llama_model {
     const int TENSOR_NOT_REQUIRED;
     const int TENSOR_SKIP;
     const int TENSOR_SKIP_IF_VIRTUAL;
+    const int TENSOR_PAGED;
 
     explicit llama_model_base(const llama_model_params & params);
     virtual ~llama_model_base() = default;

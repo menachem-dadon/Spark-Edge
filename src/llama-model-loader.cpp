@@ -1258,6 +1258,38 @@ struct ggml_tensor * llama_model_loader::create_tensor(
     }
 
     ggml_tensor * t_meta = get_tensor_meta(tn.str().c_str());
+
+    if (flags & TENSOR_PAGED) {
+        const struct ggml_tensor * cur = check_tensor_dims(tn.str(), ne, !(flags & TENSOR_NOT_REQUIRED));
+        if (cur == nullptr) {
+            return nullptr;
+        }
+        if (!ctx_paged) {
+            throw std::runtime_error("paged tensor context was not initialized");
+        }
+
+        if (flags & TENSOR_DUPLICATED) {
+            if (auto * existing = ggml_get_tensor(ctx_paged.get(), tn.str().c_str())) {
+                return existing;
+            }
+        }
+
+        auto * tensor = ggml_dup_tensor(ctx_paged.get(), cur);
+        ggml_set_name(tensor, ggml_get_name(cur));
+        const auto weight = weights_map.find(tn.str());
+        if (weight == weights_map.end()) {
+            throw std::runtime_error("paged tensor is missing from the GGUF weight map: " + tn.str());
+        }
+        paged_index.add_tensor(tn.str(), weight->second.idx, weight->second.offs, cur);
+
+        if (flags & TENSOR_DUPLICATED) {
+            size_data += ggml_nbytes(cur);
+        } else {
+            n_created++;
+        }
+        return tensor;
+    }
+
     ggml_backend_buffer_type_t buft = buft_for_tensor(t_meta);
     if (buft == nullptr) {
         return nullptr; // return type is ggml_tensor *

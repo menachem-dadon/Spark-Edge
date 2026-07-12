@@ -91,6 +91,7 @@ llama_context::llama_context(
 
     cparams.n_threads               = params.n_threads;
     cparams.n_threads_batch         = params.n_threads_batch;
+    cparams.moe_paging              = params.moe_paging;
     cparams.yarn_ext_factor         = params.yarn_ext_factor  >= 0.0f ? params.yarn_ext_factor  : hparams.yarn_ext_factor;
     cparams.yarn_attn_factor        = params.yarn_attn_factor >= 0.0f ? params.yarn_attn_factor : hparams.yarn_attn_factor;
     cparams.yarn_beta_fast          = params.yarn_beta_fast   >= 0.0f ? params.yarn_beta_fast   : hparams.yarn_beta_fast;
@@ -327,6 +328,14 @@ llama_context::llama_context(
             throw std::runtime_error("failed to initialize CPU backend");
         }
         backends.emplace_back(backend_cpu);
+
+        if (cparams.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT) {
+            if (cparams.ctx_type == LLAMA_CONTEXT_TYPE_MTP) {
+                throw std::runtime_error("MTP contexts are not supported with explicit MoE paging");
+            }
+            moe_paging = std::make_unique<llama_moe::paging_manager>(
+                backend_cpu, cparams.moe_paging, model.moe_index, hparams.n_expert_used);
+        }
 
         // create a list of the set_n_threads functions in the backends
         for (auto & backend : backends) {
@@ -2398,6 +2407,7 @@ llm_graph_params llama_context::graph_params(
         /*.mctx        =*/ mctx,
         /*.cross       =*/ &cross,
         /*.samplers    =*/ sampling.samplers,
+        /*.moe_paging  =*/ moe_paging.get(),
         /*.n_outputs   =*/ n_outputs,
         /*.cb          =*/ graph_get_cb(),
         /*.res         =*/ res,
@@ -3440,6 +3450,15 @@ llama_context_params llama_context_default_params() {
         /*.n_outputs_max               =*/ 0,
         /*.n_threads                   =*/ GGML_DEFAULT_N_THREADS, // TODO: better default
         /*.n_threads_batch             =*/ GGML_DEFAULT_N_THREADS,
+        /*.moe_paging                  =*/ {
+            LLAMA_MOE_PAGING_MODE_OFF,
+            LLAMA_MOE_IO_MODE_BUFFERED,
+            0,
+            0,
+            1,
+            0,
+            30000,
+        },
         /*.ctx_type                    =*/ LLAMA_CONTEXT_TYPE_DEFAULT,
         /*.rope_scaling_type           =*/ LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED,
         /*.pooling_type                =*/ LLAMA_POOLING_TYPE_UNSPECIFIED,
@@ -3594,6 +3613,42 @@ uint32_t llama_n_rs_seq(const llama_context * ctx) {
 
 const llama_model * llama_get_model(const llama_context * ctx) {
     return &ctx->get_model();
+}
+
+bool llama_context_moe_paging_get_stats(
+        const struct llama_context * ctx,
+        struct llama_moe_paging_stats * stats) {
+    return ctx && ctx->moe_paging_get_stats(stats);
+}
+
+bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
+    if (!stats || !moe_paging) {
+        return false;
+    }
+    const auto snapshot = moe_paging->snapshot();
+    *stats = {
+        snapshot.cache_hits,
+        snapshot.cache_misses,
+        snapshot.bytes_read,
+        snapshot.read_count,
+        snapshot.read_latency_us,
+        snapshot.evictions,
+        snapshot.waits,
+        snapshot.duplicate_requests,
+    };
+    return true;
+}
+
+void llama_context_moe_paging_reset_stats(struct llama_context * ctx) {
+    if (ctx) {
+        ctx->moe_paging_reset_stats();
+    }
+}
+
+void llama_context::moe_paging_reset_stats() {
+    if (moe_paging) {
+        moe_paging->reset_stats();
+    }
 }
 
 enum llama_pooling_type llama_pooling_type(const llama_context * ctx) {
