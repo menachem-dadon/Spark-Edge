@@ -1,0 +1,393 @@
+#include "httplib.h"
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#else
+#include <csignal>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+using json = nlohmann::ordered_json;
+
+namespace {
+
+constexpr int manager_port = 18080;
+
+const char dashboard_html[] = R"QWENSTREAM(
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QwenStream</title><style>
+:root{font-family:Inter,Segoe UI,sans-serif;color:#eaf2ff;background:#08111f}body{margin:0;background:radial-gradient(circle at 20% 0,#14345a,#08111f 45%);min-height:100vh}.wrap{max-width:920px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center}.brand{font-size:28px;font-weight:750}.sub{color:#9eb2ca}.card{background:#0e1c2dcc;border:1px solid #27415d;border-radius:16px;padding:20px;margin-top:18px;box-shadow:0 18px 50px #0005}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:grid;gap:6px;color:#b9c9db}input,select,button{font:inherit;border-radius:9px;border:1px solid #35536f;padding:10px;background:#0a1726;color:#f4f8ff}input:focus,select:focus{outline:2px solid #2e9fd8}button{cursor:pointer;background:#147caf;border:0;font-weight:700}button.stop{background:#8e3347}button.ghost{background:#20354a}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.state{display:flex;align-items:center;gap:9px}.dot{width:10px;height:10px;border-radius:50%;background:#778}.dot.on{background:#3ddc97;box-shadow:0 0 12px #3ddc97}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:#0a1726;border-radius:10px;padding:12px}.metric b{display:block;font-size:20px;margin-top:5px}.error{color:#ff9baf;white-space:pre-wrap}.rtl{direction:rtl}@media(max-width:650px){.grid,.metrics{grid-template-columns:1fr}.wrap{padding:16px}}
+</style></head><body><main class="wrap" id="app"><div class="top"><div><div class="brand">QwenStream</div><div class="sub" data-i="subtitle">Local CPU MoE expert paging</div></div><button class="ghost" id="language">עברית</button></div>
+<section class="card"><h2 data-i="setup">First-run setup</h2><div class="grid"><label><span data-i="model">Local GGUF model path</span><input id="model" placeholder="C:\models\qwen.gguf"></label><label><span data-i="mode">Paging mode</span><select id="mode"><option value="explicit">explicit</option><option value="os">os / mmap</option><option value="off">off / resident</option></select></label><label><span data-i="cache">Cache budget (MiB, 0 uses slots)</span><input id="cache" type="number" min="0" value="2048"></label><label><span data-i="slots">Slots per layer (0 uses budget)</span><input id="slots" type="number" min="0" value="0"></label><label><span data-i="threads">I/O threads</span><input id="threads" type="number" min="1" value="4"></label><label><span data-i="port">Inference server port</span><input id="port" type="number" min="1024" max="65535" value="8080"></label></div><div class="actions"><button id="start" data-i="start">Start server</button><button class="stop" id="stop" data-i="stop">Stop server</button><button class="ghost" id="open" data-i="open">Open chat UI</button><button class="ghost" id="diagnostics" data-i="diagnostics">Download diagnostics</button></div><p id="error" class="error"></p></section>
+<section class="card"><div class="state"><span id="dot" class="dot"></span><h2 id="state">Stopped</h2></div><div class="metrics"><div class="metric"><span data-i="hits">Cache hits</span><b id="hits">0</b></div><div class="metric"><span data-i="misses">Cache misses</span><b id="misses">0</b></div><div class="metric"><span data-i="rate">Hit rate</span><b id="rate">0%</b></div><div class="metric"><span data-i="read">SSD read</span><b id="read">0 MiB</b></div></div></section></main>
+<script>
+const $=id=>document.getElementById(id), fields=['model','mode','cache','slots','threads','port'];let lang=localStorage.qsLang||'en';
+const tr={en:{subtitle:'Local CPU MoE expert paging',setup:'First-run setup',model:'Local GGUF model path',mode:'Paging mode',cache:'Cache budget (MiB, 0 uses slots)',slots:'Slots per layer (0 uses budget)',threads:'I/O threads',port:'Inference server port',start:'Start server',stop:'Stop server',open:'Open chat UI',diagnostics:'Download diagnostics',hits:'Cache hits',misses:'Cache misses',rate:'Hit rate',read:'SSD read'},he:{subtitle:'טעינת מומחי MoE מקומית במעבד',setup:'הגדרה ראשונית',model:'נתיב למודל GGUF מקומי',mode:'מצב טעינה',cache:'תקציב מטמון (MiB, אפס משתמש בחריצים)',slots:'חריצים לשכבה (אפס משתמש בתקציב)',threads:'תהליכי קלט/פלט',port:'פורט שרת ההסקה',start:'הפעלת שרת',stop:'עצירת שרת',open:'פתיחת ממשק השיחה',diagnostics:'הורדת אבחון',hits:'פגיעות מטמון',misses:'החטאות מטמון',rate:'שיעור פגיעה',read:'קריאה מהכונן'}};
+function translate(){document.documentElement.lang=lang;$('app').classList.toggle('rtl',lang==='he');document.querySelectorAll('[data-i]').forEach(x=>x.textContent=tr[lang][x.dataset.i]);$('language').textContent=lang==='en'?'עברית':'English'}
+fields.forEach(id=>{if(localStorage['qs_'+id])$(id).value=localStorage['qs_'+id];$(id).onchange=()=>localStorage['qs_'+id]=$(id).value});
+$('language').onclick=()=>{lang=lang==='en'?'he':'en';localStorage.qsLang=lang;translate()};translate();
+async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'content-type':'application/json'},body:body&&JSON.stringify(body)});const t=await r.text();let j;try{j=JSON.parse(t)}catch{throw Error(t||r.statusText)}if(!r.ok)throw Error(j.error||t);return j}
+$('start').onclick=async()=>{try{$('error').textContent='';const body={};fields.forEach(id=>body[id]=['cache','slots','threads','port'].includes(id)?Number($(id).value):$(id).value);await call('/api/start',body);await refresh()}catch(e){$('error').textContent=e.message}};
+$('stop').onclick=async()=>{try{await call('/api/stop',{});await refresh()}catch(e){$('error').textContent=e.message}};
+$('open').onclick=()=>window.open('http://127.0.0.1:'+Number($('port').value), '_blank');
+$('diagnostics').onclick=()=>{const a=document.createElement('a');a.href='/api/diagnostics';a.download='qwenstream-diagnostics.json';a.click()};
+async function refresh(){try{const s=await call('/api/status');$('dot').classList.toggle('on',s.running);$('state').textContent=s.running?(s.server_ready?'Running':'Starting…'):'Stopped';if(s.running&&s.server_ready){const p=await call('/api/paging');$('hits').textContent=p.cache_hits||0;$('misses').textContent=p.cache_misses||0;$('rate').textContent=((p.cache_hit_rate||0)*100).toFixed(1)+'%';$('read').textContent=((p.bytes_read||0)/1048576).toFixed(1)+' MiB'}}catch(e){$('error').textContent=e.message}}
+async function recommend(){if(fields.some(id=>localStorage['qs_'+id]))return;try{const r=await call('/api/recommendation');$('cache').value=r.cache_mib;$('threads').value=r.io_threads}catch{}}
+setInterval(refresh,1500);recommend();refresh();
+</script></body></html>)QWENSTREAM";
+
+struct process_state {
+    std::mutex mutex;
+    int port = 8080;
+#if defined(_WIN32)
+    HANDLE process = nullptr;
+    DWORD pid = 0;
+#else
+    pid_t pid = -1;
+#endif
+};
+
+std::string lowercase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+#if defined(_WIN32)
+std::wstring utf8_to_wide(const std::string & value) {
+    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, nullptr, 0);
+    if (count <= 0) {
+        throw std::runtime_error("text is not valid UTF-8");
+    }
+    std::wstring result(static_cast<size_t>(count), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, result.data(), count);
+    result.resize(static_cast<size_t>(count - 1));
+    return result;
+}
+
+std::wstring quote_windows_arg(const std::wstring & value) {
+    std::wstring result = L"\"";
+    size_t slashes = 0;
+    for (wchar_t c : value) {
+        if (c == L'\\') {
+            ++slashes;
+        } else {
+            if (c == L'\"') {
+                result.append(slashes * 2 + 1, L'\\');
+            } else {
+                result.append(slashes, L'\\');
+            }
+            slashes = 0;
+            result.push_back(c);
+        }
+    }
+    result.append(slashes * 2, L'\\');
+    result.push_back(L'\"');
+    return result;
+}
+
+std::wstring executable_directory() {
+    std::vector<wchar_t> path(32768);
+    const DWORD count = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (count == 0 || count >= path.size()) {
+        throw std::runtime_error("cannot determine launcher directory");
+    }
+    std::wstring value(path.data(), count);
+    return value.substr(0, value.find_last_of(L"\\/"));
+}
+#endif
+
+bool model_path_is_valid(const std::string & path) {
+    if (lowercase(path).size() < 5 || lowercase(path).substr(path.size() - 5) != ".gguf") {
+        return false;
+    }
+#if defined(_WIN32)
+    const DWORD attrs = GetFileAttributesW(utf8_to_wide(path).c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    return access(path.c_str(), R_OK) == 0;
+#endif
+}
+
+bool process_running_locked(process_state & state) {
+#if defined(_WIN32)
+    if (!state.process) {
+        return false;
+    }
+    DWORD code = 0;
+    if (!GetExitCodeProcess(state.process, &code) || code != STILL_ACTIVE) {
+        CloseHandle(state.process);
+        state.process = nullptr;
+        state.pid = 0;
+        return false;
+    }
+    return true;
+#else
+    if (state.pid <= 0) {
+        return false;
+    }
+    int status = 0;
+    const pid_t result = waitpid(state.pid, &status, WNOHANG);
+    if (result == state.pid || (result < 0 && errno == ECHILD)) {
+        state.pid = -1;
+        return false;
+    }
+    return true;
+#endif
+}
+
+void start_process(process_state & state, const json & input) {
+    const std::string model = input.value("model", "");
+    const std::string mode = input.value("mode", "explicit");
+    const int cache = input.value("cache", 0);
+    const int slots = input.value("slots", 0);
+    const int threads = input.value("threads", 4);
+    const int port = input.value("port", 8080);
+    if (!model_path_is_valid(model)) {
+        throw std::runtime_error("model must be a readable local .gguf file");
+    }
+    if (mode != "explicit" && mode != "os" && mode != "off") {
+        throw std::runtime_error("invalid paging mode");
+    }
+    if (cache < 0 || slots < 0 || threads < 1 || threads > 64 || port < 1024 || port > 65535) {
+        throw std::runtime_error("invalid numeric configuration");
+    }
+    if (mode == "explicit" && cache == 0 && slots == 0) {
+        throw std::runtime_error("explicit mode requires a cache budget or slot count");
+    }
+
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (process_running_locked(state)) {
+        throw std::runtime_error("the inference server is already running");
+    }
+    state.port = port;
+    std::vector<std::string> args = {
+        "--model", model, "--host", "127.0.0.1", "--port", std::to_string(port),
+        "--parallel", "1", "--moe-paging", mode, "--moe-io-threads", std::to_string(threads),
+    };
+    if (cache > 0) {
+        args.insert(args.end(), {"--moe-cache-mib", std::to_string(cache)});
+    }
+    if (slots > 0) {
+        args.insert(args.end(), {"--moe-slots", std::to_string(slots)});
+    }
+
+#if defined(_WIN32)
+    const std::wstring executable = executable_directory() + L"\\llama-server.exe";
+    if (GetFileAttributesW(executable.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        throw std::runtime_error("llama-server.exe is not next to QwenStream.exe");
+    }
+    std::wstring command = quote_windows_arg(executable);
+    for (const auto & arg : args) {
+        command += L" " + quote_windows_arg(utf8_to_wide(arg));
+    }
+    std::vector<wchar_t> mutable_command(command.begin(), command.end());
+    mutable_command.push_back(L'\0');
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(executable.c_str(), mutable_command.data(), nullptr, nullptr, FALSE,
+            CREATE_NEW_PROCESS_GROUP, nullptr, executable_directory().c_str(), &startup, &process)) {
+        throw std::runtime_error("CreateProcessW failed with code " + std::to_string(GetLastError()));
+    }
+    CloseHandle(process.hThread);
+    state.process = process.hProcess;
+    state.pid = process.dwProcessId;
+#else
+    const pid_t child = fork();
+    if (child < 0) {
+        throw std::runtime_error("fork failed");
+    }
+    if (child == 0) {
+        std::vector<char *> argv;
+        argv.push_back(const_cast<char *>("llama-server"));
+        for (auto & arg : args) {
+            argv.push_back(arg.data());
+        }
+        argv.push_back(nullptr);
+        execvp("llama-server", argv.data());
+        _exit(127);
+    }
+    state.pid = child;
+#endif
+}
+
+void stop_process(process_state & state) {
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!process_running_locked(state)) {
+        return;
+    }
+#if defined(_WIN32)
+    TerminateProcess(state.process, 0);
+    WaitForSingleObject(state.process, 5000);
+    CloseHandle(state.process);
+    state.process = nullptr;
+    state.pid = 0;
+#else
+    kill(state.pid, SIGTERM);
+    waitpid(state.pid, nullptr, 0);
+    state.pid = -1;
+#endif
+}
+
+json status_json(process_state & state) {
+    std::lock_guard<std::mutex> lock(state.mutex);
+    const bool running = process_running_locked(state);
+    bool ready = false;
+    if (running) {
+        httplib::Client client("127.0.0.1", state.port);
+        client.set_connection_timeout(0, 250000);
+        const auto response = client.Get("/health");
+        ready = response && response->status == 200;
+    }
+    return {
+        {"running", running},
+        {"server_ready", ready},
+        {"port", state.port},
+#if defined(_WIN32)
+        {"pid", state.pid},
+#else
+        {"pid", state.pid > 0 ? state.pid : 0},
+#endif
+    };
+}
+
+json recommendation_json() {
+    uint64_t total_mib = 0;
+    uint32_t cpu_threads = 1;
+#if defined(_WIN32)
+    MEMORYSTATUSEX memory{};
+    memory.dwLength = sizeof(memory);
+    if (GlobalMemoryStatusEx(&memory)) {
+        total_mib = memory.ullTotalPhys / (1024ULL * 1024ULL);
+    }
+    cpu_threads = std::max<DWORD>(1, GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
+#else
+    const long pages = sysconf(_SC_PHYS_PAGES);
+    const long page_size = sysconf(_SC_PAGE_SIZE);
+    if (pages > 0 && page_size > 0) {
+        total_mib = static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size) / (1024ULL * 1024ULL);
+    }
+    const long online = sysconf(_SC_NPROCESSORS_ONLN);
+    cpu_threads = online > 0 ? static_cast<uint32_t>(online) : 1;
+#endif
+    const uint64_t cache_mib = total_mib <= 16384 ? 1536 :
+        total_mib <= 32768 ? 4096 : std::min<uint64_t>(8192, total_mib / 8);
+    return {
+        {"total_ram_mib", total_mib},
+        {"cpu_threads", cpu_threads},
+        {"cache_mib", cache_mib},
+        {"io_threads", std::max<uint32_t>(1, std::min<uint32_t>(4, cpu_threads / 4))},
+        {"parallel", 1},
+        {"reason", "Keeps substantial RAM headroom and serializes inference for the alpha CPU paging path."},
+    };
+}
+
+void open_browser() {
+    if (std::getenv("QWENSTREAM_NO_BROWSER")) {
+        return;
+    }
+#if defined(_WIN32)
+    ShellExecuteW(nullptr, L"open", L"http://127.0.0.1:18080", nullptr, nullptr, SW_SHOWNORMAL);
+#else
+    const pid_t child = fork();
+    if (child == 0) {
+        execlp("xdg-open", "xdg-open", "http://127.0.0.1:18080", static_cast<char *>(nullptr));
+        _exit(127);
+    }
+#endif
+}
+
+void json_response(httplib::Response & response, const json & value, int status = 200) {
+    response.status = status;
+    response.set_content(value.dump(), "application/json; charset=utf-8");
+}
+
+} // namespace
+
+int main() {
+    process_state state;
+    httplib::Server server;
+    server.Get("/", [](const httplib::Request &, httplib::Response & response) {
+        response.set_content(dashboard_html, "text/html; charset=utf-8");
+    });
+    server.Get("/api/status", [&](const httplib::Request &, httplib::Response & response) {
+        json_response(response, status_json(state));
+    });
+    server.Get("/api/recommendation", [](const httplib::Request &, httplib::Response & response) {
+        json_response(response, recommendation_json());
+    });
+    server.Post("/api/start", [&](const httplib::Request & request, httplib::Response & response) {
+        try {
+            start_process(state, json::parse(request.body));
+            json_response(response, {{"ok", true}});
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 400);
+        }
+    });
+    server.Post("/api/stop", [&](const httplib::Request &, httplib::Response & response) {
+        stop_process(state);
+        json_response(response, {{"ok", true}});
+    });
+    server.Get("/api/paging", [&](const httplib::Request &, httplib::Response & response) {
+        const json status = status_json(state);
+        if (!status["server_ready"].get<bool>()) {
+            json_response(response, {{"error", "inference server is not ready"}}, 503);
+            return;
+        }
+        httplib::Client client("127.0.0.1", status["port"].get<int>());
+        const auto upstream = client.Get("/qwenstream/v1/paging");
+        if (!upstream) {
+            json_response(response, {{"error", "paging endpoint is unavailable"}}, 502);
+            return;
+        }
+        response.status = upstream->status;
+        response.set_content(upstream->body, "application/json; charset=utf-8");
+    });
+    server.Get("/api/diagnostics", [&](const httplib::Request &, httplib::Response & response) {
+        json diagnostic = {
+            {"qwenstream_version", "0.1.0-alpha"},
+            {"manager", status_json(state)},
+#if defined(_WIN32)
+            {"platform", "windows"},
+#else
+            {"platform", "posix"},
+#endif
+            {"privacy", "No prompts, generated text, API keys, tokens, usernames, or model contents are collected."},
+        };
+        response.set_header("Content-Disposition", "attachment; filename=qwenstream-diagnostics.json");
+        json_response(response, diagnostic);
+    });
+    server.set_exception_handler([](const auto &, auto & response, std::exception_ptr error) {
+        try {
+            if (error) {
+                std::rethrow_exception(error);
+            }
+        } catch (const std::exception & exception) {
+            json_response(response, {{"error", exception.what()}}, 500);
+        }
+    });
+    open_browser();
+    std::printf("QwenStream manager: http://127.0.0.1:%d\n", manager_port);
+    const bool ok = server.listen("127.0.0.1", manager_port);
+    stop_process(state);
+    return ok ? 0 : 1;
+}

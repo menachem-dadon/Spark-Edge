@@ -352,6 +352,7 @@ struct cmd_params {
     std::vector<bool>                no_host;
     std::vector<size_t>              fit_params_target;
     std::vector<uint32_t>            fit_params_min_ctx;
+    llama_moe_paging_params          moe_paging;
     ggml_numa_strategy               numa;
     int                              reps;
     ggml_sched_priority              prio;
@@ -397,6 +398,9 @@ static const cmd_params cmd_params_defaults = {
     /* no_host              */ { false },
     /* fit_params_target    */ { 0 },
     /* fit_params_min_ctx   */ { 0 },
+    /* moe_paging           */ {
+        LLAMA_MOE_PAGING_MODE_OFF, LLAMA_MOE_IO_MODE_BUFFERED, 0, 0, 1, 0, 30000,
+    },
     /* numa                 */ GGML_NUMA_STRATEGY_DISABLED,
     /* reps                 */ 5,
     /* prio                 */ GGML_SCHED_PRIO_NORMAL,
@@ -423,6 +427,10 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -v, --verbose                               verbose output\n");
     printf("  --progress                                  print test progress indicators\n");
     printf("  --no-warmup                                 skip warmup runs before benchmarking\n");
+    printf("  --moe-paging <off|explicit|os>             MoE expert paging mode (default: off)\n");
+    printf("  --moe-cache-mib <N>                        explicit expert cache budget in MiB\n");
+    printf("  --moe-slots <N>                            expert slots per paged layer\n");
+    printf("  --moe-io-threads <N>                       expert file I/O worker count (default: 1)\n");
     printf("  -fitt, --fit-target <MiB>                   fit model to device memory with this margin per device in MiB (default: off)\n");
     printf("  -fitc, --fit-ctx <n>                        minimum ctx size for --fit-target (default: 4096)\n");
     if (llama_supports_rpc()) {
@@ -798,6 +806,42 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                     invalid_param = true;
                     break;
                 }
+            } else if (arg == "--moe-paging") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                const std::string value(argv[i]);
+                if (value == "off") {
+                    params.moe_paging.mode = LLAMA_MOE_PAGING_MODE_OFF;
+                } else if (value == "explicit") {
+                    params.moe_paging.mode = LLAMA_MOE_PAGING_MODE_EXPLICIT;
+                } else if (value == "os") {
+                    params.moe_paging.mode = LLAMA_MOE_PAGING_MODE_OS;
+                    params.use_mmap = {true};
+                    params.use_direct_io = {false};
+                } else {
+                    invalid_param = true;
+                    break;
+                }
+            } else if (arg == "--moe-cache-mib") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.moe_paging.cache_bytes = static_cast<uint64_t>(std::stoull(argv[i])) * 1024ULL * 1024ULL;
+            } else if (arg == "--moe-slots") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.moe_paging.n_slots = std::stoi(argv[i]);
+            } else if (arg == "--moe-io-threads") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.moe_paging.io_threads = std::stoi(argv[i]);
             } else if (arg == "-fa" || arg == "--flash-attn") {
                 if (++i >= argc) {
                     invalid_param = true;
@@ -1034,6 +1078,15 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
         exit(1);
     }
 
+    if (params.moe_paging.io_threads <= 0 || params.moe_paging.n_slots < 0) {
+        fprintf(stderr, "error: invalid MoE paging configuration\n");
+        exit(1);
+    }
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT &&
+            params.moe_paging.n_slots == 0 && params.moe_paging.cache_bytes == 0) {
+        params.moe_paging.n_slots = 8;
+    }
+
     if (!params.hf_repo.empty()) {
         for (size_t i = 0; i < params.hf_repo.size(); i++) {
             common_params p;
@@ -1177,6 +1230,7 @@ struct cmd_params_instance {
     bool               no_host;
     size_t             fit_target;
     uint32_t           fit_min_ctx;
+    llama_moe_paging_params moe_paging;
 
     llama_model_params to_llama_mparams() const {
         llama_model_params mparams = llama_model_default_params();
@@ -1191,6 +1245,7 @@ struct cmd_params_instance {
         mparams.use_mmap      = use_mmap;
         mparams.use_direct_io = use_direct_io;
         mparams.no_host       = no_host;
+        mparams.moe_paging    = moe_paging;
 
         if (n_cpu_moe <= 0) {
             if (tensor_buft_overrides.empty()) {
@@ -1238,6 +1293,10 @@ struct cmd_params_instance {
                use_mmap == other.use_mmap && use_direct_io == other.use_direct_io &&
                devices == other.devices &&
                no_host == other.no_host &&
+               moe_paging.mode == other.moe_paging.mode &&
+               moe_paging.cache_bytes == other.moe_paging.cache_bytes &&
+               moe_paging.n_slots == other.moe_paging.n_slots &&
+               moe_paging.io_threads == other.moe_paging.io_threads &&
                vec_tensor_buft_override_equal(tensor_buft_overrides, other.tensor_buft_overrides);
     }
 
@@ -1254,6 +1313,7 @@ struct cmd_params_instance {
         cparams.embeddings      = embeddings;
         cparams.op_offload      = !no_op_offload;
         cparams.swa_full        = false;
+        cparams.moe_paging      = moe_paging;
 
         return cparams;
     }
@@ -1323,6 +1383,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .no_host      = */ noh,
                 /* .fit_target   = */ fpt,
                 /* .fit_min_ctx  = */ fpc,
+                /* .moe_paging   = */ params.moe_paging,
             };
             instances.push_back(instance);
         }
@@ -1360,6 +1421,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .no_host      = */ noh,
                 /* .fit_target   = */ fpt,
                 /* .fit_min_ctx  = */ fpc,
+                /* .moe_paging   = */ params.moe_paging,
             };
             instances.push_back(instance);
         }
@@ -1397,6 +1459,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .no_host      = */ noh,
                 /* .fit_target   = */ fpt,
                 /* .fit_min_ctx  = */ fpc,
+                /* .moe_paging   = */ params.moe_paging,
             };
             instances.push_back(instance);
         }
@@ -1439,6 +1502,12 @@ struct test {
     bool                     no_host;
     size_t                   fit_target;
     uint32_t                 fit_min_ctx;
+    llama_moe_paging_params  moe_paging;
+    uint64_t                 moe_cache_hits = 0;
+    uint64_t                 moe_cache_misses = 0;
+    uint64_t                 moe_bytes_read = 0;
+    uint64_t                 moe_read_count = 0;
+    uint64_t                 moe_evictions = 0;
     int                      n_prompt;
     int                      n_gen;
     int                      n_depth;
@@ -1479,6 +1548,7 @@ struct test {
         no_host        = inst.no_host;
         fit_target     = inst.fit_target;
         fit_min_ctx    = inst.fit_min_ctx;
+        moe_paging     = inst.moe_paging;
         n_prompt       = inst.n_prompt;
         n_gen          = inst.n_gen;
         n_depth        = inst.n_depth;
@@ -1487,7 +1557,38 @@ struct test {
         std::strftime(buf, sizeof(buf), "%FT%TZ", gmtime(&t));
         test_time = buf;
 
-        (void) ctx;
+        update_moe_stats(ctx);
+    }
+
+    static const char * moe_mode_name(llama_moe_paging_mode mode) {
+        switch (mode) {
+            case LLAMA_MOE_PAGING_MODE_OFF:      return "off";
+            case LLAMA_MOE_PAGING_MODE_EXPLICIT: return "explicit";
+            case LLAMA_MOE_PAGING_MODE_OS:       return "os";
+            case LLAMA_MOE_PAGING_MODE_AUTO:     return "auto";
+        }
+        return "unknown";
+    }
+
+    void update_moe_stats(const llama_context * ctx) {
+        llama_moe_paging_stats stats{};
+        if (llama_context_moe_paging_get_stats(ctx, &stats)) {
+            moe_cache_hits = stats.cache_hits;
+            moe_cache_misses = stats.cache_misses;
+            moe_bytes_read = stats.bytes_read;
+            moe_read_count = stats.read_count;
+            moe_evictions = stats.evictions;
+        }
+    }
+
+    double moe_hit_rate() const {
+        const uint64_t total = moe_cache_hits + moe_cache_misses;
+        return total == 0 ? 0.0 : static_cast<double>(moe_cache_hits) / static_cast<double>(total);
+    }
+
+    double moe_bytes_per_token() const {
+        const uint64_t tokens = static_cast<uint64_t>(n_prompt + n_gen) * samples_ns.size();
+        return tokens == 0 ? 0.0 : static_cast<double>(moe_bytes_read) / static_cast<double>(tokens);
     }
 
     uint64_t avg_ns() const { return ::avg(samples_ns); }
@@ -1537,6 +1638,9 @@ struct test {
             "main_gpu",       "no_kv_offload",  "flash_attn",    "devices",        "tensor_split",
             "tensor_buft_overrides",            "use_mmap",      "use_direct_io",  "embeddings",
             "no_op_offload",  "no_host",        "fit_target",     "fit_min_ctx",
+            "moe_paging",     "moe_cache_mib",  "moe_slots",      "moe_io_threads",
+            "moe_cache_hits", "moe_cache_misses", "moe_hit_rate", "moe_bytes_read",
+            "moe_bytes_per_token", "moe_read_count", "moe_evictions",
             "n_prompt",       "n_gen",          "n_depth",
             "test_time",      "avg_ns",         "stddev_ns",     "avg_ts",         "stddev_ts"
         };
@@ -1550,14 +1654,17 @@ struct test {
             field == "poll" || field == "model_size" || field == "model_n_params" || field == "n_gpu_layers" ||
             field == "main_gpu" || field == "n_prompt" || field == "n_gen" || field == "n_depth" || field == "avg_ns" ||
             field == "stddev_ns" || field == "no_op_offload" || field == "n_cpu_moe" ||
-            field == "fit_target" || field == "fit_min_ctx" || field == "flash_attn") {
+            field == "fit_target" || field == "fit_min_ctx" || field == "flash_attn" ||
+            field == "moe_cache_mib" || field == "moe_slots" || field == "moe_io_threads" ||
+            field == "moe_cache_hits" || field == "moe_cache_misses" || field == "moe_bytes_read" ||
+            field == "moe_read_count" || field == "moe_evictions") {
             return INT;
         }
         if (field == "f16_kv" || field == "no_kv_offload" || field == "cpu_strict" ||
             field == "use_mmap" || field == "use_direct_io" || field == "embeddings" || field == "no_host") {
             return BOOL;
         }
-        if (field == "avg_ts" || field == "stddev_ts") {
+        if (field == "avg_ts" || field == "stddev_ts" || field == "moe_hit_rate" || field == "moe_bytes_per_token") {
             return FLOAT;
         }
         return STRING;
@@ -1633,6 +1740,17 @@ struct test {
                                             std::to_string(no_host),
                                             std::to_string(fit_target),
                                             std::to_string(fit_min_ctx),
+                                            moe_mode_name(moe_paging.mode),
+                                            std::to_string(moe_paging.cache_bytes / (1024ULL * 1024ULL)),
+                                            std::to_string(moe_paging.n_slots),
+                                            std::to_string(moe_paging.io_threads),
+                                            std::to_string(moe_cache_hits),
+                                            std::to_string(moe_cache_misses),
+                                            std::to_string(moe_hit_rate()),
+                                            std::to_string(moe_bytes_read),
+                                            std::to_string(moe_bytes_per_token()),
+                                            std::to_string(moe_read_count),
+                                            std::to_string(moe_evictions),
                                             std::to_string(n_prompt),
                                             std::to_string(n_gen),
                                             std::to_string(n_depth),
@@ -2356,6 +2474,8 @@ int llama_bench(int argc, char ** argv) {
             }
         }
 
+        llama_context_moe_paging_reset_stats(ctx);
+
         for (int i = 0; i < params.reps; i++) {
             llama_memory_clear(llama_get_memory(ctx), false);
 
@@ -2428,6 +2548,8 @@ int llama_bench(int argc, char ** argv) {
             uint64_t t_ns = get_time_ns() - t_start;
             t.samples_ns.push_back(t_ns);
         }
+
+        t.update_moe_stats(ctx);
 
         if (p) {
             p->print_test(t);
