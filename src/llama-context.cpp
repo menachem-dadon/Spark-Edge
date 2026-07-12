@@ -3651,6 +3651,18 @@ void llama_context::moe_paging_reset_stats() {
     }
 }
 
+bool llama_context_moe_paging_set_expert_pinned(
+        struct llama_context * ctx,
+        int32_t layer,
+        int32_t expert,
+        bool pinned) {
+    return ctx && ctx->moe_paging_set_expert_pinned(layer, expert, pinned);
+}
+
+bool llama_context::moe_paging_set_expert_pinned(int32_t layer, int32_t expert, bool pinned) {
+    return moe_paging && moe_paging->set_expert_pinned(layer, expert, pinned);
+}
+
 enum llama_pooling_type llama_pooling_type(const llama_context * ctx) {
     return ctx->pooling_type();
 }

@@ -4,6 +4,7 @@
 #include "llama.h"
 #include "moe-paging/moe-cache.h"
 #include "moe-paging/moe-model-index.h"
+#include "moe-paging/moe-paging.h"
 
 #include <cstdio>
 #include <cstring>
@@ -96,7 +97,59 @@ int main() {
     REQUIRE(stats.read_count == 4);
     REQUIRE(stats.bytes_read == 4 * original->nb[2]);
     REQUIRE(stats.evictions == 2);
+
+    const int32_t duplicate_ids[] = {0, 0};
+    int32_t duplicate_slots[2] = {-1, -1};
+    cache.resolve(duplicate_ids, 2, duplicate_slots);
+    REQUIRE(duplicate_slots[0] == duplicate_slots[1]);
+    REQUIRE(cache.get_stats().snapshot().duplicate_requests == 1);
+
+    REQUIRE(cache.set_pinned(0, true));
+    const int32_t new_id = 2;
+    int32_t new_slot = -1;
+    cache.resolve(&new_id, 1, &new_slot);
+    int32_t pinned_slot = -1;
+    const int32_t pinned_id = 0;
+    cache.resolve(&pinned_id, 1, &pinned_slot);
+    REQUIRE(pinned_slot == duplicate_slots[0]);
+    REQUIRE(cache.set_pinned(0, false));
+    REQUIRE(!cache.set_pinned(99, true));
+
+    bool invalid_id_rejected = false;
+    try {
+        const int32_t invalid_id = -1;
+        int32_t invalid_slot = -1;
+        cache.resolve(&invalid_id, 1, &invalid_slot);
+    } catch (const std::runtime_error &) {
+        invalid_id_rejected = true;
     }
+    REQUIRE(invalid_id_rejected);
+    }
+
+    bool small_budget_rejected = false;
+    try {
+        llama_moe_paging_params params{};
+        params.mode = LLAMA_MOE_PAGING_MODE_EXPLICIT;
+        params.io_mode = LLAMA_MOE_IO_MODE_BUFFERED;
+        params.cache_bytes = 1;
+        params.io_threads = 1;
+        params.io_timeout_ms = 30000;
+        llama_moe::paging_manager manager(backend.get(), params, index, 2);
+        manager.bind_pool(0, original);
+    } catch (const std::runtime_error &) {
+        small_budget_rejected = true;
+    }
+    REQUIRE(small_budget_rejected);
+
+    bool bad_range_rejected = false;
+    try {
+        llama_moe::model_index bad_index;
+        bad_index.add_tensor(original->name, 0, file_bytes.size(), original);
+        bad_index.open_files(files);
+    } catch (const std::runtime_error &) {
+        bad_range_rejected = true;
+    }
+    REQUIRE(bad_range_rejected);
 
     backend.reset();
     llama_backend_free();

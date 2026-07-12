@@ -26,6 +26,7 @@ public:
     ggml_tensor * bind_pool(int32_t layer, const ggml_tensor * original);
     ggml_tensor * remap_ids(ggml_context * ctx, ggml_tensor * selected_experts, int32_t layer);
     bool handles_layer(int32_t layer) const;
+    bool set_expert_pinned(int32_t layer, int32_t expert, bool pinned);
 
     stats_snapshot snapshot() const;
     void reset_stats();

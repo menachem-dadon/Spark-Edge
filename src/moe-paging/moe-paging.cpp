@@ -95,6 +95,13 @@ bool paging_manager::handles_layer(int32_t layer) const {
     return index.has_layer(layer);
 }
 
+bool paging_manager::set_expert_pinned(int32_t layer, int32_t expert, bool pinned) {
+    if (!index.has_layer(layer)) {
+        return false;
+    }
+    return get_or_create_layer(layer).set_pinned(expert, pinned);
+}
+
 void paging_manager::remap_callback(
         ggml_tensor * destination,
         const ggml_tensor * source,

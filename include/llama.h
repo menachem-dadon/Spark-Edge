@@ -630,6 +630,12 @@ extern "C" {
 
     LLAMA_API void llama_context_moe_paging_reset_stats(struct llama_context * ctx);
 
+    LLAMA_API bool llama_context_moe_paging_set_expert_pinned(
+        struct llama_context * ctx,
+        int32_t layer,
+        int32_t expert,
+        bool pinned);
+
     // Get the model's RoPE frequency scaling factor
     LLAMA_API float llama_model_rope_freq_scale_train(const struct llama_model * model);
 

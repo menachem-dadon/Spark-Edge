@@ -53,6 +53,7 @@ public:
 
     ggml_tensor * bind_tensor(const ggml_tensor * original, const tensor_descriptor & descriptor);
     void resolve(const int32_t * expert_ids, size_t count, int32_t * slot_ids);
+    bool set_pinned(int32_t expert, bool pinned);
 
     int64_t slots() const;
     const stats & get_stats() const;
@@ -73,6 +74,7 @@ private:
     uint64_t clock = 0;
     std::vector<cache_entry> entries;
     std::vector<int32_t> expert_to_slot;
+    std::vector<bool> pin_requested;
     std::vector<tensor_pool> pools;
     std::unordered_map<std::string, size_t> pool_by_name;
     stats counters;

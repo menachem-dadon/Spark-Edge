@@ -27,6 +27,7 @@ layer_cache::layer_cache(
     }
     entries.resize(static_cast<size_t>(n_slots));
     expert_to_slot.assign(static_cast<size_t>(n_experts), -1);
+    pin_requested.assign(static_cast<size_t>(n_experts), false);
     for (int32_t slot = 0; slot < n_slots; ++slot) {
         entries[slot].slot_id = slot;
     }
@@ -153,6 +154,7 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
             counters.add_eviction();
         }
         entry.expert_id = expert;
+        entry.pinned = pin_requested[expert];
         entry.state = entry_state::loading;
         entry.active_refs = 1;
         entry.generation++;
@@ -220,6 +222,19 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
             entry.active_refs--;
         }
     }
+}
+
+bool layer_cache::set_pinned(int32_t expert, bool pinned) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (expert < 0 || expert >= n_experts) {
+        return false;
+    }
+    pin_requested[expert] = pinned;
+    const int32_t slot = expert_to_slot[expert];
+    if (slot >= 0) {
+        entries[slot].pinned = pinned;
+    }
+    return true;
 }
 
 int64_t layer_cache::slots() const { return n_slots; }
