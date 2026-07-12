@@ -1,0 +1,14 @@
+{
+  "date": "2026-07-12",
+  "buffered": true,
+  "os_cache_may_affect_results": true,
+  "file_size_mib": 16,
+  "sequential_block_kib": 1024,
+  "random_block_kib": 4,
+  "random_reads": 1024,
+  "write_mib_s": 977.081,
+  "sequential_read_mib_s": 3634.299,
+  "random_read_iops": 249287.923,
+  "random_p50_us": 3.100,
+  "random_p95_us": 8.100
+}

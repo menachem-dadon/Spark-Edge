@@ -1,0 +1,49 @@
+name: QwenStream CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        variant: [avx2, generic]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure, build, and test
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Variant ${{ matrix.variant }} -RunTests
+      - name: Launcher and I/O tool smoke
+        shell: pwsh
+        run: |
+          $bin = "build-windows-${{ matrix.variant }}/bin/Release"
+          if (-not (Test-Path $bin)) { $bin = "build-windows-${{ matrix.variant }}/bin" }
+          & "$bin/qwenstream-iobench.exe" --size-mib 8 --random-reads 128 --format json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        variant: [avx2, generic]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: ./scripts/build-linux.sh ${{ matrix.variant }}
+      - name: I/O tool smoke
+        run: ./build-linux-${{ matrix.variant }}/bin/qwenstream-iobench --size-mib 8 --random-reads 128 --format json
+
+  source-hygiene:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Required artifacts and forbidden secrets
+        run: |
+          test -f UPSTREAM_BASE.txt
+          test -f THIRD_PARTY_NOTICES.md
+          test -f docs/DECISIONS.md
+          ! git grep -nE 'hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}'

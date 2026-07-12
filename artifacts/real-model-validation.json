@@ -1,0 +1,6 @@
+{
+  "version": "0.1.0-alpha",
+  "status": "not completed",
+  "reason": "No full Qwen3.5/Qwen3.6 35B-A3B GGUF was available locally, and large automatic downloads are prohibited without QWENSTREAM_ALLOW_LARGE_DOWNLOAD=1.",
+  "stable_release_eligible": false
+}

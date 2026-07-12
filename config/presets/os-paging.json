@@ -1,0 +1,10 @@
+{
+  "name": "Operating-system paging",
+  "mode": "os",
+  "cache_mib": 0,
+  "slots": 0,
+  "io_threads": 1,
+  "parallel": 1,
+  "context": 4096,
+  "ubatch": 128
+}

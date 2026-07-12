@@ -22,6 +22,9 @@
 *.tmp
 *.DS_Store
 
+# Local QwenStream release outputs
+/artifacts/release/
+
 # IDE / OS
 
 /.cache/

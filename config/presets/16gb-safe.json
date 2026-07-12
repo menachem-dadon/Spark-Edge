@@ -1,0 +1,10 @@
+{
+  "name": "16 GB safe starting point",
+  "mode": "explicit",
+  "cache_mib": 1536,
+  "slots": 0,
+  "io_threads": 3,
+  "parallel": 1,
+  "context": 2048,
+  "ubatch": 64
+}

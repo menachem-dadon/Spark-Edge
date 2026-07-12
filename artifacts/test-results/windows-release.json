@@ -1,0 +1,23 @@
+{
+  "date": "2026-07-12",
+  "version": "0.1.0-alpha",
+  "build": "Release, MinGW GCC 16.1.0, Ninja, AVX2, Windows x64",
+  "results": [
+    {"name": "local unit suite excluding external model downloads", "status": "passed", "passed": 47, "failed": 0, "ctest_seconds": 76.36},
+    {"name": "test-moe-paging AVX2", "status": "passed", "exit_code": 0, "ctest_seconds": 0.49, "coverage": "file-backed bytes, LRU, pinning, duplicate IDs, invalid ID, slot overflow, cache budget, shard bounds"},
+    {"name": "llama-cli paging help", "status": "passed"},
+    {"name": "llama-server paging help", "status": "passed"},
+    {"name": "llama-bench paging help", "status": "passed"},
+    {"name": "QwenStream manager HTTP smoke", "status": "passed"},
+    {"name": "invalid GGUF rejection", "status": "passed"},
+    {"name": "Inno Setup per-user install, PATH opt-in, launcher HTTP, uninstall", "status": "passed", "installer_exit": 0, "path_added": true, "uninstaller_exit": 0, "path_restored": true}
+  ],
+  "generic_build": {
+    "isa": "SSE4.2; AVX, AVX2, FMA, F16C, and BMI2 disabled",
+    "build_status": "passed",
+    "test_moe_paging_exit": 0,
+    "ctest_seconds": 0.10,
+    "cli_help_status": "passed"
+  },
+  "full_qwen_model_validation": "not completed"
+}

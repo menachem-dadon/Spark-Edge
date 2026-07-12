@@ -1,0 +1,10 @@
+{
+  "name": "Balanced 32 GB starting point",
+  "mode": "explicit",
+  "cache_mib": 4096,
+  "slots": 0,
+  "io_threads": 4,
+  "parallel": 1,
+  "context": 4096,
+  "ubatch": 128
+}
