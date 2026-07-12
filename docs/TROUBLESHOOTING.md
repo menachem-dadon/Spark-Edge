@@ -10,7 +10,9 @@ The model activates more experts than the configured layer budget can hold. Incr
 
 ## Too many unique experts in a microbatch
 
-Reduce `--ubatch-size` or increase slots. QwenStream never evicts a slot reserved by the same routing request.
+Current builds automatically reduce the effective physical microbatch so that the maximum number of active experts fits in the per-layer slot cache. The adjustment is reported in the server log and as `effective_ubatch_size` from `GET /qwenstream/v1/config`.
+
+If this message appears with an older binary, install the latest build or start the server with a smaller `--ubatch-size` value. `--ubatch-size 1` is the safest diagnostic setting, although prompt processing will be slower. Increasing the cache budget can also create more slots. QwenStream never evicts a slot reserved by the same routing request.
 
 ## Read timeout or short read
 

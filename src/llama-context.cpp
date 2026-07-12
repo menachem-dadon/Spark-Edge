@@ -335,6 +335,13 @@ llama_context::llama_context(
             }
             moe_paging = std::make_unique<llama_moe::paging_manager>(
                 backend_cpu, cparams.moe_paging, model.moe_index, hparams.n_expert_used);
+            const uint32_t safe_ubatch = moe_paging->max_safe_ubatch();
+            if (cparams.n_ubatch > safe_ubatch) {
+                LLAMA_LOG_WARN(
+                    "MoE paging: reducing n_ubatch from %u to %u because %u active experts must fit in the per-layer slot cache\n",
+                    cparams.n_ubatch, safe_ubatch, hparams.n_expert_used);
+                cparams.n_ubatch = safe_ubatch;
+            }
         }
 
         // create a list of the set_n_threads functions in the backends

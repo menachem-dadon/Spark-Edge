@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Automatically clamp the physical microbatch to the exact MoE slot capacity instead of aborting during prompt processing.
+- Report the effective microbatch through the QwenStream server configuration endpoint.
+
 ## 0.1.0-alpha - 2026-07-12
 
 - Based the fork on llama.cpp commit recorded in `UPSTREAM_BASE.txt`.

@@ -196,6 +196,15 @@ int main() {
     }
     REQUIRE(bad_range_rejected);
 
+    llama_moe_paging_params safe_params{};
+    safe_params.mode = LLAMA_MOE_PAGING_MODE_EXPLICIT;
+    safe_params.io_mode = LLAMA_MOE_IO_MODE_BUFFERED;
+    safe_params.n_slots = 4;
+    safe_params.io_threads = 1;
+    safe_params.io_timeout_ms = 30000;
+    llama_moe::paging_manager safe_manager(backend.get(), safe_params, index, 2);
+    REQUIRE(safe_manager.max_safe_ubatch() == 2);
+
     backend.reset();
     llama_backend_free();
     files.clear();

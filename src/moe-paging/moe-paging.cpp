@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <exception>
+#include <limits>
 #include <stdexcept>
 
 namespace llama_moe {
@@ -100,6 +101,23 @@ bool paging_manager::set_expert_pinned(int32_t layer, int32_t expert, bool pinne
         return false;
     }
     return get_or_create_layer(layer).set_pinned(expert, pinned);
+}
+
+uint32_t paging_manager::max_safe_ubatch() const {
+    uint64_t result = std::numeric_limits<uint32_t>::max();
+    bool found_layer = false;
+    for (size_t layer = 0; layer < index.layer_count(); ++layer) {
+        if (!index.has_layer(static_cast<int32_t>(layer))) {
+            continue;
+        }
+        found_layer = true;
+        const int64_t slots = slots_for_layer(static_cast<int32_t>(layer));
+        result = std::min(result, static_cast<uint64_t>(slots / minimum_slots));
+    }
+    if (!found_layer || result == 0) {
+        throw std::runtime_error("MoE paging cannot form a safe microbatch with the configured slots");
+    }
+    return static_cast<uint32_t>(result);
 }
 
 void paging_manager::remap_callback(

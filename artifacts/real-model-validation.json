@@ -1,6 +1,24 @@
 {
   "version": "0.1.0-alpha",
-  "status": "not completed",
-  "reason": "No full Qwen3.5/Qwen3.6 35B-A3B GGUF was available locally, and large automatic downloads are prohibited without QWENSTREAM_ALLOW_LARGE_DOWNLOAD=1.",
+  "status": "partially completed",
+  "reason": "A real Qwen3.6 35B-A3B GGUF completed a short streaming regression, but the full 128-token resident-versus-paged validation matrix has not been completed.",
+  "partial_validation": {
+    "date": "2026-07-13",
+    "model": "Qwen3.6-35B-A3B-UD-IQ4_NL.gguf",
+    "model_size_bytes": 18536192288,
+    "context_size": 4096,
+    "cache_mib": 1536,
+    "effective_ubatch_size": 2,
+    "prompt_tokens": 17,
+    "generated_tokens": 4,
+    "stream_completed": true,
+    "server_remained_healthy": true,
+    "slot_overflow_errors": 0,
+    "cache_hits": 4302,
+    "cache_misses": 4997,
+    "bytes_read": 7601258496,
+    "read_count": 14991,
+    "evictions": 3972
+  },
   "stable_release_eligible": false
 }

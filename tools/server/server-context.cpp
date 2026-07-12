@@ -4389,6 +4389,7 @@ void server_routes::init_routes() {
             {"io_threads", params.moe_paging.io_threads},
             {"paged_layers", params.moe_paging.n_layers},
             {"io_timeout_ms", params.moe_paging.io_timeout_ms},
+            {"effective_ubatch_size", llama_n_ubatch(ctx_server_api.get_llama_context())},
         });
         return res;
     };

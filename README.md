@@ -2,7 +2,7 @@
 
 QwenStream is an independent, CPU-first fork of `llama.cpp` that can keep routed Qwen3.5/Qwen3.6 MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
 
-This is **v0.1.0-alpha**. The paging core, Windows asynchronous file reader, LRU cache, CLI/server integration, launcher, and synthetic deterministic tests are implemented and built. Full Qwen3.5/Qwen3.6 35B-A3B validation has not been completed because no full model was available locally. Do not treat this alpha as a performance or 16 GB compatibility guarantee.
+This is **v0.1.0-alpha**. The paging core, Windows asynchronous file reader, LRU cache, CLI/server integration, launcher, and deterministic tests are implemented and built. A short streaming regression completed on a real Qwen3.6 35B-A3B IQ4 GGUF after automatically reducing the physical microbatch to fit the slot cache. The full 128-token resident-versus-paged validation matrix has not been completed, so do not treat this alpha as a performance or 16 GB compatibility guarantee.
 
 ## What it does
 

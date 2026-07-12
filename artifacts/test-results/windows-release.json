@@ -1,14 +1,15 @@
 {
-  "date": "2026-07-12",
+  "date": "2026-07-13",
   "version": "0.1.0-alpha",
   "build": "Release, MinGW GCC 16.1.0, Ninja, AVX2, Windows x64",
   "results": [
-    {"name": "local unit suite excluding external model downloads", "status": "passed", "passed": 47, "failed": 0, "ctest_seconds": 80.84},
-    {"name": "test-moe-paging AVX2", "status": "passed", "exit_code": 0, "ctest_seconds": 0.04, "coverage": "file-backed bytes, resident/paged arithmetic parity, multi-shard reads, LRU, pinning, duplicate IDs, invalid ID, slot overflow, cache budget, shard bounds"},
+    {"name": "local unit suite excluding external model downloads", "status": "passed", "passed": 47, "failed": 0, "ctest_seconds": 241.58},
+    {"name": "test-moe-paging AVX2", "status": "passed", "exit_code": 0, "ctest_seconds": 0.11, "coverage": "file-backed bytes, resident/paged arithmetic parity, multi-shard reads, safe microbatch calculation, LRU, pinning, duplicate IDs, invalid ID, slot overflow, cache budget, shard bounds"},
     {"name": "llama-cli paging help", "status": "passed"},
     {"name": "llama-server paging help", "status": "passed"},
     {"name": "llama-bench paging help", "status": "passed"},
     {"name": "QwenStream manager HTTP smoke", "status": "passed"},
+    {"name": "Qwen3.6 real-model streaming microbatch regression", "status": "passed", "prompt_tokens": 17, "generated_tokens": 4, "effective_ubatch_size": 2, "slot_overflow_errors": 0},
     {"name": "invalid GGUF rejection", "status": "passed"},
     {"name": "Inno Setup per-user install, PATH opt-in, launcher HTTP, uninstall", "status": "passed", "installer_exit": 0, "path_added": true, "uninstaller_exit": 0, "path_restored": true}
   ],
@@ -16,7 +17,7 @@
     "isa": "SSE4.2; AVX, AVX2, FMA, F16C, and BMI2 disabled",
     "build_status": "passed",
     "test_moe_paging_exit": 0,
-    "ctest_seconds": 0.10,
+    "ctest_seconds": 0.21,
     "cli_help_status": "passed"
   },
   "full_qwen_model_validation": "not completed"
