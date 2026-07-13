@@ -1,4 +1,7 @@
-name: QwenStream release
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
+name: GiantLLM release
 
 on:
   push:
@@ -39,12 +42,13 @@ jobs:
       - name: Archive
         run: |
           version="${GITHUB_REF_NAME#v}"
-          stage="qwenstream-${version}-linux-x64-${{ matrix.variant }}"
-          mkdir -p "$stage/config" "$stage/docs" "$stage/licenses"
-          cp build-linux-${{ matrix.variant }}/bin/{QwenStream,llama-cli,llama-server,llama-bench,qwenstream-iobench} "$stage/"
-          cp tools/qwenstream/dashboard.html "$stage/"
+          stage="giantllm-${version}-linux-x64-${{ matrix.variant }}"
+          mkdir -p "$stage/assets" "$stage/config" "$stage/docs" "$stage/licenses"
+          cp build-linux-${{ matrix.variant }}/bin/{GiantLLM,llama-cli,llama-server,llama-bench,giantllm-iobench} "$stage/"
+          cp tools/giantllm/dashboard.html "$stage/"
+          cp -r assets/branding "$stage/assets/"
           cp -r config/presets "$stage/config/"
-          cp LICENSE NOTICE THIRD_PARTY_NOTICES.md VERSION "$stage/licenses/"
+          cp LICENSE LICENSE-GIANTLLM-NONCOMMERCIAL.md LICENSING.md NOTICE THIRD_PARTY_NOTICES.md VERSION "$stage/licenses/"
           cp README.md README_HE.md "$stage/"
           cp docs/{USER_GUIDE.md,TROUBLESHOOTING.md,PROJECT_MAP.md,SUPPORTED_MODELS.md} "$stage/docs/"
           tar -czf "$stage.tar.gz" "$stage"

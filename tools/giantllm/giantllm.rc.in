@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
+#include <windows.h>
+
+#define IDI_GIANTLLM_ICON 101
+IDI_GIANTLLM_ICON ICON "@GIANTLLM_ICON_RC_FILE@"

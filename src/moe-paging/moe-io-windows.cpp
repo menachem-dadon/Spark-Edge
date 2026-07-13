@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
 #include "moe-io.h"
 
 #if defined(_WIN32)

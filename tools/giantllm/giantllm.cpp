@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
 #include "httplib.h"
 #include <nlohmann/json.hpp>
 
@@ -38,28 +41,28 @@ namespace {
 
 constexpr int manager_port = 18080;
 
-const char dashboard_html[] = R"QWENSTREAM(
+const char dashboard_html[] = R"GIANTLLM(
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>QwenStream</title><style>
+<title>GiantLLM</title><style>
 :root{font-family:Inter,Segoe UI,sans-serif;color:#eaf2ff;background:#08111f}body{margin:0;background:radial-gradient(circle at 20% 0,#14345a,#08111f 45%);min-height:100vh}.wrap{max-width:920px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center}.brand{font-size:28px;font-weight:750}.sub{color:#9eb2ca}.card{background:#0e1c2dcc;border:1px solid #27415d;border-radius:16px;padding:20px;margin-top:18px;box-shadow:0 18px 50px #0005}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:grid;gap:6px;color:#b9c9db}input,select,button{font:inherit;border-radius:9px;border:1px solid #35536f;padding:10px;background:#0a1726;color:#f4f8ff}input:focus,select:focus{outline:2px solid #2e9fd8}button{cursor:pointer;background:#147caf;border:0;font-weight:700}button.stop{background:#8e3347}button.ghost{background:#20354a}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.state{display:flex;align-items:center;gap:9px}.dot{width:10px;height:10px;border-radius:50%;background:#778}.dot.on{background:#3ddc97;box-shadow:0 0 12px #3ddc97}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:#0a1726;border-radius:10px;padding:12px}.metric b{display:block;font-size:20px;margin-top:5px}.error{color:#ff9baf;white-space:pre-wrap}.rtl{direction:rtl}@media(max-width:650px){.grid,.metrics{grid-template-columns:1fr}.wrap{padding:16px}}
-</style></head><body><main class="wrap" id="app"><div class="top"><div><div class="brand">QwenStream</div><div class="sub" data-i="subtitle">Local CPU MoE expert paging</div></div><button class="ghost" id="language">עברית</button></div>
+</style></head><body><main class="wrap" id="app"><div class="top"><div><div class="brand">GiantLLM</div><div class="sub" data-i="subtitle">Giant local models on modest hardware</div></div><button class="ghost" id="language">עברית</button></div>
 <section class="card"><h2 data-i="setup">First-run setup</h2><div class="grid"><label><span data-i="model">Local GGUF model path</span><input id="model" placeholder="C:\models\qwen.gguf"></label><label><span data-i="mode">Paging mode</span><select id="mode"><option value="explicit">explicit</option><option value="os">os / mmap</option><option value="off">off / resident</option></select></label><label><span data-i="cache">Cache budget (MiB, 0 uses slots)</span><input id="cache" type="number" min="0" value="2048"></label><label><span data-i="slots">Slots per layer (0 uses budget)</span><input id="slots" type="number" min="0" value="0"></label><label><span data-i="threads">I/O threads</span><input id="threads" type="number" min="1" value="4"></label><label><span data-i="port">Inference server port</span><input id="port" type="number" min="1024" max="65535" value="8080"></label></div><div class="actions"><button id="start" data-i="start">Start server</button><button class="stop" id="stop" data-i="stop">Stop server</button><button class="ghost" id="open" data-i="open">Open chat UI</button><button class="ghost" id="diagnostics" data-i="diagnostics">Download diagnostics</button></div><p id="error" class="error"></p></section>
 <section class="card"><div class="state"><span id="dot" class="dot"></span><h2 id="state">Stopped</h2></div><div class="metrics"><div class="metric"><span data-i="hits">Cache hits</span><b id="hits">0</b></div><div class="metric"><span data-i="misses">Cache misses</span><b id="misses">0</b></div><div class="metric"><span data-i="rate">Hit rate</span><b id="rate">0%</b></div><div class="metric"><span data-i="read">SSD read</span><b id="read">0 MiB</b></div></div></section></main>
 <script>
-const $=id=>document.getElementById(id), fields=['model','mode','cache','slots','threads','port'];let lang=localStorage.qsLang||'en';
-const tr={en:{subtitle:'Local CPU MoE expert paging',setup:'First-run setup',model:'Local GGUF model path',mode:'Paging mode',cache:'Cache budget (MiB, 0 uses slots)',slots:'Slots per layer (0 uses budget)',threads:'I/O threads',port:'Inference server port',start:'Start server',stop:'Stop server',open:'Open chat UI',diagnostics:'Download diagnostics',hits:'Cache hits',misses:'Cache misses',rate:'Hit rate',read:'SSD read'},he:{subtitle:'טעינת מומחי MoE מקומית במעבד',setup:'הגדרה ראשונית',model:'נתיב למודל GGUF מקומי',mode:'מצב טעינה',cache:'תקציב מטמון (MiB, אפס משתמש בחריצים)',slots:'חריצים לשכבה (אפס משתמש בתקציב)',threads:'תהליכי קלט/פלט',port:'פורט שרת ההסקה',start:'הפעלת שרת',stop:'עצירת שרת',open:'פתיחת ממשק השיחה',diagnostics:'הורדת אבחון',hits:'פגיעות מטמון',misses:'החטאות מטמון',rate:'שיעור פגיעה',read:'קריאה מהכונן'}};
+const $=id=>document.getElementById(id), fields=['model','mode','cache','slots','threads','port'];let lang=localStorage.giantllmLang||'en';
+const tr={en:{subtitle:'Giant local models on modest hardware',setup:'First-run setup',model:'Local GGUF model path',mode:'Paging mode',cache:'Cache budget (MiB, 0 uses slots)',slots:'Slots per layer (0 uses budget)',threads:'I/O threads',port:'Inference server port',start:'Start server',stop:'Stop server',open:'Open chat UI',diagnostics:'Download diagnostics',hits:'Cache hits',misses:'Cache misses',rate:'Hit rate',read:'SSD read'},he:{subtitle:'מודלים ענקיים מקומיים על חומרה צנועה',setup:'הגדרה ראשונית',model:'נתיב למודל GGUF מקומי',mode:'מצב טעינה',cache:'תקציב מטמון (MiB, אפס משתמש בחריצים)',slots:'חריצים לשכבה (אפס משתמש בתקציב)',threads:'תהליכי קלט/פלט',port:'פורט שרת ההסקה',start:'הפעלת שרת',stop:'עצירת שרת',open:'פתיחת ממשק השיחה',diagnostics:'הורדת אבחון',hits:'פגיעות מטמון',misses:'החטאות מטמון',rate:'שיעור פגיעה',read:'קריאה מהכונן'}};
 function translate(){document.documentElement.lang=lang;$('app').classList.toggle('rtl',lang==='he');document.querySelectorAll('[data-i]').forEach(x=>x.textContent=tr[lang][x.dataset.i]);$('language').textContent=lang==='en'?'עברית':'English'}
-fields.forEach(id=>{if(localStorage['qs_'+id])$(id).value=localStorage['qs_'+id];$(id).onchange=()=>localStorage['qs_'+id]=$(id).value});
-$('language').onclick=()=>{lang=lang==='en'?'he':'en';localStorage.qsLang=lang;translate()};translate();
+fields.forEach(id=>{if(localStorage['giantllm_'+id])$(id).value=localStorage['giantllm_'+id];$(id).onchange=()=>localStorage['giantllm_'+id]=$(id).value});
+$('language').onclick=()=>{lang=lang==='en'?'he':'en';localStorage.giantllmLang=lang;translate()};translate();
 async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'content-type':'application/json'},body:body&&JSON.stringify(body)});const t=await r.text();let j;try{j=JSON.parse(t)}catch{throw Error(t||r.statusText)}if(!r.ok)throw Error(j.error||t);return j}
 $('start').onclick=async()=>{try{$('error').textContent='';const body={};fields.forEach(id=>body[id]=['cache','slots','threads','port'].includes(id)?Number($(id).value):$(id).value);await call('/api/start',body);await refresh()}catch(e){$('error').textContent=e.message}};
 $('stop').onclick=async()=>{try{await call('/api/stop',{});await refresh()}catch(e){$('error').textContent=e.message}};
 $('open').onclick=()=>window.open('http://127.0.0.1:'+Number($('port').value), '_blank');
-$('diagnostics').onclick=()=>{const a=document.createElement('a');a.href='/api/diagnostics';a.download='qwenstream-diagnostics.json';a.click()};
+$('diagnostics').onclick=()=>{const a=document.createElement('a');a.href='/api/diagnostics';a.download='giantllm-diagnostics.json';a.click()};
 async function refresh(){try{const s=await call('/api/status');$('dot').classList.toggle('on',s.running);$('state').textContent=s.running?(s.server_ready?'Running':'Starting…'):'Stopped';if(s.running&&s.server_ready){const p=await call('/api/paging');$('hits').textContent=p.cache_hits||0;$('misses').textContent=p.cache_misses||0;$('rate').textContent=((p.cache_hit_rate||0)*100).toFixed(1)+'%';$('read').textContent=((p.bytes_read||0)/1048576).toFixed(1)+' MiB'}}catch(e){$('error').textContent=e.message}}
-async function recommend(){if(fields.some(id=>localStorage['qs_'+id]))return;try{const r=await call('/api/recommendation');$('cache').value=r.cache_mib;$('threads').value=r.io_threads}catch{}}
+async function recommend(){if(fields.some(id=>localStorage['giantllm_'+id]))return;try{const r=await call('/api/recommendation');$('cache').value=r.cache_mib;$('threads').value=r.io_threads}catch{}}
 setInterval(refresh,1500);recommend();refresh();
-</script></body></html>)QWENSTREAM";
+</script></body></html>)GIANTLLM";
 
 bool model_path_is_valid(const std::string & path);
 
@@ -90,7 +93,7 @@ struct server_config {
 struct process_state {
     std::mutex mutex;
     server_config config;
-    std::string log_path = "qwenstream-server.log";
+    std::string log_path = "giantllm-server.log";
     std::string last_error;
     int64_t started_at_ms = 0;
     int last_exit_code = 0;
@@ -256,10 +259,10 @@ std::wstring executable_directory() {
 
 std::string server_log_path() {
 #if defined(_WIN32)
-    return wide_to_utf8(executable_directory() + L"\\qwenstream-server.log");
+    return wide_to_utf8(executable_directory() + L"\\giantllm-server.log");
 #else
     char path[4096] = {};
-    return getcwd(path, sizeof(path)) ? std::string(path) + "/qwenstream-server.log" : "qwenstream-server.log";
+    return getcwd(path, sizeof(path)) ? std::string(path) + "/giantllm-server.log" : "giantllm-server.log";
 #endif
 }
 
@@ -280,6 +283,20 @@ std::string load_dashboard() {
 #endif
     if (!file) {
         return dashboard_html;
+    }
+    std::ostringstream content;
+    content << file.rdbuf();
+    return content.str();
+}
+
+std::string load_brand_svg() {
+#if defined(_WIN32)
+    std::ifstream file(std::filesystem::path(executable_directory() + L"\\assets\\branding\\giantllm.svg"), std::ios::binary);
+#else
+    std::ifstream file("assets/branding/giantllm.svg", std::ios::binary);
+#endif
+    if (!file) {
+        return {};
     }
     std::ostringstream content;
     content << file.rdbuf();
@@ -384,7 +401,7 @@ void start_process(process_state & state, const json & input) {
 #if defined(_WIN32)
     const std::wstring executable = executable_directory() + L"\\llama-server.exe";
     if (GetFileAttributesW(executable.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        throw std::runtime_error("llama-server.exe is not next to QwenStream.exe");
+        throw std::runtime_error("llama-server.exe is not next to GiantLLM.exe");
     }
     std::wstring command = quote_windows_arg(executable);
     for (const auto & arg : args) {
@@ -584,7 +601,7 @@ json recommendation_json() {
 }
 
 void open_browser() {
-    if (std::getenv("QWENSTREAM_NO_BROWSER")) {
+    if (std::getenv("GIANTLLM_NO_BROWSER")) {
         return;
     }
 #if defined(_WIN32)
@@ -609,6 +626,7 @@ int main() {
     process_state state;
     state.log_path = server_log_path();
     const std::string dashboard = load_dashboard();
+    const std::string brand_svg = load_brand_svg();
     httplib::Server server;
 
     auto authorize = [&](const httplib::Request & request, httplib::Response & response) {
@@ -622,6 +640,14 @@ int main() {
 
     server.Get("/", [&dashboard](const httplib::Request &, httplib::Response & response) {
         response.set_content(dashboard, "text/html; charset=utf-8");
+    });
+    server.Get("/assets/giantllm.svg", [&brand_svg](const httplib::Request &, httplib::Response & response) {
+        if (brand_svg.empty()) {
+            response.status = 404;
+            return;
+        }
+        response.set_content(brand_svg, "image/svg+xml; charset=utf-8");
+        response.set_header("Cache-Control", "public, max-age=3600");
     });
     server.Options(R"(/api/.*)", [&](const httplib::Request & request, httplib::Response & response) {
         if (authorize(request, response)) {
@@ -682,7 +708,7 @@ int main() {
     server.Get("/api/paging", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, upstream_json(state, "/qwenstream/v1/paging"));
+            json_response(response, upstream_json(state, "/giantllm/v1/paging"));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 503);
         }
@@ -690,7 +716,7 @@ int main() {
     server.Post("/api/paging/reset", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, upstream_json(state, "/qwenstream/v1/paging/reset-stats", true));
+            json_response(response, upstream_json(state, "/giantllm/v1/paging/reset-stats", true));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 503);
         }
@@ -698,7 +724,7 @@ int main() {
     server.Get("/api/server-config", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, upstream_json(state, "/qwenstream/v1/config"));
+            json_response(response, upstream_json(state, "/giantllm/v1/config"));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 503);
         }
@@ -715,7 +741,7 @@ int main() {
         json safe_config = current_config_json(state);
         safe_config.erase("model");
         json diagnostic = {
-            {"qwenstream_version", "0.2.0-alpha"},
+            {"giantllm_version", "0.2.0-alpha"},
             {"manager", manager_status},
             {"configuration", safe_config},
 #if defined(_WIN32)
@@ -725,7 +751,7 @@ int main() {
 #endif
             {"privacy", "No prompts, generated text, API keys, tokens, usernames, or model contents are collected."},
         };
-        response.set_header("Content-Disposition", "attachment; filename=qwenstream-diagnostics.json");
+        response.set_header("Content-Disposition", "attachment; filename=giantllm-diagnostics.json");
         json_response(response, diagnostic);
     });
     server.set_exception_handler([](const auto &, auto & response, std::exception_ptr error) {
@@ -738,7 +764,7 @@ int main() {
         }
     });
     open_browser();
-    std::printf("QwenStream manager: http://127.0.0.1:%d\n", manager_port);
+    std::printf("GiantLLM manager: http://127.0.0.1:%d\n", manager_port);
     const bool ok = server.listen("127.0.0.1", manager_port);
     stop_process(state);
     return ok ? 0 : 1;

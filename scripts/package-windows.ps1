@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BuildDir,
@@ -9,13 +12,19 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDir) { $OutputDir = Join-Path $repo 'artifacts/release' }
 $version = (Get-Content (Join-Path $repo 'VERSION') -Raw).Trim()
-$name = "qwenstream-$version-windows-x64-$Variant"
+$name = "giantllm-$version-windows-x64-$Variant"
 $stage = Join-Path $OutputDir $name
+$outputRoot = [IO.Path]::GetFullPath($OutputDir).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$stageRoot = [IO.Path]::GetFullPath($stage)
+if (-not $stageRoot.StartsWith($outputRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to stage outside the release output directory: $stageRoot"
+}
+if (Test-Path $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
 $bin = Join-Path $BuildDir 'bin'
-if (-not (Test-Path (Join-Path $bin 'QwenStream.exe'))) { $bin = Join-Path $bin 'Release' }
-$required = @('QwenStream.exe', 'llama-server.exe', 'llama-cli.exe', 'llama-bench.exe', 'qwenstream-iobench.exe')
+if (-not (Test-Path (Join-Path $bin 'GiantLLM.exe'))) { $bin = Join-Path $bin 'Release' }
+$required = @('GiantLLM.exe', 'llama-server.exe', 'llama-cli.exe', 'llama-bench.exe', 'giantllm-iobench.exe')
 
-New-Item -ItemType Directory -Force -Path $stage, (Join-Path $stage 'config'), (Join-Path $stage 'docs'), (Join-Path $stage 'licenses'), (Join-Path $stage 'webui') | Out-Null
+New-Item -ItemType Directory -Force -Path $stage, (Join-Path $stage 'assets'), (Join-Path $stage 'config'), (Join-Path $stage 'docs'), (Join-Path $stage 'licenses'), (Join-Path $stage 'webui') | Out-Null
 foreach ($file in $required) {
     $source = Join-Path $bin $file
     if (-not (Test-Path $source)) { throw "Missing release binary: $source" }
@@ -27,12 +36,13 @@ foreach ($dll in @('libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll
     if ($found) { Copy-Item -LiteralPath $found.Source -Destination $stage }
 }
 Copy-Item -Recurse -Force -LiteralPath (Join-Path $repo 'config/presets') -Destination (Join-Path $stage 'config')
+Copy-Item -Recurse -Force -LiteralPath (Join-Path $repo 'assets/branding') -Destination (Join-Path $stage 'assets')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'packaging/webui/README.txt') -Destination (Join-Path $stage 'webui')
-Copy-Item -Force -LiteralPath (Join-Path $repo 'LICENSE'), (Join-Path $repo 'NOTICE'), (Join-Path $repo 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $stage 'licenses')
+Copy-Item -Force -LiteralPath (Join-Path $repo 'LICENSE'), (Join-Path $repo 'LICENSE-GIANTLLM-NONCOMMERCIAL.md'), (Join-Path $repo 'LICENSING.md'), (Join-Path $repo 'NOTICE'), (Join-Path $repo 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $stage 'licenses')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $stage 'README.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README_HE.md') -Destination (Join-Path $stage 'README_HE.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'VERSION') -Destination $stage
-Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/qwenstream/dashboard.html') -Destination $stage
+Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/giantllm/dashboard.html') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'docs/USER_GUIDE.md'), (Join-Path $repo 'docs/TROUBLESHOOTING.md'), (Join-Path $repo 'docs/PROJECT_MAP.md'), (Join-Path $repo 'docs/SUPPORTED_MODELS.md') -Destination (Join-Path $stage 'docs')
 
 $zip = Join-Path $OutputDir "$name.zip"

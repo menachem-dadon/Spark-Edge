@@ -1,6 +1,6 @@
 # Model licenses
 
-QwenStream does not distribute model weights. A GGUF conversion or quantization remains governed by the source model's license and any additional publisher terms.
+GiantLLM does not distribute model weights. A GGUF conversion or quantization remains governed by the source model's license and any additional publisher terms.
 
 Before downloading or redistributing a model:
 
@@ -9,4 +9,4 @@ Before downloading or redistributing a model:
 3. Confirm commercial use, redistribution, acceptable-use, and attribution conditions for your use case.
 4. Preserve required notices with any redistributed GGUF.
 
-Software licensing under MIT does not grant rights to model weights, datasets, trademarks, or generated content.
+Neither the MIT license for upstream code nor the PolyForm license for original GiantLLM components grants rights to model weights, datasets, trademarks, or generated content.

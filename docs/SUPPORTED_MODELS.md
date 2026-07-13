@@ -1,6 +1,6 @@
 # Supported models
 
-QwenStream separates base llama.cpp model support from explicit SSD expert paging support.
+GiantLLM separates base llama.cpp model support from explicit SSD expert paging support.
 
 ## Support levels
 
@@ -15,7 +15,7 @@ QwenStream separates base llama.cpp model support from explicit SSD expert pagin
 
 Explicit paging recognizes only routed expert weights ending in `.weight` for the gate, up, down, or fused gate-up roles. The expert axis must be the third tensor dimension with a valid nonzero stride. Tensor names must identify a nonnegative `blk.N` layer. Scale, bias, shared-expert, attention, embedding, output, and unknown tensors stay on the normal loader path.
 
-If a model does not satisfy these checks, loading fails explicitly. QwenStream does not substitute experts, invent offsets, or continue with zero weights.
+If a model does not satisfy these checks, loading fails explicitly. GiantLLM does not substitute experts, invent offsets, or continue with zero weights.
 
 ## MTP notes
 

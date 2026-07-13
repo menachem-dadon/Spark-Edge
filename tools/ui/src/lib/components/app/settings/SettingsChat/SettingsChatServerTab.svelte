@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<!-- Required Notice: Copyright (c) 2026 GiantLLM contributors. -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -183,9 +185,9 @@
 		</div>
 	{:else}
 		<div class="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-			<p class="font-medium">QwenStream Control Center is not available</p>
+			<p class="font-medium">GiantLLM Control Center is not available</p>
 			<p class="mt-1 text-muted-foreground">
-				Start the server through QwenStream.exe. The manager listens locally on port 18080 and allows
+				Start the server through GiantLLM.exe. The manager listens locally on port 18080 and allows
 				this page to apply startup-only settings safely.
 			</p>
 			<Button class="mt-3" variant="outline" onclick={refresh}>Try again</Button>
@@ -239,7 +241,7 @@
 			MTP uses the model's built-in prediction head through llama.cpp draft-mtp. Enabling it on a GGUF
 			without a compatible head will produce a clear startup error. More draft tokens are not always faster.
 		</p>
-		<label class="flex items-start gap-3 rounded-lg border border-border/60 p-3 text-sm"><input class="mt-1" type="checkbox" bind:checked={config.mtp_enabled} /><span><b>Enable built-in MTP</b><span class="mt-1 block text-xs text-muted-foreground">Compatible with QwenStream expert paging; the draft context receives its own bounded expert cache.</span></span></label>
+		<label class="flex items-start gap-3 rounded-lg border border-border/60 p-3 text-sm"><input class="mt-1" type="checkbox" bind:checked={config.mtp_enabled} /><span><b>Enable built-in MTP</b><span class="mt-1 block text-xs text-muted-foreground">Compatible with GiantLLM expert paging; the draft context receives its own bounded expert cache.</span></span></label>
 		<div class="grid gap-4 sm:grid-cols-2">
 			<label class="grid gap-2 text-sm"><span>Maximum draft tokens</span><input type="number" min="1" max="64" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_draft_tokens} /></label>
 			<label class="grid gap-2 text-sm"><span>Minimum draft tokens</span><input type="number" min="0" max="64" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_min_tokens} /></label>

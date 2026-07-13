@@ -22,7 +22,7 @@ Each indexed layer allocates compact three-dimensional tensor pools whose third 
 
 ## Large microbatches
 
-If the configured physical microbatch could request more active experts than the available slots, QwenStream reduces the effective microbatch before graph allocation. A single routing operation that still exceeds capacity fails with the requested and available counts.
+If the configured physical microbatch could request more active experts than the available slots, GiantLLM reduces the effective microbatch before graph allocation. A single routing operation that still exceeds capacity fails with the requested and available counts.
 
 ## Split GGUF
 

@@ -1,4 +1,7 @@
-name: QwenStream CI
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
+name: GiantLLM CI
 
 on:
   push:
@@ -22,10 +25,10 @@ jobs:
         run: |
           $bin = "build-windows-${{ matrix.variant }}/bin/Release"
           if (-not (Test-Path $bin)) { $bin = "build-windows-${{ matrix.variant }}/bin" }
-          & "$bin/qwenstream-iobench.exe" --size-mib 8 --random-reads 128 --format json
+          & "$bin/giantllm-iobench.exe" --size-mib 8 --random-reads 128 --format json
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $env:QWENSTREAM_NO_BROWSER = '1'
-          $manager = Start-Process -FilePath "$bin/QwenStream.exe" -WorkingDirectory $bin -WindowStyle Hidden -PassThru
+          $env:GIANTLLM_NO_BROWSER = '1'
+          $manager = Start-Process -FilePath "$bin/GiantLLM.exe" -WorkingDirectory $bin -WindowStyle Hidden -PassThru
           try {
             for ($i = 0; $i -lt 30; $i++) {
               try {
@@ -39,7 +42,7 @@ jobs:
             $config = Invoke-RestMethod http://127.0.0.1:18080/api/config
             if ($config.ctx_size -ne 0 -or $config.mtp_enabled) { throw 'Manager config defaults are invalid' }
             $html = Invoke-WebRequest http://127.0.0.1:18080/ -UseBasicParsing
-            if ($html.Content -notmatch 'QwenStream Control Center') { throw 'Dashboard asset was not served' }
+            if ($html.Content -notmatch 'GiantLLM Control Center') { throw 'Dashboard asset was not served' }
           } finally {
             Stop-Process -Id $manager.Id -Force -ErrorAction SilentlyContinue
           }
@@ -54,7 +57,7 @@ jobs:
       - name: Build and test
         run: ./scripts/build-linux.sh ${{ matrix.variant }}
       - name: I/O tool smoke
-        run: ./build-linux-${{ matrix.variant }}/bin/qwenstream-iobench --size-mib 8 --random-reads 128 --format json
+        run: ./build-linux-${{ matrix.variant }}/bin/giantllm-iobench --size-mib 8 --random-reads 128 --format json
 
   source-hygiene:
     runs-on: ubuntu-24.04
@@ -67,7 +70,11 @@ jobs:
           test -f docs/DECISIONS.md
           test -f docs/PROJECT_MAP.md
           test -f docs/SUPPORTED_MODELS.md
-          test -f tools/qwenstream/dashboard.html
+          test -f LICENSING.md
+          test -f LICENSE-GIANTLLM-NONCOMMERCIAL.md
+          test -f assets/branding/giantllm.svg
+          test -f assets/branding/giantllm.ico
+          test -f tools/giantllm/dashboard.html
           ! git grep -nE 'hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}'
           ! git ls-files | grep -E '(^|/)(build[^/]*/|node_modules/|artifacts/release/)'
           git diff --check

@@ -1,9 +1,12 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
 [CmdletBinding()]
 param([string]$Output = '')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-if (-not $Output) { $Output = Join-Path $repo 'artifacts/qwenstream-diagnostics.zip' }
-$temp = Join-Path ([IO.Path]::GetTempPath()) ("qwenstream-diagnostics-" + [guid]::NewGuid().ToString('N'))
+if (-not $Output) { $Output = Join-Path $repo 'artifacts/giantllm-diagnostics.zip' }
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("giantllm-diagnostics-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temp | Out-Null
 try {
     $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name, NumberOfCores, NumberOfLogicalProcessors

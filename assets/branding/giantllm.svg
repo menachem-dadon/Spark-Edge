@@ -1,0 +1,21 @@
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<!-- Required Notice: Copyright (c) 2026 GiantLLM contributors. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">GiantLLM placeholder icon</title>
+  <desc id="desc">A layered processor mark representing large models on modest hardware.</desc>
+  <defs>
+    <linearGradient id="background" x1="72" y1="42" x2="450" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55d6ff"/>
+      <stop offset="0.52" stop-color="#5268ef"/>
+      <stop offset="1" stop-color="#6b3fd4"/>
+    </linearGradient>
+    <linearGradient id="core" x1="168" y1="142" x2="348" y2="374" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d2138"/>
+      <stop offset="1" stop-color="#07111f"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="116" fill="url(#background)"/>
+  <path d="M128 174h256M112 226h288M112 286h288M128 338h256" fill="none" stroke="#dff7ff" stroke-width="20" stroke-linecap="round" opacity="0.42"/>
+  <rect x="142" y="116" width="228" height="280" rx="62" fill="url(#core)" stroke="#e8f9ff" stroke-width="12"/>
+  <path d="M312 200c-18-20-40-30-68-30-52 0-88 38-88 88 0 52 36 88 90 88 27 0 51-8 70-23v-67h-77v43h30v18c-7 3-14 4-22 4-30 0-48-25-48-63 0-37 19-62 49-62 15 0 28 6 40 18z" fill="#f6fbff"/>
+</svg>

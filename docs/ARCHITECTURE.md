@@ -1,6 +1,6 @@
 # Architecture
 
-QwenStream keeps the upstream execution path intact unless explicit paging is requested for a model with a validated standard routed-expert tensor layout.
+GiantLLM keeps the upstream execution path intact unless explicit paging is requested for a model with a validated standard routed-expert tensor layout.
 
 ## Load path
 
@@ -26,7 +26,7 @@ The model loader pages only standard gate, up, down, and fused gate-up routed ex
 
 ## Control plane
 
-The local manager listens on `127.0.0.1:18080`, validates configuration, launches the sibling inference server, tails its local log, and proxies only QwenStream status endpoints. Cross-origin access is restricted to the manager and currently configured loopback chat origin. Context and MTP changes use a stop/start cycle because their memory is allocated during model initialization.
+The local manager listens on `127.0.0.1:18080`, validates configuration, launches the sibling inference server, tails its local log, and proxies only GiantLLM status endpoints. Cross-origin access is restricted to the manager and currently configured loopback chat origin. Context and MTP changes use a stop/start cycle because their memory is allocated during model initialization.
 
 ## Platform layer
 

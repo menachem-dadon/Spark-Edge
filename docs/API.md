@@ -17,16 +17,16 @@ Pin requests can be registered before an expert is resident. When that expert is
 
 ## Server management endpoints
 
-- `GET /qwenstream/v1/status`
-- `GET /qwenstream/v1/paging`
-- `POST /qwenstream/v1/paging/reset-stats`
-- `GET /qwenstream/v1/config`
+- `GET /giantllm/v1/status`
+- `GET /giantllm/v1/paging`
+- `POST /giantllm/v1/paging/reset-stats`
+- `GET /giantllm/v1/config`
 
 These routes use the server's normal API-key middleware. Health and model-list routes retain upstream public-route behavior. Paging values come from the active llama context; when explicit paging is off, `enabled` is false and counters are zero.
 
 The normal OpenAI-compatible `/v1/chat/completions` and `/v1/responses` endpoints are unchanged.
 
-`/qwenstream/v1/config` also reports the effective total and per-slot context size, training context, logical and physical batch sizes, KV cache types, parallel slots, context-shift state, and active MTP draft parameters.
+`/giantllm/v1/config` also reports the effective total and per-slot context size, training context, logical and physical batch sizes, KV cache types, parallel slots, context-shift state, and active MTP draft parameters.
 
 ## Local manager API
 

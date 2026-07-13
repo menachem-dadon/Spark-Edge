@@ -1,36 +1,50 @@
-#define AppName "QwenStream"
+; SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+; Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
+#define AppName "GiantLLM"
 #ifndef AppVersion
 #define AppVersion "0.2.0-alpha"
 #endif
 #ifndef SourceDir
-#define SourceDir "..\..\artifacts\release\qwenstream-0.2.0-alpha-windows-x64-avx2"
+#define SourceDir "..\..\artifacts\release\giantllm-0.2.0-alpha-windows-x64-avx2"
+#endif
+#ifndef OutputDir
+#define OutputDir "..\..\artifacts\release"
 #endif
 
 [Setup]
-AppId={{DA8A90CA-B00F-4E76-A3A0-AB16492F9F79}
+AppId={{CB3A5957-FB37-4D8D-ABB3-F3F61C6432F6}
 AppName={#AppName}
 AppVersion={#AppVersion}
-DefaultDirName={localappdata}\Programs\QwenStream
-DefaultGroupName=QwenStream
+AppPublisher=GiantLLM Project
+AppComments=Run giant local language models on modest hardware
+DefaultDirName={localappdata}\Programs\GiantLLM
+DefaultGroupName=GiantLLM
 PrivilegesRequired=lowest
-OutputDir=..\..\artifacts\release
-OutputBaseFilename=qwenstream-{#AppVersion}-windows-x64-avx2-setup
+UsePreviousGroup=no
+UsePreviousTasks=no
+OutputDir={#OutputDir}
+OutputBaseFilename=giantllm-{#AppVersion}-windows-x64-avx2-setup
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\QwenStream.exe
+UninstallDisplayName={#AppName}
+UninstallDisplayIcon={app}\GiantLLM.exe
+SetupIconFile={#SourceDir}\assets\branding\giantllm.ico
+VersionInfoDescription=GiantLLM installer
+VersionInfoProductName=GiantLLM
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\QwenStream"; Filename: "{app}\QwenStream.exe"
-Name: "{userdesktop}\QwenStream"; Filename: "{app}\QwenStream.exe"; Tasks: desktopicon
+Name: "{group}\GiantLLM"; Filename: "{app}\GiantLLM.exe"
+Name: "{userdesktop}\GiantLLM"; Filename: "{app}\GiantLLM.exe"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "addtopath"; Description: "Add QwenStream to the user PATH"; GroupDescription: "Command line:"
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "addtopath"; Description: "Add GiantLLM to the user PATH"; GroupDescription: "Command line:"; Flags: unchecked
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

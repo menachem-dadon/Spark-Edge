@@ -133,10 +133,10 @@ struct server_routes {
     server_http_context::handler_t post_slots;
     server_http_context::handler_t get_props;
     server_http_context::handler_t post_props;
-    server_http_context::handler_t get_qwenstream_status;
-    server_http_context::handler_t get_qwenstream_paging;
-    server_http_context::handler_t post_qwenstream_reset_stats;
-    server_http_context::handler_t get_qwenstream_config;
+    server_http_context::handler_t get_giantllm_status;
+    server_http_context::handler_t get_giantllm_paging;
+    server_http_context::handler_t post_giantllm_reset_stats;
+    server_http_context::handler_t get_giantllm_config;
     server_http_context::handler_t post_infill;
     server_http_context::handler_t post_completions;
     server_http_context::handler_t post_completions_oai;

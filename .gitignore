@@ -22,7 +22,7 @@
 *.tmp
 *.DS_Store
 
-# Local QwenStream release outputs
+# Local GiantLLM release outputs
 /artifacts/release/
 
 # IDE / OS

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Required Notice: Copyright (c) 2026 GiantLLM contributors.
+
 [CmdletBinding()]
 param([ValidateSet('rebase', 'merge')][string]$Strategy = 'rebase')
 $ErrorActionPreference = 'Stop'
@@ -7,7 +10,7 @@ try {
     $branch = (git branch --show-current).Trim()
     if (-not $branch) { throw 'Run this script on a named branch.' }
     git fetch upstream
-    $backup = "qwenstream-backup/$((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss'))"
+    $backup = "giantllm-backup/$((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss'))"
     git branch $backup
     Write-Host "Backup branch: $backup"
     if ($Strategy -eq 'rebase') { git rebase upstream/master } else { git merge --no-ff upstream/master }
