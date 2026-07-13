@@ -25,3 +25,15 @@ Pin requests can be registered before an expert is resident. When that expert is
 These routes use the server's normal API-key middleware. Health and model-list routes retain upstream public-route behavior. Paging values come from the active llama context; when explicit paging is off, `enabled` is false and counters are zero.
 
 The normal OpenAI-compatible `/v1/chat/completions` and `/v1/responses` endpoints are unchanged.
+
+`/qwenstream/v1/config` also reports the effective total and per-slot context size, training context, logical and physical batch sizes, KV cache types, parallel slots, context-shift state, and active MTP draft parameters.
+
+## Local manager API
+
+The control center exposes a loopback-only API on `127.0.0.1:18080`:
+
+- `GET /api/status`, `/api/config`, `/api/recommendation`, `/api/logs`
+- `GET /api/paging`, `/api/server-config`, `/api/diagnostics`
+- `POST /api/start`, `/api/stop`, `/api/restart`, `/api/paging/reset`
+
+Startup and restart accept the fields displayed by the control center: model, port, paging budget/slots/workers, context, batch and microbatch, parallel slots, prompt-cache RAM, checkpoints, KV cache types, context shift, and MTP settings. Requests with a browser `Origin` header are accepted only from the manager or configured loopback chat origin.

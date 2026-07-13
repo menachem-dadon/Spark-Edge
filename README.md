@@ -1,8 +1,8 @@
 # QwenStream
 
-QwenStream is an independent, CPU-first fork of `llama.cpp` that can keep routed Qwen3.5/Qwen3.6 MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
+QwenStream is an independent, CPU-first fork of `llama.cpp` that can keep standard routed MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
 
-This is **v0.1.0-alpha**. The paging core, Windows asynchronous file reader, LRU cache, CLI/server integration, launcher, and deterministic tests are implemented and built. A short streaming regression completed on a real Qwen3.6 35B-A3B IQ4 GGUF after automatically reducing the physical microbatch to fit the slot cache. The full 128-token resident-versus-paged validation matrix has not been completed, so do not treat this alpha as a performance or 16 GB compatibility guarantee.
+This is **v0.2.0-alpha**. Qwen3.5/Qwen3.6 MoE paging has completed deterministic tests and a short real-model streaming regression. Gemma 4 26B-A4B and other models using standard three-dimensional routed expert tensors are now accepted through layout-based validation. The combined Gemma/MTP/explicit-paging real-model matrix is not complete, so this remains an alpha rather than a performance or memory-fit guarantee.
 
 ## What it does
 
@@ -11,9 +11,11 @@ This is **v0.1.0-alpha**. The paging core, Windows asynchronous file reader, LRU
 - Loads selected experts exactly, without zero weights, expert substitution, or approximation.
 - Uses bounded per-layer LRU slot pools and asynchronous buffered file I/O.
 - Exposes real cache/I/O statistics through C, `llama-server`, and `llama-bench`.
-- Includes a local-only English/Hebrew launcher dashboard and SSD I/O benchmark.
+- Supports built-in MTP draft contexts together with bounded expert paging.
+- Controls context size, batching, KV precision, context shift, MTP, and paging from both the control center and the chat settings page.
+- Includes a local-only English/Hebrew control center, live server state, log tail, hardware recommendations, and SSD I/O benchmark.
 
-It does not page GPU weights, support direct/unbuffered expert I/O, or promise that every Qwen quantization fits in 16 GB. Explicit mode currently supports the `qwen35moe` architecture only.
+It does not page GPU weights, support direct/unbuffered expert I/O, or promise that every model or quantization fits in 16 GB. Explicit mode validates routed expert tensor names, shapes, strides, shard bounds, and active-expert capacity before inference.
 
 ## Hardware
 
@@ -28,8 +30,20 @@ Portable Windows package:
 
 1. Extract the ZIP to a writable folder.
 2. Run `QwenStream.exe`.
-3. Enter the path to a local `.gguf`, keep host access local, and start the server.
-4. Open the chat UI from the dashboard.
+3. Enter the path to a local `.gguf` and apply the conservative hardware recommendation.
+4. Set context and MTP options if the model supports them, then start the server.
+5. Open the chat UI. Later changes are available under **Settings -> Server** and perform a controlled model restart.
+
+Build from source on Windows:
+
+```powershell
+git clone https://github.com/menachem-dadon/Qwen-3.5-35B-A3B-on-CPU.git QwenStream
+cd QwenStream
+pwsh scripts/build-windows.ps1 -Variant avx2 -RunTests
+.\build-windows-avx2\bin\QwenStream.exe
+```
+
+Use `-Variant generic` for older x64 CPUs without AVX2. Linux users can run `./scripts/build-linux.sh avx2` and then `./build-linux-avx2/bin/QwenStream`. See the platform build guides for dependencies and troubleshooting.
 
 CLI:
 
@@ -37,10 +51,10 @@ CLI:
 llama-cli.exe -m C:\models\qwen.gguf --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 -p "Hello"
 ```
 
-Server:
+Server with context and built-in MTP:
 
 ```powershell
-llama-server.exe -m C:\models\qwen.gguf --host 127.0.0.1 --port 8080 --parallel 1 --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3
+llama-server.exe -m C:\models\qwen.gguf --host 127.0.0.1 --port 8080 --parallel 1 --ctx-size 16384 --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 --spec-type draft-mtp --spec-draft-n-max 3
 ```
 
 OpenAI-compatible request:
@@ -65,6 +79,8 @@ Run `qwenstream-iobench.exe --format json` to measure the buffered file path. OS
 - [User guide](docs/USER_GUIDE.md)
 - [MoE paging](docs/MOE_PAGING.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Project map](docs/PROJECT_MAP.md)
+- [Supported models](docs/SUPPORTED_MODELS.md)
 - [API](docs/API.md)
 - [Windows build](docs/BUILD_WINDOWS.md)
 - [Linux build](docs/BUILD_LINUX.md)
@@ -79,4 +95,4 @@ QwenStream has no telemetry, analytics, crash upload, or automatic model downloa
 
 The software remains MIT licensed. Model weights are not included. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [model license guidance](docs/MODEL_LICENSES.md).
 
-QwenStream is an independent community project and is not affiliated with or endorsed by Qwen, Alibaba Cloud, ggml-org, or the Colibri authors.
+QwenStream is an independent community project and is not affiliated with or endorsed by Qwen, Alibaba Cloud, Google, Gemma, ggml-org, or the Colibri authors.

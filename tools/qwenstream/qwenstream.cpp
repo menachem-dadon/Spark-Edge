@@ -5,11 +5,17 @@
 #include <atomic>
 #include <cerrno>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #if defined(_WIN32)
@@ -55,9 +61,40 @@ async function recommend(){if(fields.some(id=>localStorage['qs_'+id]))return;try
 setInterval(refresh,1500);recommend();refresh();
 </script></body></html>)QWENSTREAM";
 
+bool model_path_is_valid(const std::string & path);
+
+struct server_config {
+    std::string model;
+    std::string mode = "auto";
+    int cache = 2048;
+    int slots = 0;
+    int threads = 4;
+    int port = 8080;
+    int ctx_size = 0;
+    int batch_size = 2048;
+    int ubatch_size = 512;
+    int parallel = 1;
+    int ctx_checkpoints = 4;
+    int cache_ram_mib = 0;
+    std::string cache_type_k = "f16";
+    std::string cache_type_v = "f16";
+    bool context_shift = true;
+    bool mtp_enabled = false;
+    int mtp_draft_tokens = 3;
+    int mtp_min_tokens = 0;
+    double mtp_p_min = 0.0;
+    int mtp_threads = 0;
+    bool mtp_backend_sampling = true;
+};
+
 struct process_state {
     std::mutex mutex;
-    int port = 8080;
+    server_config config;
+    std::string log_path = "qwenstream-server.log";
+    std::string last_error;
+    int64_t started_at_ms = 0;
+    int last_exit_code = 0;
+    bool has_exit_code = false;
 #if defined(_WIN32)
     HANDLE process = nullptr;
     DWORD pid = 0;
@@ -65,6 +102,97 @@ struct process_state {
     pid_t pid = -1;
 #endif
 };
+
+json config_json(const server_config & config, bool include_model = true) {
+    json result = {
+        {"mode", config.mode},
+        {"cache", config.cache},
+        {"slots", config.slots},
+        {"threads", config.threads},
+        {"port", config.port},
+        {"ctx_size", config.ctx_size},
+        {"batch_size", config.batch_size},
+        {"ubatch_size", config.ubatch_size},
+        {"parallel", config.parallel},
+        {"ctx_checkpoints", config.ctx_checkpoints},
+        {"cache_ram_mib", config.cache_ram_mib},
+        {"cache_type_k", config.cache_type_k},
+        {"cache_type_v", config.cache_type_v},
+        {"context_shift", config.context_shift},
+        {"mtp_enabled", config.mtp_enabled},
+        {"mtp_draft_tokens", config.mtp_draft_tokens},
+        {"mtp_min_tokens", config.mtp_min_tokens},
+        {"mtp_p_min", config.mtp_p_min},
+        {"mtp_threads", config.mtp_threads},
+        {"mtp_backend_sampling", config.mtp_backend_sampling},
+    };
+    if (include_model) {
+        result["model"] = config.model;
+    }
+    return result;
+}
+
+server_config config_from_json(const json & input, const server_config & base) {
+    server_config config = base;
+    config.model = input.value("model", config.model);
+    config.mode = input.value("mode", config.mode);
+    config.cache = input.value("cache", config.cache);
+    config.slots = input.value("slots", config.slots);
+    config.threads = input.value("threads", config.threads);
+    config.port = input.value("port", config.port);
+    config.ctx_size = input.value("ctx_size", config.ctx_size);
+    config.batch_size = input.value("batch_size", config.batch_size);
+    config.ubatch_size = input.value("ubatch_size", config.ubatch_size);
+    config.parallel = input.value("parallel", config.parallel);
+    config.ctx_checkpoints = input.value("ctx_checkpoints", config.ctx_checkpoints);
+    config.cache_ram_mib = input.value("cache_ram_mib", config.cache_ram_mib);
+    config.cache_type_k = input.value("cache_type_k", config.cache_type_k);
+    config.cache_type_v = input.value("cache_type_v", config.cache_type_v);
+    config.context_shift = input.value("context_shift", config.context_shift);
+    config.mtp_enabled = input.value("mtp_enabled", config.mtp_enabled);
+    config.mtp_draft_tokens = input.value("mtp_draft_tokens", config.mtp_draft_tokens);
+    config.mtp_min_tokens = input.value("mtp_min_tokens", config.mtp_min_tokens);
+    config.mtp_p_min = input.value("mtp_p_min", config.mtp_p_min);
+    config.mtp_threads = input.value("mtp_threads", config.mtp_threads);
+    config.mtp_backend_sampling = input.value("mtp_backend_sampling", config.mtp_backend_sampling);
+    return config;
+}
+
+void validate_config(const server_config & config) {
+    static const std::unordered_set<std::string> cache_types = {
+        "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1",
+    };
+    if (!model_path_is_valid(config.model)) {
+        throw std::runtime_error("model must be a readable local .gguf file");
+    }
+    if (config.mode != "explicit" && config.mode != "auto" && config.mode != "os" && config.mode != "off") {
+        throw std::runtime_error("invalid paging mode");
+    }
+    if (config.cache < 0 || config.slots < 0 || config.threads < 1 || config.threads > 128 ||
+            config.port < 1024 || config.port > 65535) {
+        throw std::runtime_error("invalid paging or network configuration");
+    }
+    if ((config.mode == "explicit" || config.mode == "auto") && config.cache == 0 && config.slots == 0) {
+        throw std::runtime_error("explicit or auto mode requires a cache budget or slot count");
+    }
+    if ((config.mode == "explicit" || config.mode == "auto") && config.parallel != 1) {
+        throw std::runtime_error("explicit expert paging currently requires one parallel chat slot");
+    }
+    if (config.ctx_size < 0 || config.ctx_size > 1048576 || config.batch_size < 1 || config.batch_size > 16384 ||
+            config.ubatch_size < 1 || config.ubatch_size > config.batch_size || config.parallel < 1 ||
+            config.parallel > 32 || config.ctx_checkpoints < 0 || config.ctx_checkpoints > 128 ||
+            config.cache_ram_mib < -1 || config.cache_ram_mib > 1048576) {
+        throw std::runtime_error("invalid context configuration");
+    }
+    if (cache_types.count(config.cache_type_k) == 0 || cache_types.count(config.cache_type_v) == 0) {
+        throw std::runtime_error("unsupported KV cache type");
+    }
+    if (config.mtp_draft_tokens < 1 || config.mtp_draft_tokens > 64 || config.mtp_min_tokens < 0 ||
+            config.mtp_min_tokens > config.mtp_draft_tokens || config.mtp_p_min < 0.0 ||
+            config.mtp_p_min > 1.0 || config.mtp_threads < 0 || config.mtp_threads > 128) {
+        throw std::runtime_error("invalid MTP configuration");
+    }
+}
 
 std::string lowercase(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -79,6 +207,17 @@ std::wstring utf8_to_wide(const std::string & value) {
     }
     std::wstring result(static_cast<size_t>(count), L'\0');
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, result.data(), count);
+    result.resize(static_cast<size_t>(count - 1));
+    return result;
+}
+
+std::string wide_to_utf8(const std::wstring & value) {
+    const int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (count <= 0) {
+        throw std::runtime_error("path cannot be converted to UTF-8");
+    }
+    std::string result(static_cast<size_t>(count), '\0');
+    WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.c_str(), -1, result.data(), count, nullptr, nullptr);
     result.resize(static_cast<size_t>(count - 1));
     return result;
 }
@@ -115,6 +254,38 @@ std::wstring executable_directory() {
 }
 #endif
 
+std::string server_log_path() {
+#if defined(_WIN32)
+    return wide_to_utf8(executable_directory() + L"\\qwenstream-server.log");
+#else
+    char path[4096] = {};
+    return getcwd(path, sizeof(path)) ? std::string(path) + "/qwenstream-server.log" : "qwenstream-server.log";
+#endif
+}
+
+std::string dashboard_file_path() {
+#if defined(_WIN32)
+    return wide_to_utf8(executable_directory() + L"\\dashboard.html");
+#else
+    char path[4096] = {};
+    return getcwd(path, sizeof(path)) ? std::string(path) + "/dashboard.html" : "dashboard.html";
+#endif
+}
+
+std::string load_dashboard() {
+#if defined(_WIN32)
+    std::ifstream file(std::filesystem::path(executable_directory() + L"\\dashboard.html"), std::ios::binary);
+#else
+    std::ifstream file(dashboard_file_path(), std::ios::binary);
+#endif
+    if (!file) {
+        return dashboard_html;
+    }
+    std::ostringstream content;
+    content << file.rdbuf();
+    return content.str();
+}
+
 bool model_path_is_valid(const std::string & path) {
     if (lowercase(path).size() < 5 || lowercase(path).substr(path.size() - 5) != ".gguf") {
         return false;
@@ -134,6 +305,10 @@ bool process_running_locked(process_state & state) {
     }
     DWORD code = 0;
     if (!GetExitCodeProcess(state.process, &code) || code != STILL_ACTIVE) {
+        if (code != STILL_ACTIVE) {
+            state.last_exit_code = static_cast<int>(code);
+            state.has_exit_code = true;
+        }
         CloseHandle(state.process);
         state.process = nullptr;
         state.pid = 0;
@@ -147,6 +322,10 @@ bool process_running_locked(process_state & state) {
     int status = 0;
     const pid_t result = waitpid(state.pid, &status, WNOHANG);
     if (result == state.pid || (result < 0 && errno == ECHILD)) {
+        if (result == state.pid) {
+            state.last_exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
+            state.has_exit_code = true;
+        }
         state.pid = -1;
         return false;
     }
@@ -155,39 +334,51 @@ bool process_running_locked(process_state & state) {
 }
 
 void start_process(process_state & state, const json & input) {
-    const std::string model = input.value("model", "");
-    const std::string mode = input.value("mode", "explicit");
-    const int cache = input.value("cache", 0);
-    const int slots = input.value("slots", 0);
-    const int threads = input.value("threads", 4);
-    const int port = input.value("port", 8080);
-    if (!model_path_is_valid(model)) {
-        throw std::runtime_error("model must be a readable local .gguf file");
-    }
-    if (mode != "explicit" && mode != "os" && mode != "off") {
-        throw std::runtime_error("invalid paging mode");
-    }
-    if (cache < 0 || slots < 0 || threads < 1 || threads > 64 || port < 1024 || port > 65535) {
-        throw std::runtime_error("invalid numeric configuration");
-    }
-    if (mode == "explicit" && cache == 0 && slots == 0) {
-        throw std::runtime_error("explicit mode requires a cache budget or slot count");
-    }
-
     std::lock_guard<std::mutex> lock(state.mutex);
     if (process_running_locked(state)) {
         throw std::runtime_error("the inference server is already running");
     }
-    state.port = port;
+    const server_config config = config_from_json(input, state.config);
+    validate_config(config);
+    state.config = config;
+    state.last_error.clear();
+    state.has_exit_code = false;
     std::vector<std::string> args = {
-        "--model", model, "--host", "127.0.0.1", "--port", std::to_string(port),
-        "--parallel", "1", "--moe-paging", mode, "--moe-io-threads", std::to_string(threads),
+        "--model", config.model,
+        "--host", "127.0.0.1",
+        "--port", std::to_string(config.port),
+        "--parallel", std::to_string(config.parallel),
+        "--ctx-size", std::to_string(config.ctx_size),
+        "--batch-size", std::to_string(config.batch_size),
+        "--ubatch-size", std::to_string(config.ubatch_size),
+        "--ctx-checkpoints", std::to_string(config.ctx_checkpoints),
+        "--cache-ram", std::to_string(config.cache_ram_mib),
+        "--cache-type-k", config.cache_type_k,
+        "--cache-type-v", config.cache_type_v,
+        config.context_shift ? "--context-shift" : "--no-context-shift",
+        "--moe-paging", config.mode,
+        "--moe-io-threads", std::to_string(config.threads),
+        "--metrics",
+        "--log-colors", "off",
+        "--log-file", state.log_path,
     };
-    if (cache > 0) {
-        args.insert(args.end(), {"--moe-cache-mib", std::to_string(cache)});
+    if (config.cache > 0) {
+        args.insert(args.end(), {"--moe-cache-mib", std::to_string(config.cache)});
     }
-    if (slots > 0) {
-        args.insert(args.end(), {"--moe-slots", std::to_string(slots)});
+    if (config.slots > 0) {
+        args.insert(args.end(), {"--moe-slots", std::to_string(config.slots)});
+    }
+    if (config.mtp_enabled) {
+        args.insert(args.end(), {
+            "--spec-type", "draft-mtp",
+            "--spec-draft-n-max", std::to_string(config.mtp_draft_tokens),
+            "--spec-draft-n-min", std::to_string(config.mtp_min_tokens),
+            "--spec-draft-p-min", std::to_string(config.mtp_p_min),
+            config.mtp_backend_sampling ? "--spec-draft-backend-sampling" : "--no-spec-draft-backend-sampling",
+        });
+        if (config.mtp_threads > 0) {
+            args.insert(args.end(), {"--spec-draft-threads", std::to_string(config.mtp_threads)});
+        }
     }
 
 #if defined(_WIN32)
@@ -228,6 +419,8 @@ void start_process(process_state & state, const json & input) {
     }
     state.pid = child;
 #endif
+    state.started_at_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 void stop_process(process_state & state) {
@@ -238,14 +431,24 @@ void stop_process(process_state & state) {
 #if defined(_WIN32)
     TerminateProcess(state.process, 0);
     WaitForSingleObject(state.process, 5000);
+    DWORD code = 0;
+    if (GetExitCodeProcess(state.process, &code)) {
+        state.last_exit_code = static_cast<int>(code);
+        state.has_exit_code = true;
+    }
     CloseHandle(state.process);
     state.process = nullptr;
     state.pid = 0;
 #else
     kill(state.pid, SIGTERM);
-    waitpid(state.pid, nullptr, 0);
+    int status = 0;
+    waitpid(state.pid, &status, 0);
+    state.last_exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
+    state.has_exit_code = true;
     state.pid = -1;
 #endif
+    state.started_at_ms = 0;
+    state.has_exit_code = false;
 }
 
 json status_json(process_state & state) {
@@ -253,21 +456,96 @@ json status_json(process_state & state) {
     const bool running = process_running_locked(state);
     bool ready = false;
     if (running) {
-        httplib::Client client("127.0.0.1", state.port);
+        httplib::Client client("127.0.0.1", state.config.port);
         client.set_connection_timeout(0, 250000);
         const auto response = client.Get("/health");
         ready = response && response->status == 200;
     }
+    const std::string phase = ready ? "ready" : running ? "starting" : state.has_exit_code ? "exited" : "stopped";
     return {
         {"running", running},
         {"server_ready", ready},
-        {"port", state.port},
+        {"phase", phase},
+        {"port", state.config.port},
+        {"started_at_ms", state.started_at_ms},
+        {"last_error", state.last_error},
+        {"last_exit_code", state.has_exit_code ? json(state.last_exit_code) : json(nullptr)},
+        {"config", config_json(state.config)},
 #if defined(_WIN32)
         {"pid", state.pid},
 #else
         {"pid", state.pid > 0 ? state.pid : 0},
 #endif
     };
+}
+
+json current_config_json(process_state & state) {
+    std::lock_guard<std::mutex> lock(state.mutex);
+    return config_json(state.config);
+}
+
+std::string tail_file(const std::string & path, size_t max_bytes) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        return {};
+    }
+    const std::streamoff size = static_cast<std::streamoff>(file.tellg());
+    const std::streamoff start = size > static_cast<std::streamoff>(max_bytes)
+        ? size - static_cast<std::streamoff>(max_bytes) : 0;
+    file.seekg(start);
+    std::ostringstream content;
+    content << file.rdbuf();
+    return content.str();
+}
+
+json upstream_json(process_state & state, const std::string & path, bool post = false) {
+    const json status = status_json(state);
+    if (!status["server_ready"].get<bool>()) {
+        throw std::runtime_error("inference server is not ready");
+    }
+    httplib::Client client("127.0.0.1", status["port"].get<int>());
+    client.set_connection_timeout(0, 500000);
+    const auto response = post ? client.Post(path, "", "application/json") : client.Get(path);
+    if (!response) {
+        throw std::runtime_error("inference server did not respond");
+    }
+    if (response->status < 200 || response->status >= 300) {
+        throw std::runtime_error("inference server returned HTTP " + std::to_string(response->status));
+    }
+    return json::parse(response->body);
+}
+
+std::string request_origin(const httplib::Request & request) {
+    return request.has_header("Origin") ? request.get_header_value("Origin") : std::string();
+}
+
+bool origin_allowed(const httplib::Request & request, process_state & state) {
+    const std::string origin = request_origin(request);
+    if (origin.empty()) {
+        return true;
+    }
+    int port = 8080;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        port = state.config.port;
+    }
+    const std::vector<std::string> allowed = {
+        "http://127.0.0.1:" + std::to_string(manager_port),
+        "http://localhost:" + std::to_string(manager_port),
+        "http://127.0.0.1:" + std::to_string(port),
+        "http://localhost:" + std::to_string(port),
+    };
+    return std::find(allowed.begin(), allowed.end(), origin) != allowed.end();
+}
+
+void set_cors_headers(const httplib::Request & request, httplib::Response & response) {
+    const std::string origin = request_origin(request);
+    if (!origin.empty()) {
+        response.set_header("Access-Control-Allow-Origin", origin);
+        response.set_header("Vary", "Origin");
+    }
+    response.set_header("Access-Control-Allow-Headers", "Content-Type");
+    response.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
 json recommendation_json() {
@@ -297,7 +575,11 @@ json recommendation_json() {
         {"cache_mib", cache_mib},
         {"io_threads", std::max<uint32_t>(1, std::min<uint32_t>(4, cpu_threads / 4))},
         {"parallel", 1},
-        {"reason", "Keeps substantial RAM headroom and serializes inference for the alpha CPU paging path."},
+        {"ctx_size", total_mib <= 16384 ? 8192 : total_mib <= 32768 ? 16384 : 32768},
+        {"batch_size", 1024},
+        {"ubatch_size", 128},
+        {"cache_ram_mib", 0},
+        {"reason", "Keeps RAM headroom, uses one request slot, and limits prompt batches for CPU expert paging."},
     };
 }
 
@@ -325,47 +607,117 @@ void json_response(httplib::Response & response, const json & value, int status 
 
 int main() {
     process_state state;
+    state.log_path = server_log_path();
+    const std::string dashboard = load_dashboard();
     httplib::Server server;
-    server.Get("/", [](const httplib::Request &, httplib::Response & response) {
-        response.set_content(dashboard_html, "text/html; charset=utf-8");
+
+    auto authorize = [&](const httplib::Request & request, httplib::Response & response) {
+        if (!origin_allowed(request, state)) {
+            json_response(response, {{"error", "request origin is not allowed"}}, 403);
+            return false;
+        }
+        set_cors_headers(request, response);
+        return true;
+    };
+
+    server.Get("/", [&dashboard](const httplib::Request &, httplib::Response & response) {
+        response.set_content(dashboard, "text/html; charset=utf-8");
     });
-    server.Get("/api/status", [&](const httplib::Request &, httplib::Response & response) {
+    server.Options(R"(/api/.*)", [&](const httplib::Request & request, httplib::Response & response) {
+        if (authorize(request, response)) {
+            response.status = 204;
+        }
+    });
+    server.Get("/api/status", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
         json_response(response, status_json(state));
     });
-    server.Get("/api/recommendation", [](const httplib::Request &, httplib::Response & response) {
+    server.Get("/api/config", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        json_response(response, current_config_json(state));
+    });
+    server.Get("/api/recommendation", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
         json_response(response, recommendation_json());
     });
     server.Post("/api/start", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
         try {
             start_process(state, json::parse(request.body));
-            json_response(response, {{"ok", true}});
+            json_response(response, {{"ok", true}, {"status", status_json(state)}});
         } catch (const std::exception & error) {
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                state.last_error = error.what();
+            }
             json_response(response, {{"error", error.what()}}, 400);
         }
     });
-    server.Post("/api/stop", [&](const httplib::Request &, httplib::Response & response) {
+    server.Post("/api/restart", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            const json input = json::parse(request.body);
+            server_config base;
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                base = state.config;
+            }
+            validate_config(config_from_json(input, base));
+            stop_process(state);
+            start_process(state, input);
+            json_response(response, {{"ok", true}, {"status", status_json(state)}});
+        } catch (const std::exception & error) {
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                state.last_error = error.what();
+            }
+            json_response(response, {{"error", error.what()}}, 400);
+        }
+    });
+    server.Post("/api/stop", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
         stop_process(state);
         json_response(response, {{"ok", true}});
     });
-    server.Get("/api/paging", [&](const httplib::Request &, httplib::Response & response) {
-        const json status = status_json(state);
-        if (!status["server_ready"].get<bool>()) {
-            json_response(response, {{"error", "inference server is not ready"}}, 503);
-            return;
+    server.Get("/api/paging", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            json_response(response, upstream_json(state, "/qwenstream/v1/paging"));
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 503);
         }
-        httplib::Client client("127.0.0.1", status["port"].get<int>());
-        const auto upstream = client.Get("/qwenstream/v1/paging");
-        if (!upstream) {
-            json_response(response, {{"error", "paging endpoint is unavailable"}}, 502);
-            return;
-        }
-        response.status = upstream->status;
-        response.set_content(upstream->body, "application/json; charset=utf-8");
     });
-    server.Get("/api/diagnostics", [&](const httplib::Request &, httplib::Response & response) {
+    server.Post("/api/paging/reset", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            json_response(response, upstream_json(state, "/qwenstream/v1/paging/reset-stats", true));
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 503);
+        }
+    });
+    server.Get("/api/server-config", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            json_response(response, upstream_json(state, "/qwenstream/v1/config"));
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 503);
+        }
+    });
+    server.Get("/api/logs", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        json_response(response, {{"log", tail_file(state.log_path, 65536)}});
+    });
+    server.Get("/api/diagnostics", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        json manager_status = status_json(state);
+        manager_status["config"].erase("model");
+        manager_status.erase("last_error");
+        json safe_config = current_config_json(state);
+        safe_config.erase("model");
         json diagnostic = {
-            {"qwenstream_version", "0.1.0-alpha"},
-            {"manager", status_json(state)},
+            {"qwenstream_version", "0.2.0-alpha"},
+            {"manager", manager_status},
+            {"configuration", safe_config},
 #if defined(_WIN32)
             {"platform", "windows"},
 #else

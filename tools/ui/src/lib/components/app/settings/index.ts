@@ -74,3 +74,6 @@ export { default as SettingsChatFields } from './SettingsChat/SettingsChatFields
  * server favicons and permission management controls.
  */
 export { default as SettingsChatToolsTab } from './SettingsChat/SettingsChatToolsTab.svelte';
+
+/** QwenStream launcher-backed server, context, and MTP controls. */
+export { default as SettingsChatServerTab } from './SettingsChat/SettingsChatServerTab.svelte';

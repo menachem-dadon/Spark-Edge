@@ -1,6 +1,6 @@
 # Architecture
 
-QwenStream keeps the upstream execution path intact unless explicit paging is requested for a supported Qwen MoE model.
+QwenStream keeps the upstream execution path intact unless explicit paging is requested for a model with a validated standard routed-expert tensor layout.
 
 ## Load path
 
@@ -18,7 +18,15 @@ There is no zero-weight fallback or replacement expert. An invalid ID, short rea
 
 ## Concurrency
 
-Cache state is mutex-protected and counters are atomic. QwenStream v0.1.0-alpha intentionally configures the launcher server with `--parallel 1`; a single llama context serializes decode work. Multi-context shared-cache residency and cross-context pin lifetimes are not implemented.
+Cache state is mutex-protected and counters are atomic. Explicit mode currently requires `--parallel 1` because cross-sequence slot lifetimes have not completed real-model validation. The MTP target and draft contexts own separate cache managers, so their slot lifetimes do not collide. OS and resident modes may use additional server slots through normal llama.cpp behavior.
+
+## Model compatibility
+
+The model loader pages only standard gate, up, down, and fused gate-up routed expert `.weight` tensors. It validates their expert axis, stride, layer, file offset, and shard bounds. All other tensors remain on the normal upstream path. This structural policy supports Qwen, Gemma 4, and other compatible MoE families without silently claiming that every architecture has been real-model validated.
+
+## Control plane
+
+The local manager listens on `127.0.0.1:18080`, validates configuration, launches the sibling inference server, tails its local log, and proxies only QwenStream status endpoints. Cross-origin access is restricted to the manager and currently configured loopback chat origin. Context and MTP changes use a stop/start cycle because their memory is allocated during model initialization.
 
 ## Platform layer
 

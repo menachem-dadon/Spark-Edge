@@ -330,9 +330,6 @@ llama_context::llama_context(
         backends.emplace_back(backend_cpu);
 
         if (cparams.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT) {
-            if (cparams.ctx_type == LLAMA_CONTEXT_TYPE_MTP) {
-                throw std::runtime_error("MTP contexts are not supported with explicit MoE paging");
-            }
             moe_paging = std::make_unique<llama_moe::paging_manager>(
                 backend_cpu, cparams.moe_paging, model.moe_index, hparams.n_expert_used);
             const uint32_t safe_ubatch = moe_paging->max_safe_ubatch();

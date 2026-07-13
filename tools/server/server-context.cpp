@@ -4381,6 +4381,11 @@ void server_routes::init_routes() {
 
     this->get_qwenstream_config = [this](const server_http_req &) {
         auto res = create_response();
+        const bool mtp_enabled = std::find(
+            params.speculative.types.begin(),
+            params.speculative.types.end(),
+            COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != params.speculative.types.end();
+        const llama_context * context = ctx_server_api.get_llama_context();
         res->ok({
             {"mode", qwenstream_paging_mode_name(params.moe_paging.mode)},
             {"io_mode", qwenstream_io_mode_name(params.moe_paging.io_mode)},
@@ -4389,7 +4394,19 @@ void server_routes::init_routes() {
             {"io_threads", params.moe_paging.io_threads},
             {"paged_layers", params.moe_paging.n_layers},
             {"io_timeout_ms", params.moe_paging.io_timeout_ms},
-            {"effective_ubatch_size", llama_n_ubatch(ctx_server_api.get_llama_context())},
+            {"context_size", llama_n_ctx(context)},
+            {"context_size_per_slot", meta->slot_n_ctx},
+            {"model_context_train", llama_model_n_ctx_train(llama_get_model(context))},
+            {"batch_size", llama_n_batch(context)},
+            {"effective_ubatch_size", llama_n_ubatch(context)},
+            {"parallel", params.n_parallel},
+            {"context_shift", params.ctx_shift},
+            {"cache_type_k", ggml_type_name(params.cache_type_k)},
+            {"cache_type_v", ggml_type_name(params.cache_type_v)},
+            {"mtp_enabled", mtp_enabled},
+            {"mtp_draft_tokens", params.speculative.draft.n_max},
+            {"mtp_min_tokens", params.speculative.draft.n_min},
+            {"mtp_p_min", params.speculative.draft.p_min},
         });
         return res;
     };

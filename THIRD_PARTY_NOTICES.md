@@ -6,4 +6,4 @@ The expert streaming design was informed by publicly available work in [Colibri]
 
 The local dashboard uses the `cpp-httplib` and `nlohmann/json` copies already distributed by upstream llama.cpp under their respective licenses.
 
-Qwen model weights are not bundled. Users must obtain weights separately and comply with the license displayed by the model publisher.
+Qwen, Gemma, and other model weights are not bundled. Users must obtain weights separately and comply with the exact model repository's license and use terms.

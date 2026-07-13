@@ -11,6 +11,7 @@ import {
 	PencilRuler,
 	Database,
 	Monitor as MonitorIcon,
+	ServerCog,
 	Sun,
 	Moon
 } from '@lucide/svelte';
@@ -38,11 +39,17 @@ export const SETTINGS_SECTION_TITLES = {
 	AGENTIC: 'Agentic',
 	TOOLS: 'Tools',
 	MCP: 'MCP',
+	SERVER: 'Server',
 	IMPORT_EXPORT: 'Import/Export',
 	DEVELOPER: 'Developer'
 } as const;
 
 const STANDALONE_SECTIONS: { title: SettingsSectionTitle; slug: string; icon: Component }[] = [
+	{
+		title: SETTINGS_SECTION_TITLES.SERVER,
+		slug: SETTINGS_SECTION_SLUGS.SERVER,
+		icon: ServerCog
+	},
 	{ title: SETTINGS_SECTION_TITLES.TOOLS, slug: SETTINGS_SECTION_SLUGS.TOOLS, icon: PencilRuler },
 	{
 		title: SETTINGS_SECTION_TITLES.IMPORT_EXPORT,

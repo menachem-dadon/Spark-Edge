@@ -237,6 +237,10 @@ endif()
 if (GGML_OPENMP_ENABLED)
     target_compile_definitions(ggml-base PRIVATE GGML_USE_OPENMP)
     target_link_libraries(ggml-base PRIVATE OpenMP::OpenMP_C OpenMP::OpenMP_CXX)
+    if (MINGW)
+        # FindOpenMP may omit the runtime link option for MinGW.
+        target_link_options(ggml-base PUBLIC -fopenmp)
+    endif()
 endif()
 
 add_library(ggml

@@ -15,6 +15,9 @@ struct llama_file;
 
 namespace llama_moe {
 
+bool is_pageable_expert_weight(const std::string & name);
+int32_t expert_tensor_layer(const std::string & name);
+
 enum class tensor_role {
     gate,
     up,

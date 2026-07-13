@@ -9,6 +9,7 @@ export const SETTINGS_SECTION_SLUGS = {
 	AGENTIC: 'agentic',
 	DEVELOPER: 'developer',
 	MCP: 'mcp',
+	SERVER: 'server',
 	TOOLS: 'tools',
 	IMPORT_EXPORT: 'import-export'
 } as const;

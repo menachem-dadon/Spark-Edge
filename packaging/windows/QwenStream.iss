@@ -1,9 +1,9 @@
 #define AppName "QwenStream"
 #ifndef AppVersion
-#define AppVersion "0.1.0-alpha"
+#define AppVersion "0.2.0-alpha"
 #endif
 #ifndef SourceDir
-#define SourceDir "..\..\artifacts\release\qwenstream-0.1.0-alpha-windows-x64-avx2"
+#define SourceDir "..\..\artifacts\release\qwenstream-0.2.0-alpha-windows-x64-avx2"
 #endif
 
 [Setup]

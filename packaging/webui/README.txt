@@ -1,3 +1,4 @@
 The llama.cpp chat WebUI is embedded inside llama-server.exe.
-The QwenStream management dashboard is embedded inside QwenStream.exe.
-No separate web assets are required at runtime.
+The customized QwenStream Server settings page is included in that embedded UI.
+Keep dashboard.html beside QwenStream.exe for the full management dashboard.
+QwenStream.exe contains a minimal embedded recovery page if the file is missing.

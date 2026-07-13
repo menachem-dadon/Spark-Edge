@@ -20,6 +20,16 @@
 } while (0)
 
 int main() {
+    REQUIRE(llama_moe::is_pageable_expert_weight("blk.0.ffn_up_exps.weight"));
+    REQUIRE(llama_moe::is_pageable_expert_weight("blk.7.ffn_gate_up_exps.weight"));
+    REQUIRE(llama_moe::is_pageable_expert_weight("blk.31.ffn_down_exps.weight"));
+    REQUIRE(llama_moe::expert_tensor_layer("blk.31.ffn_down_exps.weight") == 31);
+    REQUIRE(!llama_moe::is_pageable_expert_weight("blk.0.ffn_up_exps.scale"));
+    REQUIRE(!llama_moe::is_pageable_expert_weight("blk.0.ffn_up.weight"));
+    REQUIRE(!llama_moe::is_pageable_expert_weight("blk.0x.ffn_up_exps.weight"));
+    REQUIRE(!llama_moe::is_pageable_expert_weight("blk.0.backup_ffn_up_exps.weight"));
+    REQUIRE(!llama_moe::is_pageable_expert_weight("output.weight"));
+
     const char * path = "test-moe-paging-fixture.bin";
     const char * shard_path = "test-moe-paging-fixture-shard-1.bin";
 
@@ -202,8 +212,16 @@ int main() {
     safe_params.n_slots = 4;
     safe_params.io_threads = 1;
     safe_params.io_timeout_ms = 30000;
-    llama_moe::paging_manager safe_manager(backend.get(), safe_params, index, 2);
-    REQUIRE(safe_manager.max_safe_ubatch() == 2);
+    {
+        llama_moe::paging_manager safe_manager(backend.get(), safe_params, index, 2);
+        REQUIRE(safe_manager.max_safe_ubatch() == 2);
+
+        llama_moe::paging_manager draft_manager(backend.get(), safe_params, index, 2);
+        auto * target_pool = safe_manager.bind_pool(0, original);
+        auto * draft_pool = draft_manager.bind_pool(0, original);
+        REQUIRE(target_pool && draft_pool);
+        REQUIRE(target_pool != draft_pool && target_pool->data != draft_pool->data);
+    }
 
     backend.reset();
     llama_backend_free();

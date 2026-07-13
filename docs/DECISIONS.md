@@ -16,9 +16,17 @@ Missing experts, invalid IDs, incompatible layouts, insufficient slots, I/O erro
 
 Windows overlapped buffered reads and POSIX positional reads provide a correct portable baseline. Direct I/O is rejected until alignment, shard tails, quantized layout, and fallback semantics can be validated.
 
-## Single parallel context in the launcher
+## One parallel context by default
 
-The alpha cache lifetime is scoped to one context. The launcher passes `--parallel 1` so a later request cannot overwrite a slot while an earlier context uses it.
+Explicit paging requires `--parallel 1` for predictable slot lifetimes, CPU memory, and I/O. OS and resident modes can use additional slots. MTP is safe because its draft context owns a separate cache manager.
+
+## Structural MoE compatibility
+
+Explicit paging recognizes standard routed expert weight roles and validates their real GGUF layout. This is safer and easier to maintain than a growing architecture-name switch while still rejecting models whose tensors cannot be paged exactly.
+
+## Startup settings stay in the control plane
+
+Context allocation and MTP draft contexts cannot be changed per completion request. The manager owns these settings and performs an explicit restart. The chat UI exposes the same manager controls rather than pretending they are request-time sampling options.
 
 ## Partial layer paging
 

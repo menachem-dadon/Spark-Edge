@@ -9,9 +9,12 @@ Additional options:
 - `--moe-io-threads N`: file-read worker count.
 - `--moe-io-mode buffered`: the implemented I/O path.
 - `--moe-cache-policy lru`: the implemented policy.
-- `--moe-paging-layers N`: page only the first N indexed layers; later layers stay resident.
 
-Direct I/O is rejected because correct cross-platform alignment and tail handling are not implemented. MTP contexts are rejected in explicit mode.
+Direct I/O is rejected because correct cross-platform alignment and tail handling are not implemented.
+
+Explicit mode discovers standard routed expert weights by tensor role and layout instead of a model-name allowlist. Qwen3.5/Qwen3.6 MoE and Gemma 4 26B-A4B use this layout. Unknown or incompatible layouts fail during model loading. See [supported models](SUPPORTED_MODELS.md).
+
+MTP draft contexts can use explicit paging. The target and draft contexts own separate bounded cache managers so their slot lifetimes cannot overwrite each other.
 
 ## Memory accounting
 
@@ -19,7 +22,7 @@ Each indexed layer allocates compact three-dimensional tensor pools whose third 
 
 ## Large microbatches
 
-If one routing operation requests more unique experts than available slots, the request fails with the requested and available counts. Automatic graph microbatch splitting is not implemented in this alpha; use a smaller `--ubatch-size` or more slots.
+If the configured physical microbatch could request more active experts than the available slots, QwenStream reduces the effective microbatch before graph allocation. A single routing operation that still exceeds capacity fails with the requested and available counts.
 
 ## Split GGUF
 

@@ -1332,8 +1332,8 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
         layers.resize(n_layer_all);
 
         if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT) {
-            if (arch != LLM_ARCH_QWEN35MOE) {
-                throw std::runtime_error("explicit MoE paging currently supports Qwen3.5/3.6 MoE models only");
+            if (n_expert <= 0) {
+                throw std::runtime_error("explicit MoE paging requires a model with routed experts");
             }
             if (params.moe_paging.io_mode == LLAMA_MOE_IO_MODE_DIRECT) {
                 throw std::runtime_error("direct MoE paging I/O is not implemented; use buffered I/O");
@@ -2751,7 +2751,7 @@ bool llama_model_moe_paging_capabilities(
         return false;
     }
     *capabilities = {};
-    capabilities->supported = model->arch == LLM_ARCH_QWEN35MOE;
+    capabilities->supported = model->hparams.n_expert > 0;
     capabilities->explicit_mode_available = capabilities->supported;
     capabilities->os_mode_available = llama_mmap::SUPPORTED;
     capabilities->layer_count = static_cast<int32_t>(model->hparams.n_layer());
@@ -2788,6 +2788,14 @@ llama_model_base::llama_model_base(const struct llama_model_params & params) : l
 
 ggml_tensor * llama_model_base::create_tensor(const LLM_TN_IMPL & tn, const std::initializer_list<int64_t> & ne, int flags) {
     GGML_ASSERT(ml != nullptr);
+    const std::string name = tn.str();
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT &&
+            llama_moe::is_pageable_expert_weight(name)) {
+        const int32_t layer = llama_moe::expert_tensor_layer(name);
+        if (params.moe_paging.n_layers <= 0 || layer < params.moe_paging.n_layers) {
+            flags |= TENSOR_PAGED;
+        }
+    }
     return create_tensor(*ml, tn, ne, flags);
 }
 

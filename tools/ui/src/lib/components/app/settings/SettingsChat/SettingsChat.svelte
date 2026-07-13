@@ -4,6 +4,7 @@
 		SettingsChatFields,
 		SettingsChatImportExportTab,
 		SettingsChatMobileHeader,
+		SettingsChatServerTab,
 		SettingsChatToolsTab,
 		SettingsFooter
 	} from '$lib/components/app/settings';
@@ -153,6 +154,8 @@
 
 					{#if currentSection.title === SETTINGS_SECTION_TITLES.TOOLS}
 						<SettingsChatToolsTab />
+					{:else if currentSection.title === SETTINGS_SECTION_TITLES.SERVER}
+						<SettingsChatServerTab />
 					{:else if currentSection.title === SETTINGS_SECTION_TITLES.IMPORT_EXPORT}
 						<SettingsChatImportExportTab />
 					{:else if currentSection.fields}
@@ -176,12 +179,16 @@
 					{/if}
 				</div>
 
-				<div class="mt-8 border-t border-border/30 pt-6">
-					<p class="text-xs text-muted-foreground">Settings are saved in browser's localStorage</p>
-				</div>
+				{#if currentSection.title !== SETTINGS_SECTION_TITLES.SERVER}
+					<div class="mt-8 border-t border-border/30 pt-6">
+						<p class="text-xs text-muted-foreground">Settings are saved in browser's localStorage</p>
+					</div>
+				{/if}
 			</div>
 
-			<SettingsFooter onReset={handleReset} onSave={handleSave} />
+			{#if currentSection.title !== SETTINGS_SECTION_TITLES.SERVER}
+				<SettingsFooter onReset={handleReset} onSave={handleSave} />
+			{/if}
 		</div>
 	</div>
 </div>

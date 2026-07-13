@@ -1,8 +1,16 @@
 # Troubleshooting
 
-## Unsupported architecture
+## Incompatible expert layout
 
-Explicit mode currently accepts `qwen35moe` only. Use `--moe-paging os` for other architectures.
+Explicit mode recognizes standard routed gate, up, down, and fused gate-up `.weight` tensors. If the model has another layout, loading stops before inference. Use `--moe-paging os` and report the exact architecture, GGUF metadata, and tensor layout before attempting support.
+
+## MTP fails to initialize
+
+The GGUF probably does not contain a compatible MTP head, or its MTP tensors do not match the target model. Disable MTP and confirm normal inference first. MTP is optional and can be slower even when it initializes correctly.
+
+## Chat Server settings cannot reach the manager
+
+Start `QwenStream.exe` and open the chat through its control center. The Server settings panel connects only to `127.0.0.1:18080` and only from the configured loopback chat origin. A server started directly from the CLI has no manager process to restart it.
 
 ## Cache budget is too small
 
@@ -24,4 +32,4 @@ Keep `QwenStream.exe` and `llama-server.exe` in the same folder. On MinGW packag
 
 ## WebUI build fails in a Unicode path
 
-Use an ASCII drive alias for the build directory or allow the upstream verified UI archive fallback. Runtime GGUF paths may still be Unicode.
+Use an ASCII drive alias for the build directory. QwenStream release builds require the customized source UI and should not publish an upstream prebuilt fallback. Runtime GGUF paths may still be Unicode.

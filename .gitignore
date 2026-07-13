@@ -30,12 +30,20 @@
 /.cache/
 /.ccls-cache/
 /.direnv/
+/.env
+/.env.*
+!/.env.example
+!/.env.sample
 /.envrc
 /.idea/
 /.swiftpm
 /.vs/
 /.vscode/
 /nppBackup
+CMakeUserPresets.json
+compile_commands.json
+*.p12
+*.pfx
 
 # Coverage
 

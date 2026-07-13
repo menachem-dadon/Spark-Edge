@@ -40,10 +40,13 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           stage="qwenstream-${version}-linux-x64-${{ matrix.variant }}"
-          mkdir -p "$stage/config" "$stage/licenses"
+          mkdir -p "$stage/config" "$stage/docs" "$stage/licenses"
           cp build-linux-${{ matrix.variant }}/bin/{QwenStream,llama-cli,llama-server,llama-bench,qwenstream-iobench} "$stage/"
+          cp tools/qwenstream/dashboard.html "$stage/"
           cp -r config/presets "$stage/config/"
           cp LICENSE NOTICE THIRD_PARTY_NOTICES.md VERSION "$stage/licenses/"
+          cp README.md README_HE.md "$stage/"
+          cp docs/{USER_GUIDE.md,TROUBLESHOOTING.md,PROJECT_MAP.md,SUPPORTED_MODELS.md} "$stage/docs/"
           tar -czf "$stage.tar.gz" "$stage"
           sha256sum "$stage.tar.gz" > SHA256SUMS
       - uses: actions/upload-artifact@v4

@@ -3,25 +3,57 @@
 #include "llama-mmap.h"
 
 #include <algorithm>
-#include <cstdio>
+#include <limits>
 #include <stdexcept>
 
 namespace llama_moe {
 
 static tensor_role role_from_name(const std::string & name) {
-    if (name.find("ffn_gate_up_exps") != std::string::npos) {
+    const size_t role_offset = name.find('.', 4);
+    if (role_offset == std::string::npos) {
+        return tensor_role::unknown;
+    }
+    const std::string role = name.substr(role_offset + 1);
+    if (role == "ffn_gate_up_exps.weight") {
         return tensor_role::gate_up;
     }
-    if (name.find("ffn_gate_exps") != std::string::npos) {
+    if (role == "ffn_gate_exps.weight") {
         return tensor_role::gate;
     }
-    if (name.find("ffn_up_exps") != std::string::npos) {
+    if (role == "ffn_up_exps.weight") {
         return tensor_role::up;
     }
-    if (name.find("ffn_down_exps") != std::string::npos) {
+    if (role == "ffn_down_exps.weight") {
         return tensor_role::down;
     }
     return tensor_role::unknown;
+}
+
+bool is_pageable_expert_weight(const std::string & name) {
+    return name.size() > 7 && name.compare(name.size() - 7, 7, ".weight") == 0 &&
+        role_from_name(name) != tensor_role::unknown && expert_tensor_layer(name) >= 0;
+}
+
+int32_t expert_tensor_layer(const std::string & name) {
+    if (name.compare(0, 4, "blk.") != 0) {
+        return -1;
+    }
+    const size_t end = name.find('.', 4);
+    if (end == std::string::npos || end == 4) {
+        return -1;
+    }
+    int64_t layer = 0;
+    for (size_t i = 4; i < end; ++i) {
+        const char digit = name[i];
+        if (digit < '0' || digit > '9') {
+            return -1;
+        }
+        layer = layer * 10 + (digit - '0');
+        if (layer > std::numeric_limits<int32_t>::max()) {
+            return -1;
+        }
+    }
+    return static_cast<int32_t>(layer);
 }
 
 void model_index::add_tensor(
@@ -49,7 +81,8 @@ void model_index::add_tensor(
     if (descriptor.role == tensor_role::unknown) {
         throw std::runtime_error("unsupported paged tensor role: " + name);
     }
-    if (std::sscanf(name.c_str(), "blk.%d.", &descriptor.layer) != 1 || descriptor.layer < 0) {
+    descriptor.layer = expert_tensor_layer(name);
+    if (descriptor.layer < 0) {
         throw std::runtime_error("cannot determine layer for paged tensor: " + name);
     }
     if (descriptor.expert_stride == 0 || descriptor.expert_stride * descriptor.expert_count > descriptor.length) {

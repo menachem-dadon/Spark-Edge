@@ -15,7 +15,7 @@ $bin = Join-Path $BuildDir 'bin'
 if (-not (Test-Path (Join-Path $bin 'QwenStream.exe'))) { $bin = Join-Path $bin 'Release' }
 $required = @('QwenStream.exe', 'llama-server.exe', 'llama-cli.exe', 'llama-bench.exe', 'qwenstream-iobench.exe')
 
-New-Item -ItemType Directory -Force -Path $stage, (Join-Path $stage 'config'), (Join-Path $stage 'licenses'), (Join-Path $stage 'webui') | Out-Null
+New-Item -ItemType Directory -Force -Path $stage, (Join-Path $stage 'config'), (Join-Path $stage 'docs'), (Join-Path $stage 'licenses'), (Join-Path $stage 'webui') | Out-Null
 foreach ($file in $required) {
     $source = Join-Path $bin $file
     if (-not (Test-Path $source)) { throw "Missing release binary: $source" }
@@ -32,6 +32,8 @@ Copy-Item -Force -LiteralPath (Join-Path $repo 'LICENSE'), (Join-Path $repo 'NOT
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $stage 'README.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README_HE.md') -Destination (Join-Path $stage 'README_HE.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'VERSION') -Destination $stage
+Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/qwenstream/dashboard.html') -Destination $stage
+Copy-Item -Force -LiteralPath (Join-Path $repo 'docs/USER_GUIDE.md'), (Join-Path $repo 'docs/TROUBLESHOOTING.md'), (Join-Path $repo 'docs/PROJECT_MAP.md'), (Join-Path $repo 'docs/SUPPORTED_MODELS.md') -Destination (Join-Path $stage 'docs')
 
 $zip = Join-Path $OutputDir "$name.zip"
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
