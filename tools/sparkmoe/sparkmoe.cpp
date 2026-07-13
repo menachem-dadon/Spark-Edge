@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-// Required Notice: Copyright (c) 2026 GiantLLM contributors.
+// Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 #include "httplib.h"
 #include <nlohmann/json.hpp>
@@ -28,6 +28,8 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
 #else
 #include <csignal>
 #include <sys/types.h>
@@ -41,34 +43,14 @@ namespace {
 
 constexpr int manager_port = 18080;
 
-const char dashboard_html[] = R"GIANTLLM(
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GiantLLM</title><style>
-:root{font-family:Inter,Segoe UI,sans-serif;color:#eaf2ff;background:#08111f}body{margin:0;background:radial-gradient(circle at 20% 0,#14345a,#08111f 45%);min-height:100vh}.wrap{max-width:920px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center}.brand{font-size:28px;font-weight:750}.sub{color:#9eb2ca}.card{background:#0e1c2dcc;border:1px solid #27415d;border-radius:16px;padding:20px;margin-top:18px;box-shadow:0 18px 50px #0005}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:grid;gap:6px;color:#b9c9db}input,select,button{font:inherit;border-radius:9px;border:1px solid #35536f;padding:10px;background:#0a1726;color:#f4f8ff}input:focus,select:focus{outline:2px solid #2e9fd8}button{cursor:pointer;background:#147caf;border:0;font-weight:700}button.stop{background:#8e3347}button.ghost{background:#20354a}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.state{display:flex;align-items:center;gap:9px}.dot{width:10px;height:10px;border-radius:50%;background:#778}.dot.on{background:#3ddc97;box-shadow:0 0 12px #3ddc97}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{background:#0a1726;border-radius:10px;padding:12px}.metric b{display:block;font-size:20px;margin-top:5px}.error{color:#ff9baf;white-space:pre-wrap}.rtl{direction:rtl}@media(max-width:650px){.grid,.metrics{grid-template-columns:1fr}.wrap{padding:16px}}
-</style></head><body><main class="wrap" id="app"><div class="top"><div><div class="brand">GiantLLM</div><div class="sub" data-i="subtitle">Giant local models on modest hardware</div></div><button class="ghost" id="language">עברית</button></div>
-<section class="card"><h2 data-i="setup">First-run setup</h2><div class="grid"><label><span data-i="model">Local GGUF model path</span><input id="model" placeholder="C:\models\qwen.gguf"></label><label><span data-i="mode">Paging mode</span><select id="mode"><option value="explicit">explicit</option><option value="os">os / mmap</option><option value="off">off / resident</option></select></label><label><span data-i="cache">Cache budget (MiB, 0 uses slots)</span><input id="cache" type="number" min="0" value="2048"></label><label><span data-i="slots">Slots per layer (0 uses budget)</span><input id="slots" type="number" min="0" value="0"></label><label><span data-i="threads">I/O threads</span><input id="threads" type="number" min="1" value="4"></label><label><span data-i="port">Inference server port</span><input id="port" type="number" min="1024" max="65535" value="8080"></label></div><div class="actions"><button id="start" data-i="start">Start server</button><button class="stop" id="stop" data-i="stop">Stop server</button><button class="ghost" id="open" data-i="open">Open chat UI</button><button class="ghost" id="diagnostics" data-i="diagnostics">Download diagnostics</button></div><p id="error" class="error"></p></section>
-<section class="card"><div class="state"><span id="dot" class="dot"></span><h2 id="state">Stopped</h2></div><div class="metrics"><div class="metric"><span data-i="hits">Cache hits</span><b id="hits">0</b></div><div class="metric"><span data-i="misses">Cache misses</span><b id="misses">0</b></div><div class="metric"><span data-i="rate">Hit rate</span><b id="rate">0%</b></div><div class="metric"><span data-i="read">SSD read</span><b id="read">0 MiB</b></div></div></section></main>
-<script>
-const $=id=>document.getElementById(id), fields=['model','mode','cache','slots','threads','port'];let lang=localStorage.giantllmLang||'en';
-const tr={en:{subtitle:'Giant local models on modest hardware',setup:'First-run setup',model:'Local GGUF model path',mode:'Paging mode',cache:'Cache budget (MiB, 0 uses slots)',slots:'Slots per layer (0 uses budget)',threads:'I/O threads',port:'Inference server port',start:'Start server',stop:'Stop server',open:'Open chat UI',diagnostics:'Download diagnostics',hits:'Cache hits',misses:'Cache misses',rate:'Hit rate',read:'SSD read'},he:{subtitle:'מודלים ענקיים מקומיים על חומרה צנועה',setup:'הגדרה ראשונית',model:'נתיב למודל GGUF מקומי',mode:'מצב טעינה',cache:'תקציב מטמון (MiB, אפס משתמש בחריצים)',slots:'חריצים לשכבה (אפס משתמש בתקציב)',threads:'תהליכי קלט/פלט',port:'פורט שרת ההסקה',start:'הפעלת שרת',stop:'עצירת שרת',open:'פתיחת ממשק השיחה',diagnostics:'הורדת אבחון',hits:'פגיעות מטמון',misses:'החטאות מטמון',rate:'שיעור פגיעה',read:'קריאה מהכונן'}};
-function translate(){document.documentElement.lang=lang;$('app').classList.toggle('rtl',lang==='he');document.querySelectorAll('[data-i]').forEach(x=>x.textContent=tr[lang][x.dataset.i]);$('language').textContent=lang==='en'?'עברית':'English'}
-fields.forEach(id=>{if(localStorage['giantllm_'+id])$(id).value=localStorage['giantllm_'+id];$(id).onchange=()=>localStorage['giantllm_'+id]=$(id).value});
-$('language').onclick=()=>{lang=lang==='en'?'he':'en';localStorage.giantllmLang=lang;translate()};translate();
-async function call(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'content-type':'application/json'},body:body&&JSON.stringify(body)});const t=await r.text();let j;try{j=JSON.parse(t)}catch{throw Error(t||r.statusText)}if(!r.ok)throw Error(j.error||t);return j}
-$('start').onclick=async()=>{try{$('error').textContent='';const body={};fields.forEach(id=>body[id]=['cache','slots','threads','port'].includes(id)?Number($(id).value):$(id).value);await call('/api/start',body);await refresh()}catch(e){$('error').textContent=e.message}};
-$('stop').onclick=async()=>{try{await call('/api/stop',{});await refresh()}catch(e){$('error').textContent=e.message}};
-$('open').onclick=()=>window.open('http://127.0.0.1:'+Number($('port').value), '_blank');
-$('diagnostics').onclick=()=>{const a=document.createElement('a');a.href='/api/diagnostics';a.download='giantllm-diagnostics.json';a.click()};
-async function refresh(){try{const s=await call('/api/status');$('dot').classList.toggle('on',s.running);$('state').textContent=s.running?(s.server_ready?'Running':'Starting…'):'Stopped';if(s.running&&s.server_ready){const p=await call('/api/paging');$('hits').textContent=p.cache_hits||0;$('misses').textContent=p.cache_misses||0;$('rate').textContent=((p.cache_hit_rate||0)*100).toFixed(1)+'%';$('read').textContent=((p.bytes_read||0)/1048576).toFixed(1)+' MiB'}}catch(e){$('error').textContent=e.message}}
-async function recommend(){if(fields.some(id=>localStorage['giantllm_'+id]))return;try{const r=await call('/api/recommendation');$('cache').value=r.cache_mib;$('threads').value=r.io_threads}catch{}}
-setInterval(refresh,1500);recommend();refresh();
-</script></body></html>)GIANTLLM";
+#include "dashboard.generated.h"
 
 bool model_path_is_valid(const std::string & path);
 
 struct server_config {
+    std::string model_directory;
     std::string model;
-    std::string mode = "auto";
+    std::string mode = "os";
     int cache = 2048;
     int slots = 0;
     int threads = 4;
@@ -93,7 +75,7 @@ struct server_config {
 struct process_state {
     std::mutex mutex;
     server_config config;
-    std::string log_path = "giantllm-server.log";
+    std::string log_path = "sparkmoe-server.log";
     std::string last_error;
     int64_t started_at_ms = 0;
     int last_exit_code = 0;
@@ -108,6 +90,7 @@ struct process_state {
 
 json config_json(const server_config & config, bool include_model = true) {
     json result = {
+        {"model_directory", config.model_directory},
         {"mode", config.mode},
         {"cache", config.cache},
         {"slots", config.slots},
@@ -137,6 +120,7 @@ json config_json(const server_config & config, bool include_model = true) {
 
 server_config config_from_json(const json & input, const server_config & base) {
     server_config config = base;
+    config.model_directory = input.value("model_directory", config.model_directory);
     config.model = input.value("model", config.model);
     config.mode = input.value("mode", config.mode);
     config.cache = input.value("cache", config.cache);
@@ -259,10 +243,10 @@ std::wstring executable_directory() {
 
 std::string server_log_path() {
 #if defined(_WIN32)
-    return wide_to_utf8(executable_directory() + L"\\giantllm-server.log");
+    return wide_to_utf8(executable_directory() + L"\\sparkmoe-server.log");
 #else
     char path[4096] = {};
-    return getcwd(path, sizeof(path)) ? std::string(path) + "/giantllm-server.log" : "giantllm-server.log";
+    return getcwd(path, sizeof(path)) ? std::string(path) + "/sparkmoe-server.log" : "sparkmoe-server.log";
 #endif
 }
 
@@ -289,11 +273,12 @@ std::string load_dashboard() {
     return content.str();
 }
 
-std::string load_brand_svg() {
+std::string load_brand_asset(const std::string & name) {
 #if defined(_WIN32)
-    std::ifstream file(std::filesystem::path(executable_directory() + L"\\assets\\branding\\giantllm.svg"), std::ios::binary);
+    const std::filesystem::path path = std::filesystem::path(executable_directory()) / L"assets" / L"branding" / utf8_to_wide(name);
+    std::ifstream file(path, std::ios::binary);
 #else
-    std::ifstream file("assets/branding/giantllm.svg", std::ios::binary);
+    std::ifstream file(std::filesystem::path("assets/branding") / name, std::ios::binary);
 #endif
     if (!file) {
         return {};
@@ -312,6 +297,127 @@ bool model_path_is_valid(const std::string & path) {
     return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
 #else
     return access(path.c_str(), R_OK) == 0;
+#endif
+}
+
+std::filesystem::path native_path(const std::string & path) {
+#if defined(_WIN32)
+    return std::filesystem::path(utf8_to_wide(path));
+#else
+    return std::filesystem::path(path);
+#endif
+}
+
+std::string utf8_path(const std::filesystem::path & path) {
+#if defined(_WIN32)
+    return wide_to_utf8(path.wstring());
+#else
+    return path.string();
+#endif
+}
+
+json models_in_directory(const std::string & directory) {
+    if (directory.empty()) {
+        throw std::runtime_error("choose a models directory first");
+    }
+    const std::filesystem::path root = native_path(directory);
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error) || error) {
+        throw std::runtime_error("models directory does not exist or is not readable");
+    }
+
+    std::vector<json> models;
+    const auto options = std::filesystem::directory_options::skip_permission_denied;
+    for (std::filesystem::recursive_directory_iterator it(root, options, error), end; it != end; it.increment(error)) {
+        if (error) {
+            error.clear();
+            continue;
+        }
+        if (!it->is_regular_file(error) || error || lowercase(utf8_path(it->path().extension())) != ".gguf") {
+            error.clear();
+            continue;
+        }
+        const std::filesystem::path relative = it->path().lexically_relative(root);
+        const uintmax_t size = it->file_size(error);
+        models.push_back({
+            {"name", utf8_path(relative)},
+            {"path", utf8_path(it->path())},
+            {"size_bytes", error ? 0 : size},
+        });
+        error.clear();
+        if (models.size() >= 2000) {
+            break;
+        }
+    }
+    std::sort(models.begin(), models.end(), [](const json & left, const json & right) {
+        return lowercase(left["name"].get<std::string>()) < lowercase(right["name"].get<std::string>());
+    });
+    return {
+        {"directory", directory},
+        {"count", models.size()},
+        {"models", models},
+    };
+}
+
+json browse_models_directory() {
+#if defined(_WIN32)
+    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    const bool uninitialize = SUCCEEDED(initialized);
+    if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE) {
+        throw std::runtime_error("cannot initialize the Windows folder picker");
+    }
+
+    IFileOpenDialog * dialog = nullptr;
+    HRESULT result = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+    DWORD options = 0;
+    if (SUCCEEDED(result)) {
+        result = dialog->GetOptions(&options);
+    }
+    if (SUCCEEDED(result)) {
+        result = dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM |
+            FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR | FOS_DONTADDTORECENT);
+    }
+    if (SUCCEEDED(result)) {
+        result = dialog->SetTitle(L"Choose the folder that contains your GGUF models");
+    }
+    if (SUCCEEDED(result)) {
+        result = dialog->Show(nullptr);
+    }
+    if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+        dialog->Release();
+        if (uninitialize) {
+            CoUninitialize();
+        }
+        return {{"cancelled", true}};
+    }
+
+    IShellItem * item = nullptr;
+    if (SUCCEEDED(result)) {
+        result = dialog->GetResult(&item);
+    }
+    PWSTR path = nullptr;
+    if (SUCCEEDED(result)) {
+        result = item->GetDisplayName(SIGDN_FILESYSPATH, &path);
+    }
+    const std::wstring selected = SUCCEEDED(result) && path ? path : L"";
+    if (path) {
+        CoTaskMemFree(path);
+    }
+    if (item) {
+        item->Release();
+    }
+    if (dialog) {
+        dialog->Release();
+    }
+    if (uninitialize) {
+        CoUninitialize();
+    }
+    if (FAILED(result) || selected.empty()) {
+        throw std::runtime_error("the selected folder does not have a local filesystem path");
+    }
+    return {{"cancelled", false}, {"directory", wide_to_utf8(selected)}};
+#else
+    throw std::runtime_error("native folder selection is currently available on Windows only");
 #endif
 }
 
@@ -401,7 +507,7 @@ void start_process(process_state & state, const json & input) {
 #if defined(_WIN32)
     const std::wstring executable = executable_directory() + L"\\llama-server.exe";
     if (GetFileAttributesW(executable.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        throw std::runtime_error("llama-server.exe is not next to GiantLLM.exe");
+        throw std::runtime_error("llama-server.exe is not next to SparkMoE.exe");
     }
     std::wstring command = quote_windows_arg(executable);
     for (const auto & arg : args) {
@@ -567,12 +673,14 @@ void set_cors_headers(const httplib::Request & request, httplib::Response & resp
 
 json recommendation_json() {
     uint64_t total_mib = 0;
+    uint64_t available_mib = 0;
     uint32_t cpu_threads = 1;
 #if defined(_WIN32)
     MEMORYSTATUSEX memory{};
     memory.dwLength = sizeof(memory);
     if (GlobalMemoryStatusEx(&memory)) {
         total_mib = memory.ullTotalPhys / (1024ULL * 1024ULL);
+        available_mib = memory.ullAvailPhys / (1024ULL * 1024ULL);
     }
     cpu_threads = std::max<DWORD>(1, GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
 #else
@@ -581,13 +689,20 @@ json recommendation_json() {
     if (pages > 0 && page_size > 0) {
         total_mib = static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size) / (1024ULL * 1024ULL);
     }
+    const long available_pages = sysconf(_SC_AVPHYS_PAGES);
+    if (available_pages > 0 && page_size > 0) {
+        available_mib = static_cast<uint64_t>(available_pages) * static_cast<uint64_t>(page_size) / (1024ULL * 1024ULL);
+    }
     const long online = sysconf(_SC_NPROCESSORS_ONLN);
     cpu_threads = online > 0 ? static_cast<uint32_t>(online) : 1;
 #endif
     const uint64_t cache_mib = total_mib <= 16384 ? 1536 :
         total_mib <= 32768 ? 4096 : std::min<uint64_t>(8192, total_mib / 8);
+    const uint64_t used_mib = total_mib > available_mib ? total_mib - available_mib : 0;
     return {
         {"total_ram_mib", total_mib},
+        {"available_ram_mib", available_mib},
+        {"used_ram_mib", used_mib},
         {"cpu_threads", cpu_threads},
         {"cache_mib", cache_mib},
         {"io_threads", std::max<uint32_t>(1, std::min<uint32_t>(4, cpu_threads / 4))},
@@ -601,7 +716,7 @@ json recommendation_json() {
 }
 
 void open_browser() {
-    if (std::getenv("GIANTLLM_NO_BROWSER")) {
+    if (std::getenv("SPARKMOE_NO_BROWSER")) {
         return;
     }
 #if defined(_WIN32)
@@ -626,7 +741,8 @@ int main() {
     process_state state;
     state.log_path = server_log_path();
     const std::string dashboard = load_dashboard();
-    const std::string brand_svg = load_brand_svg();
+    const std::string brand_png = load_brand_asset("SparkMoE.png");
+    const std::string brand_ico = load_brand_asset("SparkMoE.ico");
     httplib::Server server;
 
     auto authorize = [&](const httplib::Request & request, httplib::Response & response) {
@@ -641,12 +757,20 @@ int main() {
     server.Get("/", [&dashboard](const httplib::Request &, httplib::Response & response) {
         response.set_content(dashboard, "text/html; charset=utf-8");
     });
-    server.Get("/assets/giantllm.svg", [&brand_svg](const httplib::Request &, httplib::Response & response) {
-        if (brand_svg.empty()) {
+    server.Get("/assets/SparkMoE.png", [&brand_png](const httplib::Request &, httplib::Response & response) {
+        if (brand_png.empty()) {
             response.status = 404;
             return;
         }
-        response.set_content(brand_svg, "image/svg+xml; charset=utf-8");
+        response.set_content(brand_png, "image/png");
+        response.set_header("Cache-Control", "public, max-age=3600");
+    });
+    server.Get("/assets/SparkMoE.ico", [&brand_ico](const httplib::Request &, httplib::Response & response) {
+        if (brand_ico.empty()) {
+            response.status = 404;
+            return;
+        }
+        response.set_content(brand_ico, "image/x-icon");
         response.set_header("Cache-Control", "public, max-age=3600");
     });
     server.Options(R"(/api/.*)", [&](const httplib::Request & request, httplib::Response & response) {
@@ -665,6 +789,23 @@ int main() {
     server.Get("/api/recommendation", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         json_response(response, recommendation_json());
+    });
+    server.Get("/api/models", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            const std::string directory = request.has_param("directory") ? request.get_param_value("directory") : "";
+            json_response(response, models_in_directory(directory));
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 400);
+        }
+    });
+    server.Post("/api/browse-model-directory", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            json_response(response, browse_models_directory());
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 500);
+        }
     });
     server.Post("/api/start", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
@@ -708,7 +849,7 @@ int main() {
     server.Get("/api/paging", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, upstream_json(state, "/giantllm/v1/paging"));
+            json_response(response, upstream_json(state, "/sparkmoe/v1/paging"));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 503);
         }
@@ -716,7 +857,7 @@ int main() {
     server.Post("/api/paging/reset", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, upstream_json(state, "/giantllm/v1/paging/reset-stats", true));
+            json_response(response, upstream_json(state, "/sparkmoe/v1/paging/reset-stats", true));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 503);
         }
@@ -724,7 +865,7 @@ int main() {
     server.Get("/api/server-config", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, upstream_json(state, "/giantllm/v1/config"));
+            json_response(response, upstream_json(state, "/sparkmoe/v1/config"));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 503);
         }
@@ -737,11 +878,13 @@ int main() {
         if (!authorize(request, response)) return;
         json manager_status = status_json(state);
         manager_status["config"].erase("model");
+        manager_status["config"].erase("model_directory");
         manager_status.erase("last_error");
         json safe_config = current_config_json(state);
         safe_config.erase("model");
+        safe_config.erase("model_directory");
         json diagnostic = {
-            {"giantllm_version", "0.2.0-alpha"},
+            {"sparkmoe_version", "0.2.0-alpha"},
             {"manager", manager_status},
             {"configuration", safe_config},
 #if defined(_WIN32)
@@ -751,7 +894,7 @@ int main() {
 #endif
             {"privacy", "No prompts, generated text, API keys, tokens, usernames, or model contents are collected."},
         };
-        response.set_header("Content-Disposition", "attachment; filename=giantllm-diagnostics.json");
+        response.set_header("Content-Disposition", "attachment; filename=sparkmoe-diagnostics.json");
         json_response(response, diagnostic);
     });
     server.set_exception_handler([](const auto &, auto & response, std::exception_ptr error) {
@@ -764,7 +907,7 @@ int main() {
         }
     });
     open_browser();
-    std::printf("GiantLLM manager: http://127.0.0.1:%d\n", manager_port);
+    std::printf("SparkMoE manager: http://127.0.0.1:%d\n", manager_port);
     const bool ok = server.listen("127.0.0.1", manager_port);
     stop_process(state);
     return ok ? 0 : 1;

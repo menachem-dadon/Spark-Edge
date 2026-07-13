@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-// Required Notice: Copyright (c) 2026 GiantLLM contributors.
+// Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 #include "ggml-backend.h"
 #include "ggml-cpp.h"

@@ -10,7 +10,7 @@
 - Allowed MTP draft contexts to use their own bounded expert paging manager.
 - Added a public project map and supported-model policy.
 - Automatically clamp the physical microbatch to the exact MoE slot capacity instead of aborting during prompt processing.
-- Report the effective microbatch through the GiantLLM server configuration endpoint.
+- Report the effective microbatch through the SparkMoE server configuration endpoint.
 
 ## 0.1.0-alpha - 2026-07-12
 

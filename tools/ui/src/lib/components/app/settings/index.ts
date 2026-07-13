@@ -75,5 +75,5 @@ export { default as SettingsChatFields } from './SettingsChat/SettingsChatFields
  */
 export { default as SettingsChatToolsTab } from './SettingsChat/SettingsChatToolsTab.svelte';
 
-/** GiantLLM launcher-backed server, context, and MTP controls. */
+/** SparkMoE launcher-backed context and MTP controls. */
 export { default as SettingsChatServerTab } from './SettingsChat/SettingsChatServerTab.svelte';

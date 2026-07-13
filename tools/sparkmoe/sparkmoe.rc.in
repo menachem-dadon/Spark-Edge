@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Required Notice: Copyright (c) 2026 SparkMoE contributors.
+
+#include <windows.h>
+
+#define IDI_SPARKMOE_ICON 101
+IDI_SPARKMOE_ICON ICON "@SPARKMOE_ICON_RC_FILE@"

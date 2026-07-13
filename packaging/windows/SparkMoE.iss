@@ -1,12 +1,12 @@
 ; SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-; Required Notice: Copyright (c) 2026 GiantLLM contributors.
+; Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
-#define AppName "GiantLLM"
+#define AppName "SparkMoE"
 #ifndef AppVersion
 #define AppVersion "0.2.0-alpha"
 #endif
 #ifndef SourceDir
-#define SourceDir "..\..\artifacts\release\giantllm-0.2.0-alpha-windows-x64-avx2"
+#define SourceDir "..\..\artifacts\release\sparkmoe-0.2.0-alpha-windows-x64-avx2"
 #endif
 #ifndef OutputDir
 #define OutputDir "..\..\artifacts\release"
@@ -16,35 +16,35 @@
 AppId={{CB3A5957-FB37-4D8D-ABB3-F3F61C6432F6}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=GiantLLM Project
+AppPublisher=SparkMoE Project
 AppComments=Run giant local language models on modest hardware
-DefaultDirName={localappdata}\Programs\GiantLLM
-DefaultGroupName=GiantLLM
+DefaultDirName={localappdata}\Programs\SparkMoE
+DefaultGroupName=SparkMoE
 PrivilegesRequired=lowest
 UsePreviousGroup=no
 UsePreviousTasks=no
 OutputDir={#OutputDir}
-OutputBaseFilename=giantllm-{#AppVersion}-windows-x64-avx2-setup
+OutputBaseFilename=sparkmoe-{#AppVersion}-windows-x64-avx2-setup
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName}
-UninstallDisplayIcon={app}\GiantLLM.exe
-SetupIconFile={#SourceDir}\assets\branding\giantllm.ico
-VersionInfoDescription=GiantLLM installer
-VersionInfoProductName=GiantLLM
+UninstallDisplayIcon={app}\SparkMoE.exe
+SetupIconFile={#SourceDir}\assets\branding\SparkMoE.ico
+VersionInfoDescription=SparkMoE installer
+VersionInfoProductName=SparkMoE
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\GiantLLM"; Filename: "{app}\GiantLLM.exe"
-Name: "{userdesktop}\GiantLLM"; Filename: "{app}\GiantLLM.exe"; Tasks: desktopicon
+Name: "{group}\SparkMoE"; Filename: "{app}\SparkMoE.exe"
+Name: "{userdesktop}\SparkMoE"; Filename: "{app}\SparkMoE.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
-Name: "addtopath"; Description: "Add GiantLLM to the user PATH"; GroupDescription: "Command line:"; Flags: unchecked
+Name: "addtopath"; Description: "Add SparkMoE to the user PATH"; GroupDescription: "Command line:"; Flags: unchecked
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

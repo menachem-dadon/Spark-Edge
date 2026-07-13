@@ -22,7 +22,7 @@
 *.tmp
 *.DS_Store
 
-# Local GiantLLM release outputs
+# Local SparkMoE release outputs
 /artifacts/release/
 
 # IDE / OS

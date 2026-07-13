@@ -1,13 +1,23 @@
 <!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
-<!-- Required Notice: Copyright (c) 2026 GiantLLM contributors. -->
+<!-- Required Notice: Copyright (c) 2026 SparkMoE contributors. -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { AlertCircle, CheckCircle2, ExternalLink, LoaderCircle, RefreshCw } from '@lucide/svelte';
+	import {
+		AlertCircle,
+		CheckCircle2,
+		ExternalLink,
+		Gauge,
+		LoaderCircle,
+		RefreshCw,
+		Sparkles
+	} from '@lucide/svelte';
 
 	const MANAGER_URL = 'http://127.0.0.1:18080';
+	const CONTEXT_PRESETS = [4096, 8192, 16384, 32768, 65536];
 
 	type ServerConfig = {
+		model_directory: string;
 		model: string;
 		mode: string;
 		cache: number;
@@ -41,8 +51,9 @@
 	};
 
 	const defaults: ServerConfig = {
+		model_directory: '',
 		model: '',
-		mode: 'auto',
+		mode: 'os',
 		cache: 2048,
 		slots: 0,
 		threads: 4,
@@ -70,6 +81,10 @@
 	let busy = $state(false);
 	let error = $state('');
 	let effectiveContext = $state<number | null>(null);
+
+	function modelName(path: string) {
+		return path.split(/[\\/]/).pop() || 'No model selected';
+	}
 
 	async function managerFetch<T>(path: string, body?: unknown): Promise<T> {
 		const response = await fetch(`${MANAGER_URL}${path}`, {
@@ -123,7 +138,7 @@
 			}
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
-		throw new Error('The model did not become ready within three minutes. Check the server log.');
+		throw new Error('The model did not become ready within three minutes. Check the dashboard log.');
 	}
 
 	async function applyAndRestart() {
@@ -160,95 +175,151 @@
 
 <div class="space-y-6">
 	{#if connected}
-		<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 p-4">
-			<div class="flex items-center gap-3">
-				{#if status?.server_ready}
-					<CheckCircle2 class="h-5 w-5 text-emerald-500" />
-				{:else if status?.running}
-					<LoaderCircle class="h-5 w-5 animate-spin text-amber-500" />
-				{:else}
-					<AlertCircle class="h-5 w-5 text-muted-foreground" />
-				{/if}
-				<div>
-					<p class="font-medium">
-						{status?.server_ready ? 'Server ready' : status?.running ? 'Model is loading' : 'Server stopped'}
-					</p>
-					<p class="text-xs text-muted-foreground">
-						PID {status?.pid || '-'} | port {status?.port || config.port}
-						{#if effectiveContext} | {effectiveContext.toLocaleString()} tokens per chat{/if}
-					</p>
+		<div class="rounded-2xl border border-border bg-gradient-to-br from-muted/50 to-muted/20 p-4 shadow-sm">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="flex min-w-0 items-center gap-3">
+					{#if status?.server_ready}
+						<CheckCircle2 class="h-5 w-5 shrink-0 text-emerald-500" />
+					{:else if status?.running}
+						<LoaderCircle class="h-5 w-5 shrink-0 animate-spin text-amber-500" />
+					{:else}
+						<AlertCircle class="h-5 w-5 shrink-0 text-muted-foreground" />
+					{/if}
+					<div class="min-w-0">
+						<p class="font-medium">
+							{status?.server_ready ? 'Model ready' : status?.running ? 'Model is loading' : 'Server stopped'}
+						</p>
+						<p class="truncate text-xs text-muted-foreground" title={config.model}>
+							{modelName(config.model)} | port {status?.port || config.port}
+							{#if effectiveContext} | {effectiveContext.toLocaleString()} context tokens{/if}
+						</p>
+					</div>
 				</div>
+				<Button variant="outline" size="sm" onclick={refresh} disabled={busy}>
+					<RefreshCw class="h-4 w-4" /> Refresh
+				</Button>
 			</div>
-			<Button variant="outline" size="sm" onclick={refresh} disabled={busy}>
-				<RefreshCw class="h-4 w-4" /> Refresh
-			</Button>
 		</div>
 	{:else}
 		<div class="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-			<p class="font-medium">GiantLLM Control Center is not available</p>
+			<p class="font-medium">SparkMoE Control Center is not available</p>
 			<p class="mt-1 text-muted-foreground">
-				Start the server through GiantLLM.exe. The manager listens locally on port 18080 and allows
-				this page to apply startup-only settings safely.
+				Start the model through SparkMoE.exe, then return to this page.
 			</p>
 			<Button class="mt-3" variant="outline" onclick={refresh}>Try again</Button>
 		</div>
 	{/if}
 
-	<div class="space-y-3">
-		<h4 class="font-medium">Model and expert paging</h4>
-		<p class="text-sm text-muted-foreground">
-			Explicit mode keeps routed expert weights on the GGUF file and reads selected experts into a
-			bounded RAM cache. Auto mode uses it when a cache or slot limit is supplied.
-		</p>
-		<label class="grid gap-2 text-sm">
-			<span>Local GGUF model path</span>
-			<input class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.model} />
-		</label>
-		<div class="grid gap-4 sm:grid-cols-2">
-			<label class="grid gap-2 text-sm"><span>Paging mode</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mode}><option value="auto">Auto</option><option value="explicit">Explicit SSD cache</option><option value="os">Operating system / mmap</option><option value="off">Resident / off</option></select></label>
-			<label class="grid gap-2 text-sm"><span>Server port</span><input type="number" min="1024" max="65535" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.port} /></label>
-			<label class="grid gap-2 text-sm"><span>Expert cache (MiB)</span><input type="number" min="0" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache} /></label>
-			<label class="grid gap-2 text-sm"><span>Expert slots per layer (0 = use budget)</span><input type="number" min="0" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.slots} /></label>
-			<label class="grid gap-2 text-sm"><span>SSD read workers</span><input type="number" min="1" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.threads} /></label>
+	<section class="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+		<div class="mb-5 flex items-start gap-3">
+			<div class="rounded-xl bg-sky-500/10 p-2 text-sky-500"><Gauge class="h-5 w-5" /></div>
+			<div>
+				<h4 class="font-semibold">Context length</h4>
+				<p class="mt-1 text-sm text-muted-foreground">
+					Enter the exact number of tokens available to this chat. A larger value uses more RAM.
+				</p>
+			</div>
 		</div>
-	</div>
 
-	<div class="space-y-3 border-t border-border/40 pt-5">
-		<h4 class="font-medium">Context and memory</h4>
-		<p class="text-sm text-muted-foreground">
-			These values allocate memory when the model starts. Context size 0 uses the model default. The
-			physical microbatch cannot exceed the logical batch size.
-		</p>
 		<div class="grid gap-4 sm:grid-cols-2">
-			<label class="grid gap-2 text-sm"><span>Context tokens</span><input type="number" min="0" max="1048576" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.ctx_size} /></label>
-			<label class="grid gap-2 text-sm"><span>Parallel chat slots (explicit mode requires 1)</span><input type="number" min="1" max="32" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.parallel} /></label>
+			<label class="grid gap-2 text-sm">
+				<span class="font-medium">Context tokens</span>
+				<input
+					type="number"
+					min="0"
+					max="1048576"
+					step="1024"
+					class="rounded-lg border border-input bg-background px-3 py-2.5 text-base"
+					bind:value={config.ctx_size}
+				/>
+				<span class="text-xs text-muted-foreground">Use 0 only when you want the model default.</span>
+			</label>
+			<label class="grid gap-2 text-sm">
+				<span class="font-medium">When the context is full</span>
+				<select
+					class="rounded-lg border border-input bg-background px-3 py-2.5"
+					value={config.context_shift ? 'shift' : 'stop'}
+					onchange={(event) => (config.context_shift = event.currentTarget.value === 'shift')}
+				>
+					<option value="shift">Forget the oldest messages and continue</option>
+					<option value="stop">Stop when the limit is reached</option>
+				</select>
+				<span class="text-xs text-muted-foreground">This controls conversation history, not output length.</span>
+			</label>
+		</div>
+
+		<div class="mt-4 flex flex-wrap gap-2">
+			{#each CONTEXT_PRESETS as tokens}
+				<Button
+					variant={config.ctx_size === tokens ? 'default' : 'outline'}
+					size="sm"
+					onclick={() => (config.ctx_size = tokens)}
+				>
+					{tokens >= 1024 ? `${tokens / 1024}K` : tokens}
+				</Button>
+			{/each}
+		</div>
+	</section>
+
+	<section class="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+		<div class="mb-5 flex items-start gap-3">
+			<div class="rounded-xl bg-violet-500/10 p-2 text-violet-500"><Sparkles class="h-5 w-5" /></div>
+			<div>
+				<h4 class="font-semibold">Multi-Token Prediction (MTP)</h4>
+				<p class="mt-1 text-sm text-muted-foreground">
+					MTP can accelerate generation when the selected GGUF includes a compatible prediction head.
+				</p>
+			</div>
+		</div>
+
+		<label class="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4 text-sm">
+			<span>
+				<b>Enable MTP for this model</b>
+				<span class="mt-1 block text-xs text-muted-foreground">
+					If startup reports that no MTP head exists, turn this off. MTP is optional and may not be faster on every CPU.
+				</span>
+			</span>
+			<input class="mt-1 h-4 w-4 shrink-0" type="checkbox" bind:checked={config.mtp_enabled} />
+		</label>
+
+		{#if config.mtp_enabled}
+			<label class="mt-4 grid max-w-sm gap-2 text-sm">
+				<span class="font-medium">Draft tokens per step</span>
+				<select class="rounded-lg border border-input bg-background px-3 py-2.5" bind:value={config.mtp_draft_tokens}>
+					{#each [2, 3, 4, 5, 6, 8] as tokens}
+						<option value={tokens}>{tokens}{tokens === 3 ? ' - recommended starting point' : ''}</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
+	</section>
+
+	<details class="rounded-xl border border-border/60 bg-muted/10 p-4">
+		<summary class="cursor-pointer text-sm font-medium">Advanced performance settings</summary>
+		<p class="mt-3 text-xs text-muted-foreground">
+			The defaults below are appropriate for most users. Change them only when benchmarking a known model.
+		</p>
+		<div class="mt-4 grid gap-4 sm:grid-cols-2">
+			<label class="grid gap-2 text-sm"><span>Parallel chat slots</span><input type="number" min="1" max="32" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.parallel} /></label>
 			<label class="grid gap-2 text-sm"><span>Logical batch size</span><input type="number" min="1" max="16384" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.batch_size} /></label>
 			<label class="grid gap-2 text-sm"><span>Physical microbatch</span><input type="number" min="1" max="16384" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.ubatch_size} /></label>
-			<label class="grid gap-2 text-sm"><span>Prompt cache RAM (MiB, 0 = off)</span><input type="number" min="-1" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache_ram_mib} /></label>
+			<label class="grid gap-2 text-sm"><span>Prompt cache RAM (MiB)</span><input type="number" min="-1" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache_ram_mib} /></label>
 			<label class="grid gap-2 text-sm"><span>Context checkpoints</span><input type="number" min="0" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.ctx_checkpoints} /></label>
 			<label class="grid gap-2 text-sm"><span>K cache precision</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache_type_k}>{#each ['f16','bf16','q8_0','q5_1','q5_0','q4_1','q4_0','iq4_nl'] as type}<option value={type}>{type}</option>{/each}</select></label>
 			<label class="grid gap-2 text-sm"><span>V cache precision</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache_type_v}>{#each ['f16','bf16','q8_0','q5_1','q5_0','q4_1','q4_0','iq4_nl'] as type}<option value={type}>{type}</option>{/each}</select></label>
+			{#if config.mtp_enabled}
+				<label class="grid gap-2 text-sm"><span>Minimum draft tokens</span><input type="number" min="0" max="64" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_min_tokens} /></label>
+				<label class="grid gap-2 text-sm"><span>Minimum draft probability</span><input type="number" min="0" max="1" step="0.01" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_p_min} /></label>
+				<label class="grid gap-2 text-sm"><span>MTP CPU threads (0 = automatic)</span><input type="number" min="0" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_threads} /></label>
+			{/if}
 		</div>
-		<label class="flex items-start gap-3 rounded-lg border border-border/60 p-3 text-sm">
-			<input class="mt-1" type="checkbox" bind:checked={config.context_shift} />
-			<span><b>Keep recent messages when context fills</b><span class="mt-1 block text-xs text-muted-foreground">Context shift drops the oldest reusable tokens instead of ending generation.</span></span>
-		</label>
-	</div>
+		{#if config.mtp_enabled}
+			<label class="mt-4 flex items-center gap-3 text-sm"><input type="checkbox" bind:checked={config.mtp_backend_sampling} /> Use backend sampling when supported</label>
+		{/if}
+	</details>
 
-	<div class="space-y-3 border-t border-border/40 pt-5">
-		<h4 class="font-medium">Multi-Token Prediction (MTP)</h4>
-		<p class="text-sm text-muted-foreground">
-			MTP uses the model's built-in prediction head through llama.cpp draft-mtp. Enabling it on a GGUF
-			without a compatible head will produce a clear startup error. More draft tokens are not always faster.
-		</p>
-		<label class="flex items-start gap-3 rounded-lg border border-border/60 p-3 text-sm"><input class="mt-1" type="checkbox" bind:checked={config.mtp_enabled} /><span><b>Enable built-in MTP</b><span class="mt-1 block text-xs text-muted-foreground">Compatible with GiantLLM expert paging; the draft context receives its own bounded expert cache.</span></span></label>
-		<div class="grid gap-4 sm:grid-cols-2">
-			<label class="grid gap-2 text-sm"><span>Maximum draft tokens</span><input type="number" min="1" max="64" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_draft_tokens} /></label>
-			<label class="grid gap-2 text-sm"><span>Minimum draft tokens</span><input type="number" min="0" max="64" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_min_tokens} /></label>
-			<label class="grid gap-2 text-sm"><span>Minimum draft probability</span><input type="number" min="0" max="1" step="0.01" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_p_min} /></label>
-			<label class="grid gap-2 text-sm"><span>MTP CPU threads (0 = auto)</span><input type="number" min="0" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_threads} /></label>
-		</div>
-		<label class="flex items-center gap-3 text-sm"><input type="checkbox" bind:checked={config.mtp_backend_sampling} /> Use backend sampling when supported</label>
+	<div class="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-muted-foreground">
+		Context and MTP are startup settings. Applying changes reloads the model; conversations stay in this browser.
 	</div>
 
 	{#if error}
@@ -258,14 +329,11 @@
 	<div class="flex flex-wrap gap-3 border-t border-border/40 pt-5">
 		<Button onclick={applyAndRestart} disabled={!connected || busy || !config.model}>
 			{#if busy}<LoaderCircle class="h-4 w-4 animate-spin" />{/if}
-			{status?.running ? 'Apply and restart server' : 'Start server'}
+			{status?.running ? 'Apply and restart model' : 'Start model'}
 		</Button>
-		<Button variant="destructive" onclick={stopServer} disabled={!connected || busy || !status?.running}>Stop server</Button>
+		<Button variant="destructive" onclick={stopServer} disabled={!connected || busy || !status?.running}>Stop model</Button>
 		<Button variant="outline" onclick={() => window.open(MANAGER_URL, '_blank')}>
-			<ExternalLink class="h-4 w-4" /> Open full control center
+			<ExternalLink class="h-4 w-4" /> Open dashboard
 		</Button>
 	</div>
-	<p class="text-xs text-muted-foreground">
-		Applying server-wide settings reloads the model. Conversations remain stored in this browser.
-	</p>
 </div>

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-// Required Notice: Copyright (c) 2026 GiantLLM contributors.
+// Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 #include <algorithm>
 #include <chrono>
@@ -23,7 +23,7 @@ using clock_type = std::chrono::steady_clock;
 using file_ptr = std::unique_ptr<FILE, decltype(&std::fclose)>;
 
 struct options {
-    std::string path = "giantllm-iobench.tmp";
+    std::string path = "sparkmoe-iobench.tmp";
     uint64_t size_mib = 64;
     uint64_t sequential_block_kib = 1024;
     uint64_t random_block_kib = 4;
@@ -58,7 +58,7 @@ uint64_t parse_positive(const char * value, const char * name) {
 
 void usage(const char * program) {
     std::printf("Usage: %s [options]\n", program);
-    std::printf("  --file PATH                  benchmark file (default: ./giantllm-iobench.tmp)\n");
+    std::printf("  --file PATH                  benchmark file (default: ./sparkmoe-iobench.tmp)\n");
     std::printf("  --size-mib N                 file size in MiB (default: 64)\n");
     std::printf("  --sequential-block-kib N     sequential block size (default: 1024)\n");
     std::printf("  --random-block-kib N         random block size (default: 4)\n");
@@ -243,7 +243,7 @@ void print_results(const options & opts, const results & value) {
             value.write_mib_s, value.sequential_read_mib_s, value.random_read_iops,
             value.random_p50_us, value.random_p95_us);
     } else {
-        std::printf("GiantLLM buffered file I/O benchmark\n");
+        std::printf("SparkMoE buffered file I/O benchmark\n");
         std::printf("File size:              %llu MiB\n", static_cast<unsigned long long>(opts.size_mib));
         std::printf("Write:                  %.3f MiB/s\n", value.write_mib_s);
         std::printf("Sequential read:        %.3f MiB/s\n", value.sequential_read_mib_s);
@@ -278,7 +278,7 @@ int main(int argc, char ** argv) {
         remove_default_file(opts);
         return 0;
     } catch (const std::exception & error) {
-        std::fprintf(stderr, "giantllm-iobench: %s\n", error.what());
+        std::fprintf(stderr, "sparkmoe-iobench: %s\n", error.what());
         return 1;
     }
 }

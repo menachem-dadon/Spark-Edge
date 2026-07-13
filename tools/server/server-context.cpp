@@ -39,7 +39,7 @@ using json = nlohmann::ordered_json;
 
 constexpr int HTTP_POLLING_SECONDS = 1;
 
-static const char * giantllm_paging_mode_name(enum llama_moe_paging_mode mode) {
+static const char * sparkmoe_paging_mode_name(enum llama_moe_paging_mode mode) {
     switch (mode) {
         case LLAMA_MOE_PAGING_MODE_OFF:      return "off";
         case LLAMA_MOE_PAGING_MODE_EXPLICIT: return "explicit";
@@ -49,7 +49,7 @@ static const char * giantllm_paging_mode_name(enum llama_moe_paging_mode mode) {
     return "unknown";
 }
 
-static const char * giantllm_io_mode_name(enum llama_moe_io_mode mode) {
+static const char * sparkmoe_io_mode_name(enum llama_moe_io_mode mode) {
     switch (mode) {
         case LLAMA_MOE_IO_MODE_BUFFERED: return "buffered";
         case LLAMA_MOE_IO_MODE_DIRECT:   return "direct";
@@ -57,7 +57,7 @@ static const char * giantllm_io_mode_name(enum llama_moe_io_mode mode) {
     return "unknown";
 }
 
-static json giantllm_paging_stats_json(const llama_context * ctx) {
+static json sparkmoe_paging_stats_json(const llama_context * ctx) {
     llama_moe_paging_stats stats{};
     const bool enabled = llama_context_moe_paging_get_stats(ctx, &stats);
     const uint64_t accesses = stats.cache_hits + stats.cache_misses;
@@ -4351,35 +4351,35 @@ void server_routes::init_routes() {
         return res;
     };
 
-    this->get_giantllm_status = [this](const server_http_req &) {
+    this->get_sparkmoe_status = [this](const server_http_req &) {
         auto res = create_response();
         res->ok({
             {"status", "ok"},
             {"paging", {
                 {"enabled", params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT},
-                {"mode", giantllm_paging_mode_name(params.moe_paging.mode)},
+                {"mode", sparkmoe_paging_mode_name(params.moe_paging.mode)},
             }},
         });
         return res;
     };
 
-    this->get_giantllm_paging = [this](const server_http_req &) {
+    this->get_sparkmoe_paging = [this](const server_http_req &) {
         auto res = create_response();
-        res->ok(giantllm_paging_stats_json(ctx_server_api.get_llama_context()));
+        res->ok(sparkmoe_paging_stats_json(ctx_server_api.get_llama_context()));
         return res;
     };
 
-    this->post_giantllm_reset_stats = [this](const server_http_req &) {
+    this->post_sparkmoe_reset_stats = [this](const server_http_req &) {
         auto res = create_response();
         llama_context_moe_paging_reset_stats(ctx_server_api.get_llama_context());
         res->ok({
             {"ok", true},
-            {"paging", giantllm_paging_stats_json(ctx_server_api.get_llama_context())},
+            {"paging", sparkmoe_paging_stats_json(ctx_server_api.get_llama_context())},
         });
         return res;
     };
 
-    this->get_giantllm_config = [this](const server_http_req &) {
+    this->get_sparkmoe_config = [this](const server_http_req &) {
         auto res = create_response();
         const bool mtp_enabled = std::find(
             params.speculative.types.begin(),
@@ -4387,8 +4387,8 @@ void server_routes::init_routes() {
             COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != params.speculative.types.end();
         const llama_context * context = ctx_server_api.get_llama_context();
         res->ok({
-            {"mode", giantllm_paging_mode_name(params.moe_paging.mode)},
-            {"io_mode", giantllm_io_mode_name(params.moe_paging.io_mode)},
+            {"mode", sparkmoe_paging_mode_name(params.moe_paging.mode)},
+            {"io_mode", sparkmoe_io_mode_name(params.moe_paging.io_mode)},
             {"cache_bytes", params.moe_paging.cache_bytes},
             {"slots_per_layer", params.moe_paging.n_slots},
             {"io_threads", params.moe_paging.io_threads},

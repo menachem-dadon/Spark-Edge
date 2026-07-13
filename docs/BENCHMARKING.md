@@ -10,7 +10,7 @@ llama-bench.exe -m model.gguf --moe-paging explicit --moe-cache-mib 1536 --moe-i
 
 Warm example removes `--no-warmup` and uses multiple repetitions. Paging stats are reset after the warmup so reported counters describe measured repetitions.
 
-`giantllm-iobench` measures file creation/write, sequential read, deterministic random-read IOPS, and p50/p95 read latency. Its current mode is buffered; filesystem and OS cache may dominate small tests. Use a file size larger than available RAM for device-oriented measurements and do not compare results from different sizes as if they were equivalent.
+`sparkmoe-iobench` measures file creation/write, sequential read, deterministic random-read IOPS, and p50/p95 read latency. Its current mode is buffered; filesystem and OS cache may dominate small tests. Use a file size larger than available RAM for device-oriented measurements and do not compare results from different sizes as if they were equivalent.
 
 For MTP, run the same fixed prompt, context, seed, sampling configuration, and output length twice: once without speculative decoding and once with `--spec-type draft-mtp --spec-draft-n-max 3`. Record end-to-end tokens/second, generated and accepted draft tokens, acceptance rate, peak memory, and paging bytes. More accepted tokens do not guarantee a speedup if draft overhead or SSD reads dominate.
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-# Required Notice: Copyright (c) 2026 GiantLLM contributors.
+# Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 [CmdletBinding()]
 param(
@@ -23,7 +23,7 @@ if ($env:OS -eq 'Windows_NT') {
 }
 
 $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if (-not $npm) { throw 'Node.js 22 and npm are required to build the GiantLLM chat UI' }
+if (-not $npm) { throw 'Node.js 22 and npm are required to build the SparkMoE chat UI' }
 $npmPath = $npm.Source
 Push-Location (Join-Path $repo 'tools/ui')
 try {
@@ -52,7 +52,7 @@ if ($Variant -eq 'generic') {
 if (Get-Command ninja -ErrorAction SilentlyContinue) { $cmakeArgs += @('-G', 'Ninja') }
 & cmake @cmakeArgs
 if ($LASTEXITCODE) { throw "CMake configure failed with exit code $LASTEXITCODE" }
-& cmake --build $cmakeBuildRoot --config Release --target GiantLLM llama-cli llama-server llama-bench giantllm-iobench test-moe-paging --parallel
+& cmake --build $cmakeBuildRoot --config Release --target SparkMoE llama-cli llama-server llama-bench sparkmoe-iobench test-moe-paging --parallel
 if ($LASTEXITCODE) { throw "Build failed with exit code $LASTEXITCODE" }
 if ($RunTests) {
     & ctest --test-dir $cmakeBuildRoot -C Release --output-on-failure -R moe-paging

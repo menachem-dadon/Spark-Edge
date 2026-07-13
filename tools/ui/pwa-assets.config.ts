@@ -3,20 +3,12 @@ import {
 	defineConfig,
 	minimal2023Preset
 } from '@vite-pwa/assets-generator/config';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
 	THEME_COLORS,
 	PWA_GENERATOR_DEVICES,
-	PWA_ASSET_GENERATOR,
-	FAVICON_COLORS
+	PWA_ASSET_GENERATOR
 } from './src/lib/constants/pwa';
 import { SplashOrientation } from './src/lib/enums/splash.enums';
-import { writeThemeFavicons } from './scripts/favicon-colorize';
-
-writeThemeFavicons(FAVICON_COLORS.LIGHT, FAVICON_COLORS.DARK, {
-	padding: PWA_ASSET_GENERATOR.FAVICON_PADDING
-});
 
 export default defineConfig({
 	headLinkOptions: {
@@ -41,11 +33,6 @@ export default defineConfig({
 				background: THEME_COLORS.BACKGROUND_DARK,
 				fit: PWA_ASSET_GENERATOR.FIT_MODE
 			},
-			darkImageResolver: async (imageName: string) => {
-				if (imageName.endsWith('favicon.svg')) {
-					return readFileSync(resolve('static/favicon-dark.svg'));
-				}
-			},
 			linkMediaOptions: {
 				log: true,
 				addMediaScreen: PWA_ASSET_GENERATOR.ADD_MEDIA_SCREEN,
@@ -64,5 +51,5 @@ export default defineConfig({
 		},
 		PWA_GENERATOR_DEVICES
 	),
-	images: ['static/favicon.svg']
+	images: ['static/SparkMoE.png']
 });

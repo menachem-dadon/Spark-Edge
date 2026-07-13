@@ -17,23 +17,24 @@ Pin requests can be registered before an expert is resident. When that expert is
 
 ## Server management endpoints
 
-- `GET /giantllm/v1/status`
-- `GET /giantllm/v1/paging`
-- `POST /giantllm/v1/paging/reset-stats`
-- `GET /giantllm/v1/config`
+- `GET /sparkmoe/v1/status`
+- `GET /sparkmoe/v1/paging`
+- `POST /sparkmoe/v1/paging/reset-stats`
+- `GET /sparkmoe/v1/config`
 
 These routes use the server's normal API-key middleware. Health and model-list routes retain upstream public-route behavior. Paging values come from the active llama context; when explicit paging is off, `enabled` is false and counters are zero.
 
 The normal OpenAI-compatible `/v1/chat/completions` and `/v1/responses` endpoints are unchanged.
 
-`/giantllm/v1/config` also reports the effective total and per-slot context size, training context, logical and physical batch sizes, KV cache types, parallel slots, context-shift state, and active MTP draft parameters.
+`/sparkmoe/v1/config` also reports the effective total and per-slot context size, training context, logical and physical batch sizes, KV cache types, parallel slots, context-shift state, and active MTP draft parameters.
 
 ## Local manager API
 
 The control center exposes a loopback-only API on `127.0.0.1:18080`:
 
 - `GET /api/status`, `/api/config`, `/api/recommendation`, `/api/logs`
+- `GET /api/models?directory=...`
 - `GET /api/paging`, `/api/server-config`, `/api/diagnostics`
-- `POST /api/start`, `/api/stop`, `/api/restart`, `/api/paging/reset`
+- `POST /api/browse-model-directory`, `/api/start`, `/api/stop`, `/api/restart`, `/api/paging/reset`
 
-Startup and restart accept the fields displayed by the control center: model, port, paging budget/slots/workers, context, batch and microbatch, parallel slots, prompt-cache RAM, checkpoints, KV cache types, context shift, and MTP settings. Requests with a browser `Origin` header are accepted only from the manager or configured loopback chat origin.
+Startup and restart accept the complete manager configuration: model directory, model, port, paging budget/slots/workers, context, batch and microbatch, parallel slots, prompt-cache RAM, checkpoints, KV cache types, context shift, and MTP settings. The directory browser uses the native Windows folder picker; model discovery recursively returns up to 2,000 GGUF files. Requests with a browser `Origin` header are accepted only from the manager or configured loopback chat origin.

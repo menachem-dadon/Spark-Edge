@@ -1,24 +1,24 @@
-# מפת הפרויקט GiantLLM
+# מפת הפרויקט SparkMoE
 
-המסמך הזה מיועד גם למי שאינו מכיר C או C++ ואינו מכיר את מבנה llama.cpp. אין צורך להבין את אלפי הקבצים כדי לתחזק את GiantLLM.
+המסמך הזה מיועד גם למי שאינו מכיר C או C++ ואינו מכיר את מבנה llama.cpp. אין צורך להבין את אלפי הקבצים כדי לתחזק את SparkMoE.
 
 ## תשובה קצרה: מהו הפרויקט?
 
-GiantLLM הוא fork מלא של llama.cpp ולא תוכנה קטנה שמותקנת לידו.
+SparkMoE הוא fork מלא של llama.cpp ולא תוכנה קטנה שמותקנת לידו.
 
 כלומר:
 
 - רוב המאגר הוא קוד המקור המקורי של llama.cpp.
-- GiantLLM מוסיף מנגנון טעינת מומחי MoE לפי דרישה מהכונן, ממשק ניהול, הגדרות MTP והקשר, כלי בדיקה, אריזה ומתקין.
+- SparkMoE מוסיף מנגנון טעינת מומחי MoE לפי דרישה מהכונן, ממשק ניהול, הגדרות MTP והקשר, כלי בדיקה, אריזה ומתקין.
 - `llama-server`, ממשק הצ'אט, תמיכת GGUF, ארכיטקטורות המודלים, sampling, GPU backends וכלי ההמרה מגיעים בעיקר מ-llama.cpp.
-- GiantLLM משנה מספר נקודות חיבור בתוך llama.cpp כדי שהמנגנון החדש ישתלב בטעינת המודל, בבניית גרף החישוב ובשרת.
+- SparkMoE משנה מספר נקודות חיבור בתוך llama.cpp כדי שהמנגנון החדש ישתלב בטעינת המודל, בבניית גרף החישוב ובשרת.
 - הפרויקט מכיל את תכונות llama.cpp שהיו קיימות בגרסת upstream שעליה הוא מבוסס. הוא אינו מקבל אוטומטית תכונות שנוספו ל-upstream לאחר אותה נקודה.
 
 ## התמונה הגדולה
 
 ```mermaid
 flowchart LR
-    A["GiantLLM.exe<br/>ממשק הניהול"] --> B["llama-server.exe<br/>שרת ההסקה של llama.cpp"]
+    A["SparkMoE.exe<br/>ממשק הניהול"] --> B["llama-server.exe<br/>שרת ההסקה של llama.cpp"]
     C["ממשק הצ'אט בדפדפן"] --> B
     A --> D["הגדרות MTP, הקשר ו-MoE"]
     D --> B
@@ -30,8 +30,8 @@ flowchart LR
 
 בעת הפעלה רגילה:
 
-1. המשתמש מפעיל `GiantLLM.exe`.
-2. מנהל GiantLLM מציג dashboard מקומי ב-`127.0.0.1:18080`.
+1. המשתמש מפעיל `SparkMoE.exe`.
+2. מנהל SparkMoE מציג dashboard מקומי ב-`127.0.0.1:18080`.
 3. המשתמש בוחר מודל והגדרות.
 4. המנהל מפעיל את `llama-server.exe` שנמצא לידו.
 5. `llama-server` טוען את המודל באמצעות ליבת llama.cpp.
@@ -44,11 +44,11 @@ flowchart LR
 | --- | --- | --- | --- |
 | ליבת llama.cpp | טעינת GGUF, מודלים, CPU/GPU, sampling, שרת, צ'אט וכלי פיתוח | upstream llama.cpp | MIT |
 | נקודות החיבור | פרמטרים וקריאות שמחברות את MoE paging לתוך model, context, graph ו-server | שינויים בקבצי upstream | MIT, כדי לא לערבב רישיונות בתוך אותו קובץ |
-| רכיבי GiantLLM העצמאיים | אלגוריתם paging, מנהל, dashboard, כלי I/O, presets, packaging ומסמכים | הקוד המקורי של הפרויקט | PolyForm Noncommercial 1.0.0 |
+| רכיבי SparkMoE העצמאיים | אלגוריתם paging, מנהל, dashboard, כלי I/O, presets, packaging ומסמכים | הקוד המקורי של הפרויקט | PolyForm Noncommercial 1.0.0 |
 
-המיפוי המשפטי המחייב נמצא ב-`LICENSING.md`. קובץ `LICENSE` נשאר רישיון MIT של llama.cpp. קובץ `LICENSE-GIANTLLM-NONCOMMERCIAL.md` חל רק על הרכיבים שמפורטים בו וב-`LICENSING.md`.
+המיפוי המשפטי המחייב נמצא ב-`LICENSING.md`. קובץ `LICENSE` נשאר רישיון MIT של llama.cpp. קובץ `LICENSE-SPARKMOE-NONCOMMERCIAL.md` חל רק על הרכיבים שמפורטים בו וב-`LICENSING.md`.
 
-## איפה נמצאים החלקים הייחודיים של GiantLLM?
+## איפה נמצאים החלקים הייחודיים של SparkMoE?
 
 ### 1. מנגנון MoE paging
 
@@ -74,19 +74,19 @@ src/moe-paging/
 ### 2. מנהל התוכנה וה-dashboard
 
 ```text
-tools/giantllm/
+tools/sparkmoe/
 ```
 
 | קובץ | תפקיד |
 | --- | --- |
-| `giantllm.cpp` | יישום `GiantLLM.exe`: בדיקת הגדרות, הפעלה ועצירה של השרת, סטטוס, לוגים, המלצת חומרה ו-API מקומי. |
+| `sparkmoe.cpp` | יישום `SparkMoE.exe`: בדיקת הגדרות, הפעלה ועצירה של השרת, סטטוס, לוגים, המלצת חומרה ו-API מקומי. |
 | `dashboard.html` | ממשק השליטה שרואים בדפדפן. כולל MTP, אורך הקשר, זיכרון, MoE paging, מדדים ואבחון. |
-| `CMakeLists.txt` | הוראות הבנייה של `GiantLLM.exe`, העתקת dashboard ונכסי המיתוג. |
-| `giantllm.rc.in` | קישור `assets/branding/giantllm.ico` לתוך קובץ ה-EXE ב-Windows. |
+| `CMakeLists.txt` | הוראות הבנייה של `SparkMoE.exe`, העתקת dashboard ונכסי המיתוג. |
+| `sparkmoe.rc.in` | קישור `assets/branding/SparkMoE.ico` לתוך קובץ ה-EXE ב-Windows. |
 
 המנהל אינו מבצע inference בעצמו. הוא מפעיל את `llama-server` ומנהל אותו.
 
-### 3. הגדרות GiantLLM בתוך ממשק הצ'אט של llama.cpp
+### 3. הגדרות SparkMoE בתוך ממשק הצ'אט של llama.cpp
 
 המסך החדש נמצא כאן:
 
@@ -103,15 +103,15 @@ tools/ui/src/lib/constants/routes.ts
 tools/ui/src/lib/constants/settings-registry.ts
 ```
 
-ה-tab מדבר עם מנהל GiantLLM ב-`127.0.0.1:18080`. יתר ממשק הצ'אט הוא ממשק llama.cpp upstream.
+ה-tab מדבר עם מנהל SparkMoE ב-`127.0.0.1:18080`. יתר ממשק הצ'אט הוא ממשק llama.cpp upstream.
 
 ### 4. כלי בדיקת ביצועי הכונן
 
 ```text
-tools/giantllm-iobench/
+tools/sparkmoe-iobench/
 ```
 
-`giantllm-iobench.exe` מודד קריאה רציפה ואקראית בקובץ בדיקה. הוא משמש לאבחון הכונן ואינו מבטיח מהירות יצירת tokens של מודל.
+`sparkmoe-iobench.exe` מודד קריאה רציפה ואקראית בקובץ בדיקה. הוא משמש לאבחון הכונן ואינו מבטיח מהירות יצירת tokens של מודל.
 
 ### 5. הגדרות מוכנות
 
@@ -130,25 +130,25 @@ scripts/build-windows.ps1
 scripts/build-linux.sh
 scripts/package-windows.ps1
 scripts/build-installer.ps1
-packaging/windows/GiantLLM.iss
+packaging/windows/SparkMoE.iss
 ```
 
 | שלב | פלט |
 | --- | --- |
-| `build-windows.ps1` | יוצר את GiantLLM, llama-server, llama-cli, llama-bench, כלי I/O והבדיקות. |
+| `build-windows.ps1` | יוצר את SparkMoE, llama-server, llama-cli, llama-bench, כלי I/O והבדיקות. |
 | `package-windows.ps1` | יוצר תיקייה portable, DLLs, מסמכים, נכסי מיתוג ו-ZIP. |
 | `build-installer.ps1` | מפעיל Inno Setup ויוצר מתקין `*-setup.exe`. |
-| `GiantLLM.iss` | מגדיר התקנה קבועה, Start menu, קיצור דרך, PATH, uninstall ואייקון. |
+| `SparkMoE.iss` | מגדיר התקנה קבועה, Start menu, קיצור דרך, PATH, uninstall ואייקון. |
 
 ### 7. מיתוג
 
 ```text
-assets/branding/giantllm.svg
-assets/branding/giantllm.ico
+assets/branding/SparkMoE.png
+assets/branding/SparkMoE.ico
 ```
 
 - ה-SVG מוצג בכותרת ה-dashboard ומשמש favicon.
-- ה-ICO מוטמע ב-`GiantLLM.exe` ומשמש גם את מתקין Inno Setup, קיצורי הדרך ו-Add or Remove Programs.
+- ה-ICO מוטמע ב-`SparkMoE.exe` ומשמש גם את מתקין Inno Setup, קיצורי הדרך ו-Add or Remove Programs.
 - אפשר להחליף את שני הקבצים בלי לשנות קוד. יש לשמור על השמות המדויקים ולבנות מחדש.
 - הוראות גדלים ופורמטים נמצאות ב-`assets/branding/README.md`.
 
@@ -160,7 +160,7 @@ tests/test-moe-paging.cpp
 
 הבדיקה בודקת זיהוי tensor names, מיפוי מומחים, טעינה מדויקת, cache behavior ופריסות נתמכות. יתר תיקיית `tests/` מגיעה מ-llama.cpp.
 
-## איפה GiantLLM נוגע בתוך llama.cpp?
+## איפה SparkMoE נוגע בתוך llama.cpp?
 
 אלה קבצי upstream ששונו כדי לחבר את המנגנון החדש. הם אינם האלגוריתם עצמו:
 
@@ -172,7 +172,7 @@ tests/test-moe-paging.cpp
 | context | `src/llama-context.*`, `src/llama-cparams.h` | יצירת מנהל paging לכל context, כולל context נפרד של MTP. |
 | graph | `src/llama-graph.*` | החלפת expert IDs ב-cache slots לפני פעולות MoE. |
 | ארכיטקטורות | `src/models/qwen35moe.cpp` וקוד כללי ב-model loader | העברת פרטי tensor layout. התמיכה החדשה הכללית אינה מוגבלת לשם Qwen בלבד. |
-| server | `tools/server/server*.{cpp,h}` | endpoints של סטטיסטיקה והגדרות GiantLLM. |
+| server | `tools/server/server*.{cpp,h}` | endpoints של סטטיסטיקה והגדרות SparkMoE. |
 | benchmark | `tools/llama-bench/llama-bench.cpp` | flags ומדדי paging ב-llama-bench. |
 | build | `src/CMakeLists.txt`, `tools/CMakeLists.txt`, `tests/CMakeLists.txt` | הכנסת הקבצים והיעדים החדשים לבנייה. |
 
@@ -199,7 +199,7 @@ tests/test-moe-paging.cpp
 4. `docs/MOE_PAGING.md`: איך מנגנון המומחים עובד במילים פשוטות.
 5. `docs/SUPPORTED_MODELS.md`: מה נתמך ומה תלוי ב-layout של GGUF.
 6. `LICENSING.md`: מה מותר מסחרית ומה לא.
-7. רק אם נדרש פיתוח: `tools/giantllm/` או `src/moe-paging/`.
+7. רק אם נדרש פיתוח: `tools/sparkmoe/` או `src/moe-paging/`.
 
 ## האם כל תכונות llama.cpp קיימות כאן?
 
@@ -233,11 +233,11 @@ tools/ui/dist/
 
 ## מה נמצא בחבילת Windows
 
-- `GiantLLM.exe`: מנהל התוכנה.
-- `llama-server.exe`: שרת inference של llama.cpp עם תוספות GiantLLM.
+- `SparkMoE.exe`: מנהל התוכנה.
+- `llama-server.exe`: שרת inference של llama.cpp עם תוספות SparkMoE.
 - `llama-cli.exe`: שימוש בשורת פקודה.
 - `llama-bench.exe`: benchmark למודל.
-- `giantllm-iobench.exe`: בדיקת כונן.
+- `sparkmoe-iobench.exe`: בדיקת כונן.
 - DLLs של MinGW ו-OpenMP.
 - `dashboard.html` ונכסי המיתוג.
 - presets, מסמכי שימוש, רישיונות ו-third-party notices.
@@ -246,7 +246,7 @@ tools/ui/dist/
 
 לפני העלאה ציבורית:
 
-1. לעדכן את שם בעל הזכויות ב-`LICENSE-GIANTLLM-NONCOMMERCIAL.md` ובכותרות `Required Notice`.
+1. לעדכן את שם בעל הזכויות ב-`LICENSE-SPARKMOE-NONCOMMERCIAL.md` ובכותרות `Required Notice`.
 2. להחליף את אייקוני ה-placeholder.
 3. להחליט אם לפרסם על בסיס ה-commit הנוכחי או לבצע merge מבוקר של 11 commits מ-upstream.
 4. להריץ build, tests, packaging ומתקין.

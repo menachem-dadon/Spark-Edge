@@ -2,7 +2,7 @@
 
 https://polyformproject.org/licenses/noncommercial/1.0.0
 
-Required Notice: Copyright (c) 2026 GiantLLM contributors.
+Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 ## Acceptance
 

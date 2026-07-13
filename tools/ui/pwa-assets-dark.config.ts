@@ -1,10 +1,5 @@
 import { defineConfig } from '@vite-pwa/assets-generator/config';
-import { FAVICON_COLORS, PWA_ASSET_GENERATOR } from './src/lib/constants/pwa';
-import { writeThemeFavicons } from './scripts/favicon-colorize';
-
-writeThemeFavicons(FAVICON_COLORS.LIGHT, FAVICON_COLORS.DARK, {
-	padding: PWA_ASSET_GENERATOR.FAVICON_PADDING
-});
+import { PWA_ASSET_GENERATOR } from './src/lib/constants/pwa';
 
 export default defineConfig({
 	headLinkOptions: {
@@ -23,5 +18,5 @@ export default defineConfig({
 			sizes: []
 		}
 	},
-	images: ['static/favicon-dark.svg']
+	images: ['static/SparkMoE.png']
 });
