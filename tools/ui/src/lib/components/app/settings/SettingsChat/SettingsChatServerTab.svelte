@@ -23,6 +23,8 @@
 		cache: number;
 		slots: number;
 		threads: number;
+		inference_threads: number;
+		cpu_repack: 'auto' | 'on' | 'off';
 		port: number;
 		ctx_size: number;
 		batch_size: number;
@@ -53,14 +55,16 @@
 	const defaults: ServerConfig = {
 		model_directory: '',
 		model: '',
-		mode: 'os',
+		mode: 'auto',
 		cache: 2048,
 		slots: 0,
 		threads: 4,
+		inference_threads: 0,
+		cpu_repack: 'auto',
 		port: 8080,
-		ctx_size: 0,
-		batch_size: 2048,
-		ubatch_size: 512,
+		ctx_size: 8192,
+		batch_size: 1024,
+		ubatch_size: 128,
 		parallel: 1,
 		ctx_checkpoints: 4,
 		cache_ram_mib: 0,
@@ -300,6 +304,8 @@
 			The defaults below are appropriate for most users. Change them only when benchmarking a known model.
 		</p>
 		<div class="mt-4 grid gap-4 sm:grid-cols-2">
+			<label class="grid gap-2 text-sm"><span>Inference CPU threads</span><input type="number" min="0" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.inference_threads} /><span class="text-xs text-muted-foreground">0 lets llama.cpp choose for this CPU.</span></label>
+			<label class="grid gap-2 text-sm"><span>CPU weight repacking</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cpu_repack}><option value="auto">Automatic - platform default</option><option value="on">Enabled</option><option value="off">Disabled - compatibility</option></select><span class="text-xs text-muted-foreground">Disable only when diagnosing a CPU kernel or quantization issue.</span></label>
 			<label class="grid gap-2 text-sm"><span>Parallel chat slots</span><input type="number" min="1" max="32" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.parallel} /></label>
 			<label class="grid gap-2 text-sm"><span>Logical batch size</span><input type="number" min="1" max="16384" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.batch_size} /></label>
 			<label class="grid gap-2 text-sm"><span>Physical microbatch</span><input type="number" min="1" max="16384" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.ubatch_size} /></label>

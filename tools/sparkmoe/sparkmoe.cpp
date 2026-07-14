@@ -50,10 +50,12 @@ bool model_path_is_valid(const std::string & path);
 struct server_config {
     std::string model_directory;
     std::string model;
-    std::string mode = "os";
+    std::string mode = "auto";
     int cache = 2048;
     int slots = 0;
     int threads = 4;
+    int inference_threads = 0;
+    std::string cpu_repack = "auto";
     int port = 8080;
     int ctx_size = 0;
     int batch_size = 2048;
@@ -95,6 +97,8 @@ json config_json(const server_config & config, bool include_model = true) {
         {"cache", config.cache},
         {"slots", config.slots},
         {"threads", config.threads},
+        {"inference_threads", config.inference_threads},
+        {"cpu_repack", config.cpu_repack},
         {"port", config.port},
         {"ctx_size", config.ctx_size},
         {"batch_size", config.batch_size},
@@ -126,6 +130,8 @@ server_config config_from_json(const json & input, const server_config & base) {
     config.cache = input.value("cache", config.cache);
     config.slots = input.value("slots", config.slots);
     config.threads = input.value("threads", config.threads);
+    config.inference_threads = input.value("inference_threads", config.inference_threads);
+    config.cpu_repack = input.value("cpu_repack", config.cpu_repack);
     config.port = input.value("port", config.port);
     config.ctx_size = input.value("ctx_size", config.ctx_size);
     config.batch_size = input.value("batch_size", config.batch_size);
@@ -155,7 +161,11 @@ void validate_config(const server_config & config) {
     if (config.mode != "explicit" && config.mode != "auto" && config.mode != "os" && config.mode != "off") {
         throw std::runtime_error("invalid paging mode");
     }
+    if (config.cpu_repack != "auto" && config.cpu_repack != "on" && config.cpu_repack != "off") {
+        throw std::runtime_error("invalid CPU repack mode");
+    }
     if (config.cache < 0 || config.slots < 0 || config.threads < 1 || config.threads > 128 ||
+            config.inference_threads < 0 || config.inference_threads > 128 ||
             config.port < 1024 || config.port > 65535) {
         throw std::runtime_error("invalid paging or network configuration");
     }
@@ -491,6 +501,17 @@ void start_process(process_state & state, const json & input) {
     if (config.slots > 0) {
         args.insert(args.end(), {"--moe-slots", std::to_string(config.slots)});
     }
+    if (config.inference_threads > 0) {
+        args.insert(args.end(), {
+            "--threads", std::to_string(config.inference_threads),
+            "--threads-batch", std::to_string(config.inference_threads),
+        });
+    }
+    if (config.cpu_repack == "on") {
+        args.push_back("--repack");
+    } else if (config.cpu_repack == "off") {
+        args.push_back("--no-repack");
+    }
     if (config.mtp_enabled) {
         args.insert(args.end(), {
             "--spec-type", "draft-mtp",
@@ -696,8 +717,10 @@ json recommendation_json() {
     const long online = sysconf(_SC_NPROCESSORS_ONLN);
     cpu_threads = online > 0 ? static_cast<uint32_t>(online) : 1;
 #endif
-    const uint64_t cache_mib = total_mib <= 16384 ? 1536 :
+    const uint64_t cache_mib = total_mib <= 8192 ? 1024 : total_mib <= 16384 ? 1536 :
         total_mib <= 32768 ? 4096 : std::min<uint64_t>(8192, total_mib / 8);
+    const uint64_t ctx_size = total_mib <= 8192 ? 4096 : total_mib <= 16384 ? 8192 :
+        total_mib <= 32768 ? 16384 : 32768;
     const uint64_t used_mib = total_mib > available_mib ? total_mib - available_mib : 0;
     return {
         {"total_ram_mib", total_mib},
@@ -706,8 +729,10 @@ json recommendation_json() {
         {"cpu_threads", cpu_threads},
         {"cache_mib", cache_mib},
         {"io_threads", std::max<uint32_t>(1, std::min<uint32_t>(4, cpu_threads / 4))},
+        {"inference_threads", 0},
+        {"cpu_repack", "auto"},
         {"parallel", 1},
-        {"ctx_size", total_mib <= 16384 ? 8192 : total_mib <= 32768 ? 16384 : 32768},
+        {"ctx_size", ctx_size},
         {"batch_size", 1024},
         {"ubatch_size", 128},
         {"cache_ram_mib", 0},
@@ -739,6 +764,16 @@ void json_response(httplib::Response & response, const json & value, int status 
 
 int main() {
     process_state state;
+    const json recommendation = recommendation_json();
+    state.config.cache = recommendation["cache_mib"].get<int>();
+    state.config.threads = recommendation["io_threads"].get<int>();
+    state.config.inference_threads = recommendation["inference_threads"].get<int>();
+    state.config.cpu_repack = recommendation["cpu_repack"].get<std::string>();
+    state.config.ctx_size = recommendation["ctx_size"].get<int>();
+    state.config.batch_size = recommendation["batch_size"].get<int>();
+    state.config.ubatch_size = recommendation["ubatch_size"].get<int>();
+    state.config.parallel = recommendation["parallel"].get<int>();
+    state.config.cache_ram_mib = recommendation["cache_ram_mib"].get<int>();
     state.log_path = server_log_path();
     const std::string dashboard = load_dashboard();
     const std::string brand_png = load_brand_asset("SparkMoE.png");

@@ -4,7 +4,7 @@
 
 SparkMoE is an independent, CPU-first fork of `llama.cpp` that can keep standard routed MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
 
-This is **v0.2.0-alpha**. Qwen3.5/Qwen3.6 MoE paging has completed deterministic tests and a short real-model streaming regression. Gemma 4 26B-A4B and other models using standard three-dimensional routed expert tensors are now accepted through layout-based validation. The combined Gemma/MTP/explicit-paging real-model matrix is not complete, so this remains an alpha rather than a performance or memory-fit guarantee.
+This is **v0.2.0-alpha**. Qwen3.6 35B-A3B and Gemma 4 26B-A4B have completed short real-model paging and inference regressions on Windows, and the deterministic paging suite covers the cache and file mapping layer. Other models using standard three-dimensional routed expert tensors are accepted through layout-based validation. This remains an alpha rather than a performance or memory-fit guarantee.
 
 ## What it does
 
@@ -14,6 +14,7 @@ This is **v0.2.0-alpha**. Qwen3.5/Qwen3.6 MoE paging has completed deterministic
 - Uses bounded per-layer LRU slot pools and asynchronous buffered file I/O.
 - Exposes real cache/I/O statistics through C, `llama-server`, and `llama-bench`.
 - Supports built-in MTP draft contexts together with bounded expert paging.
+- Uses hardware-aware safe defaults and an automatic loading mode that falls back to standard mmap for dense or incompatible models.
 - Keeps model selection, loading mode, expert paging, RAM status, and diagnostics in the control center; context size, batching, KV precision, context shift, and MTP live in the chat settings page.
 - Includes a local-only English/Hebrew control center, a folder-backed GGUF model picker, real system RAM usage, live server state, log tail, and SSD I/O benchmark.
 
@@ -39,10 +40,10 @@ Portable Windows package:
 1. Extract the ZIP to a writable folder.
 2. Run `SparkMoE.exe`.
 3. Choose a models folder, then select a `.gguf` from the discovered model list.
-4. Keep **Standard** loading for dense models and any model that fits normally. Select **SparkMoE expert streaming** only for a compatible routed MoE model.
+4. Keep **Automatic** loading unless you are testing a specific mode. It uses expert streaming for a compatible routed MoE model and standard mmap for a dense or incompatible model.
 5. Start the model and open the chat UI. Context length, full-context behavior, and MTP are available under **Settings -> Context & MTP** and perform a controlled model restart.
 
-Dense and other non-MoE GGUF models use the normal llama.cpp path and are fully supported by the launcher. Explicit expert streaming is not applicable to them.
+Dense and other non-MoE GGUF models use the normal llama.cpp path and are fully supported by the launcher. Advanced loading settings expose CPU inference threads, expert slots, and an automatic/on/off CPU repack control without requiring ordinary users to change them.
 
 Build from source on Windows:
 

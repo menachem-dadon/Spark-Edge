@@ -1216,6 +1216,7 @@ struct common_init_result::impl {
 
 common_init_result::common_init_result(common_params & params, bool model_only) :
     pimpl(new impl{}) {
+    const bool moe_paging_auto = params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_AUTO;
     auto mparams = common_model_params_to_llama(params);
     auto cparams = common_context_params_to_llama(params);
 
@@ -1231,6 +1232,13 @@ common_init_result::common_init_result(common_params & params, bool model_only) 
     }
 
     llama_model * model = llama_model_load_from_file(params.model.path.c_str(), mparams);
+    if (model == NULL && moe_paging_auto && params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT) {
+        COM_WRN("%s", "MoE paging auto could not use explicit expert paging; retrying with standard mmap loading\n");
+        params.moe_paging.mode = LLAMA_MOE_PAGING_MODE_OS;
+        mparams = common_model_params_to_llama(params);
+        cparams = common_context_params_to_llama(params);
+        model = llama_model_load_from_file(params.model.path.c_str(), mparams);
+    }
     if (model == NULL) {
         return;
     }

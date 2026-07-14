@@ -6,9 +6,11 @@ The RAM bar shows current system memory use and available memory. It is not a mo
 
 For a split model, select the first conventional shard; upstream discovers the remaining shards. Keep all shards together and do not rename only one file.
 
-Use `os` mode first if explicit mode reports an incompatible expert layout. Qwen3.5/Qwen3.6 MoE and Gemma 4 26B-A4B use the standard routed layout. Start with the `16gb-safe.json` preset values. Reduce context or microbatch size before reducing the expert cache below the model's required active-expert minimum.
+Keep `auto` mode for the normal workflow. It attempts bounded expert streaming when the selected GGUF has a compatible routed MoE layout, and retries with standard mmap loading when the model is dense or incompatible. Qwen3.5/Qwen3.6 MoE and Gemma 4 26B-A4B use the standard routed layout. Reduce context or microbatch size before reducing the expert cache below the model's required active-expert minimum.
 
-Choose the model and loading method in the dashboard. Dense and non-MoE models should use Standard (`os`) loading. Explicit expert streaming is only for compatible routed MoE models.
+The launcher selects conservative context, microbatch, expert cache, and SSD worker defaults from the machine's RAM and CPU count. These are starting values, not a promise that a particular model fits. A user can still select Standard (`os`), explicit expert streaming, or fully resident loading.
+
+Advanced loading settings expose expert slots, inference CPU threads, and CPU weight repacking. Leave threads at `0` and repacking on `Automatic` unless benchmarking or diagnosing a specific model. `Disabled / compatibility` maps to `--no-repack` and is an escape hatch for a CPU kernel or quantization problem; it is not the normal performance setting.
 
 Context length, full-context behavior, and MTP are changed under **Chat settings -> Context & MTP**. The common controls are shown directly; batching, KV precision, and other tuning fields stay in a collapsed advanced section. Applying them restarts the inference server and reloads the model. The chat page waits for the new server and reconnects automatically.
 

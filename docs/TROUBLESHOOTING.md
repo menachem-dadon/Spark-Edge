@@ -1,8 +1,18 @@
 # Troubleshooting
 
+## The server exits during the first prompt on Windows
+
+Current Windows AVX2 builds avoid passing 256-bit lookup vectors across the MinGW function boundary used by the Q4_0, IQ4_NL, and MXFP4 repack kernels. Older builds could load a model successfully and then exit with `0xC0000005` only when inference used more than one worker thread. This was a CPU stack-alignment failure, not an out-of-memory condition or a damaged GGUF.
+
+Install the current build first. If another CPU or quantization-specific failure remains, open Advanced loading settings and set CPU weight repacking to `Disabled / compatibility`, or pass `--no-repack`. Keep the model, context, and thread count unchanged when comparing logs so that the override is a useful diagnostic.
+
+## Automatic loading retries as standard mmap
+
+This is expected for a dense model or a routed layout that explicit expert streaming does not support. Automatic mode first uses the configured expert cache when possible and otherwise restarts model loading through normal mmap. Select explicit mode only when a hard failure is preferable to fallback during compatibility testing.
+
 ## Incompatible expert layout
 
-Explicit mode recognizes standard routed gate, up, down, and fused gate-up `.weight` tensors. If the model has another layout, loading stops before inference. Use `--moe-paging os` and report the exact architecture, GGUF metadata, and tensor layout before attempting support.
+Explicit mode recognizes standard routed gate, up, down, and fused gate-up `.weight` tensors. If the model has another layout, loading stops before inference. Use automatic mode for transparent standard mmap fallback, or `--moe-paging os` when standard loading must be forced. Report the exact architecture, GGUF metadata, and tensor layout before attempting support.
 
 ## MTP fails to initialize
 

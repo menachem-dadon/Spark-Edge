@@ -6,10 +6,10 @@ SparkMoE separates base llama.cpp model support from explicit SSD expert paging 
 
 | Model family | Base inference | Explicit expert paging | Built-in MTP | Current validation |
 | --- | --- | --- | --- | --- |
-| Qwen3.5/Qwen3.6 MoE | Upstream implementation | Supported | Supported when the GGUF contains MTP tensors | Deterministic paging suite plus a short Qwen3.6 35B-A3B streaming regression. Full parity matrix pending. |
-| Gemma 4 26B-A4B | Upstream implementation | Supported through standard routed tensor layout detection | Supported when a compatible MTP head is present | Build and structural tests. Resident-versus-paged real-model matrix pending. |
+| Qwen3.5/Qwen3.6 MoE | Upstream implementation | Supported | Supported when the GGUF contains MTP tensors | Deterministic paging suite plus Qwen3.6 35B-A3B IQ4_NL load, prompt, generation, and process-survival regression. Full parity matrix pending. |
+| Gemma 4 26B-A4B | Upstream implementation | Supported through standard routed tensor layout detection | Supported when a compatible MTP head is present | Gemma 4 26B-A4B Q4_0 load, prompt, generation, and process-survival regression with explicit paging, CPU repack, and multiple threads. Resident-versus-paged logit parity pending. |
 | Other MoE models with standard `blk.N.ffn_*_exps.weight` tensors | Upstream-dependent | Accepted after strict load-time layout validation | Upstream-dependent | Experimental until a named model is added to validation evidence. |
-| Dense models | Upstream implementation | Not applicable | Upstream-dependent | Normal llama.cpp behavior. |
+| Dense models | Upstream implementation | Not applicable | Upstream-dependent | Normal llama.cpp behavior, including verified automatic fallback from expert streaming to standard mmap. |
 
 ## What standard routed layout means
 
