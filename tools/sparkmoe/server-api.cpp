@@ -2,6 +2,8 @@
 // SparkMoE integration extracted from MIT-licensed upstream patches.
 
 #include "server-api.h"
+#include "../server/server-context.h"
+#include "../server/server-common.h"
 #include <algorithm>
 
 using json = common_json;
@@ -71,4 +73,42 @@ json sparkmoe_config_json(const common_params & params, const llama_context * co
             {"mtp_min_tokens", params.speculative.draft.n_min},
             {"mtp_p_min", params.speculative.draft.p_min},
         };
+}
+
+
+void server_routes::init_sparkmoe_routes(std::function<server_http_res_ptr()> make_response) {
+    this->get_sparkmoe_status = [this, make_response](const server_http_req &) {
+        auto res = make_response();
+        res->data = safe_json_to_str({
+            {"status", "ok"},
+            {"paging", {
+                {"enabled", params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT},
+                {"mode", sparkmoe_paging_mode_name(params.moe_paging.mode)},
+            }},
+        });
+        return res;
+    };
+
+    this->get_sparkmoe_paging = [this, make_response](const server_http_req &) {
+        auto res = make_response();
+        res->data = safe_json_to_str(sparkmoe_paging_stats_json(ctx_server_api.get_llama_context()));
+        return res;
+    };
+
+    this->post_sparkmoe_reset_stats = [this, make_response](const server_http_req &) {
+        auto res = make_response();
+        llama_context_moe_paging_reset_stats(ctx_server_api.get_llama_context());
+        res->data = safe_json_to_str({
+            {"ok", true},
+            {"paging", sparkmoe_paging_stats_json(ctx_server_api.get_llama_context())},
+        });
+        return res;
+    };
+
+    this->get_sparkmoe_config = [this, make_response](const server_http_req &) {
+        auto res = make_response();
+        res->data = safe_json_to_str(sparkmoe_config_json(params, ctx_server_api.get_llama_context(), meta->slot_n_ctx));
+        return res;
+    };
+
 }

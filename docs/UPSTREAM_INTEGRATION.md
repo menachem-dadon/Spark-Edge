@@ -62,7 +62,7 @@ chat UI, manager, MTP and context settings.
 | Checkpoint | Work | Acceptance before proceeding | Status |
 | --- | --- | --- | --- |
 | R1 | Finish the frozen v0.3.0 refresh; restore build, model/graph equivalence and existing UI/server behavior | CPU build, paging unit tests, finite full-logit fixture parity, dense/MoE smoke, UI check/build | Passed on Windows |
-| R2 | Finish owned integration modules, manifest, safe updater, drift checker, CI and rollback docs | Clean candidate worktree, integration checks, failure-path updater tests, build/regression gate | Pending |
+| R2 | Finish owned integration modules, manifest, safe updater, drift checker, CI and rollback docs | Clean candidate worktree, integration checks, failure-path updater tests, build/regression gate | Windows build/HTTP and 6 updater safety tests passed; hosted CI not run |
 | E1 | Aligned Windows/Linux direct reads, byte validation, buffered fallback; demand-priority worker scheduling | Buffered/direct byte and logits parity, Unicode/shards/tail/error checks; paired local I/O observations | Pending |
 | E2 | Hybrid global budget over per-layer pools; runtime resize, capacity/eviction telemetry, capability registry | Preserve pins and partial layers; resize only at quiescent boundaries; budget/error and full-logit parity | Pending |
 | E3 | Per-expert readiness and compute/I/O overlap in the same cache; temporal prefetch behind an option | Demand always wins over queued speculation; no early weight consumption; overlap/prefetch parity and paired A/B | Pending |
@@ -107,3 +107,29 @@ paths, private unit-test linkage and benchmark paging parameter initialization.
 The local SparkMoE tag `v0.3.0` names a different commit from upstream's tag of
 the same name. Always use the full upstream SHA or a private fetched ref; never
 infer the upstream base from an unqualified local release tag.
+
+### R2 integration boundary
+
+The executable inventory is `config/upstream-integration.json`. It records every
+patched upstream file, including branding/build portability, and nine hook groups:
+public API, CLI, model loading, context lifetime, graph routing, server API,
+build, desktop UI and benchmark. `scripts/sparkmoe-upstream.py check` detects
+missing symbols/files and unregistered upstream patches. `drift` compares the
+whole inventory against fetched upstream history.
+
+Integration implementations now live in `common/sparkmoe.*`,
+`src/moe-paging/moe-integration.*` and `tools/sparkmoe/server-api.*`. These remain
+MIT because they were extracted from MIT upstream patches. Core algorithms stay
+under their existing license. No BigMoeOnEdge source or runtime is imported.
+
+Within the upstream-derived `src/`, `common/`, `include/` and `tools/server/`
+files, the integration changed from 525 insertions/21 deletions in 19 files to
+203 insertions/16 deletions in 19 files, before engine enhancements. This measures
+the upstream patch surface, not total project code. Most remaining lines are
+public structures, original-ID preservation for scales/LoRA, and lifecycle hooks.
+The Qwen3.5-specific tensor-loader patch was removed in favor of the common hook.
+
+Sensitive future updates include routed tensor layouts, graph scheduling and
+MUL_MAT_ID, model/context ownership, public parameter structs, common argument
+normalization, server lifecycle and UI settings structure. Markers are an early
+warning, not a substitute for model equivalence tests or manual semantic review.

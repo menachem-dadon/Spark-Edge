@@ -1,5 +1,9 @@
 # מפת הפרויקט SparkMoE
 
+עדכון בסיס llama.cpp ותחזוקה בטוחה מתועדים ב־[UPDATING_LLAMA_CPP.md](UPDATING_LLAMA_CPP.md).
+רשימת נקודות החיבור והשלבים המעודכנים נמצאת ב־[UPSTREAM_INTEGRATION.md](UPSTREAM_INTEGRATION.md),
+והבדיקה האוטומטית שלהן משתמשת ב־`config/upstream-integration.json`.
+
 המסמך הזה מיועד גם למי שאינו מכיר C או C++ ואינו מכיר את מבנה llama.cpp. אין צורך להבין את אלפי הקבצים כדי לתחזק את SparkMoE.
 
 ## תשובה קצרה: מהו הפרויקט?

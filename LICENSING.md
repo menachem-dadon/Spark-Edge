@@ -23,6 +23,9 @@ The original SparkMoE components listed below are offered under the PolyForm Non
 - `tests/test-moe-paging.cpp`
 - `tests/test-moe-regression.cpp`
 - `scripts/test-sparkmoe-server.py`
+- `scripts/sparkmoe-upstream.py`
+- `tests/test-upstream-updater.py`
+- `config/upstream-integration.json`
 - `tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChatServerTab.svelte`
 - SparkMoE-specific documentation created in this fork, except text copied from upstream.
 

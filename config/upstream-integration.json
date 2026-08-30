@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "patched_upstream_files": [
+    ".gitignore",
+    "CMakeLists.txt",
+    "CONTRIBUTING.md",
+    "README.md",
+    "SECURITY.md",
+    "common/CMakeLists.txt",
+    "common/arg.cpp",
+    "common/common.cpp",
+    "common/common.h",
+    "ggml/src/CMakeLists.txt",
+    "ggml/src/ggml-cpu/arch/x86/repack.cpp",
+    "include/llama.h",
+    "src/CMakeLists.txt",
+    "src/llama-context.cpp",
+    "src/llama-context.h",
+    "src/llama-cparams.h",
+    "src/llama-graph.cpp",
+    "src/llama-graph.h",
+    "src/llama-model-loader.cpp",
+    "src/llama-model-loader.h",
+    "src/llama-model.cpp",
+    "src/llama-model.h",
+    "tests/CMakeLists.txt",
+    "tools/CMakeLists.txt",
+    "tools/llama-bench/llama-bench.cpp",
+    "tools/server/CMakeLists.txt",
+    "tools/server/server-context.cpp",
+    "tools/server/server-context.h",
+    "tools/server/server.cpp",
+    "tools/ui/.env.example",
+    "tools/ui/package-lock.json",
+    "tools/ui/package.json",
+    "tools/ui/pwa-assets-dark.config.ts",
+    "tools/ui/pwa-assets.config.ts",
+    "tools/ui/src/app.html",
+    "tools/ui/src/lib/components/app/misc/Logo.svelte",
+    "tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte",
+    "tools/ui/src/lib/components/app/settings/index.ts",
+    "tools/ui/src/lib/constants/app.constants.ts",
+    "tools/ui/src/lib/constants/pwa.constants.ts",
+    "tools/ui/src/lib/constants/settings.constants.ts",
+    "tools/ui/src/routes/search/+page.svelte",
+    "tools/ui/tests/e2e/pwa.e2e.ts"
+  ],
+  "points": [
+    {
+      "id": "public-api",
+      "files": {
+        "include/llama.h": [
+          "struct llama_moe_paging_params",
+          "llama_context_moe_paging_set_expert_pinned"
+        ]
+      }
+    },
+    {
+      "id": "cli",
+      "files": {
+        "common/arg.cpp": [
+          "sparkmoe_options()"
+        ],
+        "common/common.cpp": [
+          "sparkmoe_normalize_params(params)",
+          "mparams.moe_paging",
+          "cparams.moe_paging"
+        ],
+        "common/sparkmoe.cpp": [
+          "--moe-paging"
+        ]
+      }
+    },
+    {
+      "id": "model-loading",
+      "files": {
+        "src/llama-model-loader.cpp": [
+          "llama_moe::create_paged_tensor"
+        ],
+        "src/llama-model.cpp": [
+          "llama_moe::prepare_loader",
+          "llama_moe::finish_loader"
+        ],
+        "src/moe-paging/moe-integration.cpp": [
+          "model.moe_index"
+        ]
+      }
+    },
+    {
+      "id": "context-lifetime",
+      "files": {
+        "src/llama-context.cpp": [
+          "llama_moe::init_context",
+          "moe_paging.get()"
+        ],
+        "src/llama-context.h": [
+          "moe_paging"
+        ]
+      }
+    },
+    {
+      "id": "graph-routing",
+      "files": {
+        "src/llama-graph.cpp": [
+          "moe_paging->remap_ids",
+          "moe_paging->bind_pool",
+          "side_ids"
+        ],
+        "src/llama-graph.h": [
+          "moe_paging"
+        ]
+      }
+    },
+    {
+      "id": "server-api",
+      "files": {
+        "tools/server/server.cpp": [
+          "/sparkmoe/v1/config",
+          "/sparkmoe/v1/paging/reset-stats"
+        ],
+        "tools/server/server-context.cpp": [
+          "init_sparkmoe_routes("
+        ],
+        "tools/sparkmoe/server-api.cpp": [
+          "common_json"
+        ]
+      }
+    },
+    {
+      "id": "build",
+      "files": {
+        "src/CMakeLists.txt": [
+          "LLAMA_MOE_PAGING_SOURCES"
+        ],
+        "common/CMakeLists.txt": [
+          "sparkmoe.cpp"
+        ],
+        "tools/server/CMakeLists.txt": [
+          "../sparkmoe/server-api.cpp"
+        ],
+        "tests/CMakeLists.txt": [
+          "test-moe-regression.cpp"
+        ]
+      }
+    },
+    {
+      "id": "desktop-ui",
+      "files": {
+        "tools/ui/src/lib/constants/settings.constants.ts": [
+          "Context & MTP"
+        ],
+        "tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte": [
+          "SettingsChatServerTab"
+        ],
+        "tools/sparkmoe/dashboard.html": [
+          "SparkMoE Control Center"
+        ]
+      }
+    },
+    {
+      "id": "benchmark",
+      "files": {
+        "tools/llama-bench/llama-bench.cpp": [
+          "--moe-paging",
+          "params.moe_paging           = cmd_params_defaults.moe_paging"
+        ]
+      }
+    }
+  ]
+}

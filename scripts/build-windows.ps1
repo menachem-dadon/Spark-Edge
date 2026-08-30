@@ -11,6 +11,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $BuildRoot) { $BuildRoot = Join-Path $repo "build-windows-$Variant" }
+if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    $vsPath = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+    if (-not $vsPath) { throw 'Visual Studio C++ Build Tools are required' }
+    Import-Module (Join-Path $vsPath 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+    Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+}
 
 $cmakeRepo = $repo
 $cmakeBuildRoot = $BuildRoot
@@ -29,6 +36,8 @@ Push-Location (Join-Path $repo 'tools/ui')
 try {
     & $npmPath ci
     if ($LASTEXITCODE) { throw "npm ci failed with exit code $LASTEXITCODE" }
+    & $npmPath run check
+    if ($LASTEXITCODE) { throw "Chat UI check failed with exit code $LASTEXITCODE" }
     & $npmPath run build
     if ($LASTEXITCODE) { throw "Chat UI build failed with exit code $LASTEXITCODE" }
 } finally {
@@ -39,7 +48,7 @@ $cmakeArgs = @(
     '-S', $cmakeRepo, '-B', $cmakeBuildRoot,
     '-DCMAKE_BUILD_TYPE=Release',
     '-DGGML_NATIVE=OFF',
-    '-DLLAMA_CURL=OFF',
+    '-DLLAMA_BUILD_UI=OFF', '-DLLAMA_USE_PREBUILT_UI=OFF',
     '-DLLAMA_BUILD_SERVER=ON',
     '-DLLAMA_BUILD_TESTS=ON'
 )
@@ -52,9 +61,13 @@ if ($Variant -eq 'generic') {
 if (Get-Command ninja -ErrorAction SilentlyContinue) { $cmakeArgs += @('-G', 'Ninja') }
 & cmake @cmakeArgs
 if ($LASTEXITCODE) { throw "CMake configure failed with exit code $LASTEXITCODE" }
-& cmake --build $cmakeBuildRoot --config Release --target SparkMoE llama-cli llama-server llama-bench sparkmoe-iobench test-moe-paging --parallel
+& cmake --build $cmakeBuildRoot --config Release --parallel 4
 if ($LASTEXITCODE) { throw "Build failed with exit code $LASTEXITCODE" }
 if ($RunTests) {
-    & ctest --test-dir $cmakeBuildRoot -C Release --output-on-failure -R moe-paging
+    & ctest --test-dir $cmakeBuildRoot -C Release --output-on-failure -R '^test-moe-'
     if ($LASTEXITCODE) { throw "Tests failed with exit code $LASTEXITCODE" }
+    $bin = Join-Path $BuildRoot 'bin'
+    if (Test-Path (Join-Path $bin 'Release')) { $bin = Join-Path $bin 'Release' }
+    & python (Join-Path $PSScriptRoot 'test-sparkmoe-server.py') --bin-dir $bin --log-dir (Join-Path $BuildRoot 'server-smoke')
+    if ($LASTEXITCODE) { throw "Server regression failed with exit code $LASTEXITCODE" }
 }

@@ -180,6 +180,7 @@ private:
 
     const common_params & params;
     server_context_impl & ctx_server;
+    void init_sparkmoe_routes(std::function<server_http_res_ptr()> make_response);
     server_context & ctx_server_api;
 
     server_queue & queue_tasks;

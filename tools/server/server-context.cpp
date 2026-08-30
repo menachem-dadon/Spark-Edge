@@ -4538,39 +4538,7 @@ void server_routes::init_routes() {
         return res;
     };
 
-    this->get_sparkmoe_status = [this](const server_http_req &) {
-        auto res = create_response();
-        res->ok({
-            {"status", "ok"},
-            {"paging", {
-                {"enabled", params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT},
-                {"mode", sparkmoe_paging_mode_name(params.moe_paging.mode)},
-            }},
-        });
-        return res;
-    };
-
-    this->get_sparkmoe_paging = [this](const server_http_req &) {
-        auto res = create_response();
-        res->ok(sparkmoe_paging_stats_json(ctx_server_api.get_llama_context()));
-        return res;
-    };
-
-    this->post_sparkmoe_reset_stats = [this](const server_http_req &) {
-        auto res = create_response();
-        llama_context_moe_paging_reset_stats(ctx_server_api.get_llama_context());
-        res->ok({
-            {"ok", true},
-            {"paging", sparkmoe_paging_stats_json(ctx_server_api.get_llama_context())},
-        });
-        return res;
-    };
-
-    this->get_sparkmoe_config = [this](const server_http_req &) {
-        auto res = create_response();
-        res->ok(sparkmoe_config_json(params, ctx_server_api.get_llama_context(), meta->slot_n_ctx));
-        return res;
-    };
+    init_sparkmoe_routes([this]() -> server_http_res_ptr { return create_response(); });
 
     this->get_metrics = [this](const server_http_req & req) {
         auto res = create_response(true);
