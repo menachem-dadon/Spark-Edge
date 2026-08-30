@@ -54,6 +54,7 @@ endif()
 set(TARGET llama-common)
 
 add_library(${TARGET}
+    sparkmoe.cpp
     arg.cpp
     arg.h
     base64.hpp
@@ -81,6 +82,8 @@ add_library(${TARGET}
     imatrix-loader.cpp
     imatrix-loader.h
     json-schema-to-grammar.cpp
+    json.cpp
+    json.h
     llguidance.cpp
     log.cpp
     log.h
@@ -100,6 +103,10 @@ add_library(${TARGET}
     sampling.h
     speculative.cpp
     speculative.h
+    subproc.cpp
+    subproc.h
+    trie.cpp
+    trie.h
     unicode.cpp
     unicode.h
     jinja/lexer.cpp
@@ -117,13 +124,18 @@ add_library(${TARGET}
     )
 
 set_target_properties(${TARGET} PROPERTIES
-    VERSION ${LLAMA_INSTALL_VERSION}
-    SOVERSION 0
+    VERSION ${LLAMA_VERSION_BASE}
+    SOVERSION ${LLAMA_VERSION_MAJOR}
     MACHO_CURRENT_VERSION 0 # keep macOS linker from seeing oversized version number
 )
 
-target_include_directories(${TARGET} PUBLIC . ../vendor)
+target_include_directories(${TARGET} PUBLIC .)
+target_link_libraries     (${TARGET} PUBLIC vendor::nlohmann vendor::sheredom)
 target_compile_features   (${TARGET} PUBLIC cxx_std_17)
+
+if (LLAMA_SUBPROCESS)
+    target_compile_definitions(${TARGET} PUBLIC LLAMA_SUBPROCESS)
+endif()
 
 if (BUILD_SHARED_LIBS)
     set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)

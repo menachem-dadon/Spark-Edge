@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { RefreshCw } from '@lucide/svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		SettingsChatDesktopSidebar,
 		SettingsChatFields,
@@ -8,32 +11,25 @@
 		SettingsChatToolsTab,
 		SettingsFooter
 	} from '$lib/components/app/settings';
-	import { config, settingsStore } from '$lib/stores/settings.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import {
 		NUMERIC_FIELDS,
 		POSITIVE_INTEGER_FIELDS,
 		SETTINGS_CHAT_SECTIONS,
-		SETTINGS_SECTION_TITLES,
-		type SettingsSection
+		SETTINGS_SECTION_SLUGS
 	} from '$lib/constants';
-	import { RouterService } from '$lib/services/router.service';
-	import { setMode } from 'mode-watcher';
 	import { ColorMode } from '$lib/enums/ui.enums';
+	import { RouterService } from '$lib/services/router.service';
+	import { modelsStore, serverStore, settingsReferrer, settingsStore } from '$lib/stores';
+	import type { SettingsSection } from '$lib/types';
+	import { setMode } from 'mode-watcher';
 	import { fade } from 'svelte/transition';
-	import { goto } from '$app/navigation';
-	import { Button } from '$lib/components/ui/button';
-	import { RefreshCw } from '@lucide/svelte';
-	import { page } from '$app/state';
-	import { setChatSettingsConfigContext } from '$lib/contexts';
-	import { settingsReferrer } from '$lib/stores/settings-referrer.svelte';
-	import { modelsStore } from '$lib/stores/models.svelte';
-	import { isRouterMode } from '$lib/stores/server.svelte';
 	interface Props {
 		initialSection?: string;
 		getSectionHref?: (section: SettingsSection) => string;
 	}
 
-	let { initialSection, getSectionHref }: Props = $props();
+	let { getSectionHref, initialSection }: Props = $props();
 
 	let activeSlug = $derived(
 		initialSection ?? (page.params as Record<string, string | undefined>).section ?? 'general'
@@ -44,20 +40,20 @@
 			SETTINGS_CHAT_SECTIONS[0]
 	);
 
-	let localConfig: SettingsConfigType = $state({ ...config() });
+	let localConfig: SettingsConfigType = $state({ ...settingsStore.config });
 
 	let mobileHeader: { updateCarousel: () => void } | undefined;
 
 	let fetchInitiated = false;
 
 	$effect(() => {
-		if (isRouterMode() && currentSection.fields && !fetchInitiated) {
+		if (serverStore.isRouterMode && currentSection.fields?.length && !fetchInitiated) {
 			fetchInitiated = true;
 
 			void modelsStore
 				.fetch()
 				.then(() => modelsStore.fetchRouterModels())
-				.then(() => modelsStore.fetchModalitiesForLoadedModels())
+				.then(() => modelsStore.props.fetchModalitiesForLoadedModels())
 				.then(() => modelsStore.ensureFirstModelSelected());
 		}
 	});
@@ -72,7 +68,7 @@
 	}
 
 	function handleReset() {
-		localConfig = { ...config() };
+		localConfig = { ...settingsStore.config };
 		setMode(localConfig.theme as ColorMode);
 		mobileHeader?.updateCarousel();
 	}
@@ -88,6 +84,7 @@
 			} catch (error) {
 				alert('Invalid JSON in custom parameters. Please check the format and try again.');
 				console.error(error);
+
 				return;
 			}
 		}
@@ -97,14 +94,22 @@
 		for (const field of NUMERIC_FIELDS) {
 			if (processedConfig[field] !== undefined && processedConfig[field] !== '') {
 				const numValue = Number(processedConfig[field]);
+
 				if (!isNaN(numValue)) {
 					if ((POSITIVE_INTEGER_FIELDS as readonly string[]).includes(field)) {
-						processedConfig[field] = Math.max(1, Math.round(numValue));
+						const entryByMinMax = SETTINGS_CHAT_SECTIONS.flatMap(
+							(section) => section.fields ?? []
+						).find((entry) => entry.key === field);
+						const lo = entryByMinMax?.min ?? 1;
+						const hi = entryByMinMax?.max ?? Number.POSITIVE_INFINITY;
+
+						processedConfig[field] = Math.max(lo, Math.min(hi, Math.round(numValue)));
 					} else {
 						processedConfig[field] = numValue;
 					}
 				} else {
 					alert(`Invalid numeric value for ${field}. Please enter a valid number.`);
+
 					return;
 				}
 			}
@@ -115,16 +120,8 @@
 	}
 
 	export function reset() {
-		localConfig = { ...config() };
+		localConfig = { ...settingsStore.config };
 	}
-
-	setChatSettingsConfigContext({
-		get localConfig() {
-			return localConfig;
-		},
-		handleConfigChange,
-		handleThemeChange
-	});
 </script>
 
 <div class="mx-auto flex h-full w-full flex-col md:pl-8" in:fade={{ duration: 150 }}>
@@ -152,11 +149,11 @@
 						<h3 class="text-lg font-semibold">{currentSection.title}</h3>
 					</div>
 
-					{#if currentSection.title === SETTINGS_SECTION_TITLES.TOOLS}
+					{#if currentSection.slug === SETTINGS_SECTION_SLUGS.TOOLS}
 						<SettingsChatToolsTab />
-					{:else if currentSection.title === SETTINGS_SECTION_TITLES.SERVER}
+					{:else if currentSection.slug === SETTINGS_SECTION_SLUGS.SERVER}
 						<SettingsChatServerTab />
-					{:else if currentSection.title === SETTINGS_SECTION_TITLES.IMPORT_EXPORT}
+					{:else if currentSection.slug === SETTINGS_SECTION_SLUGS.IMPORT_EXPORT}
 						<SettingsChatImportExportTab />
 					{:else if currentSection.fields}
 						<div class="space-y-6">
@@ -167,7 +164,7 @@
 								onThemeChange={handleThemeChange}
 							/>
 
-							{#if currentSection.title === SETTINGS_SECTION_TITLES.GENERAL}
+							{#if currentSection.slug === SETTINGS_SECTION_SLUGS.GENERAL}
 								<div class="flex justify-end">
 									<Button variant="outline" onclick={() => window.location.reload()}>
 										<RefreshCw class="h-3 w-3" />
@@ -179,14 +176,14 @@
 					{/if}
 				</div>
 
-				{#if currentSection.title !== SETTINGS_SECTION_TITLES.SERVER}
+				{#if currentSection.slug !== SETTINGS_SECTION_SLUGS.SERVER}
 					<div class="mt-8 border-t border-border/30 pt-6">
 						<p class="text-xs text-muted-foreground">Settings are saved in browser's localStorage</p>
 					</div>
 				{/if}
 			</div>
 
-			{#if currentSection.title !== SETTINGS_SECTION_TITLES.SERVER}
+			{#if currentSection.slug !== SETTINGS_SECTION_SLUGS.SERVER}
 				<SettingsFooter onReset={handleReset} onSave={handleSave} />
 			{/if}
 		</div>

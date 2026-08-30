@@ -21,10 +21,15 @@ The original SparkMoE components listed below are offered under the PolyForm Non
 - `.github/workflows/sparkmoe-ci.yml`
 - `.github/workflows/sparkmoe-release.yml`
 - `tests/test-moe-paging.cpp`
+- `tests/test-moe-regression.cpp`
+- `scripts/test-sparkmoe-server.py`
 - `tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChatServerTab.svelte`
 - SparkMoE-specific documentation created in this fork, except text copied from upstream.
 
 The following remain MIT even when they contain SparkMoE integration hooks, because they are upstream-derived files and separating a patch-level license inside them would be ambiguous:
+
+- `src/moe-paging/moe-integration.h` and `src/moe-paging/moe-integration.cpp`
+- `tools/sparkmoe/server-api.h` and `tools/sparkmoe/server-api.cpp`
 
 - `include/llama.h`
 - `common/`

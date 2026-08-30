@@ -3,7 +3,8 @@
 
 set(TARGET SparkMoE)
 
-file(READ ${CMAKE_CURRENT_SOURCE_DIR}/dashboard.html SPARKMOE_DASHBOARD_HTML)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/dashboard.html SPARKMOE_DASHBOARD_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1,\n" SPARKMOE_DASHBOARD_HEX "${SPARKMOE_DASHBOARD_HEX}")
 configure_file(dashboard.generated.h.in dashboard.generated.h @ONLY)
 
 add_executable(${TARGET} sparkmoe.cpp)
@@ -18,7 +19,8 @@ set(SPARKMOE_BRANDING_DIR ${CMAKE_SOURCE_DIR}/assets/branding)
 set(SPARKMOE_ICON_FILE ${SPARKMOE_BRANDING_DIR}/SparkMoE.ico)
 set(SPARKMOE_LOGO_FILE ${SPARKMOE_BRANDING_DIR}/SparkMoE.png)
 if (WIN32 AND EXISTS ${SPARKMOE_ICON_FILE})
-    file(TO_CMAKE_PATH "${SPARKMOE_ICON_FILE}" SPARKMOE_ICON_RC_FILE)
+    configure_file("${SPARKMOE_ICON_FILE}" SparkMoE.ico COPYONLY)
+    set(SPARKMOE_ICON_RC_FILE "SparkMoE.ico")
     configure_file(sparkmoe.rc.in sparkmoe.rc @ONLY)
     target_sources(${TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/sparkmoe.rc)
 endif()

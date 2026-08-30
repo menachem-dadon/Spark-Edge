@@ -13,12 +13,15 @@ add_library(${TARGET} STATIC
     server-queue.h
     server-common.cpp
     server-common.h
+    ../sparkmoe/server-api.cpp
     server-context.cpp
     server-context.h
     server-stream.cpp
     server-stream.h
     server-tools.cpp
     server-tools.h
+    server-mcp.cpp
+    server-mcp.h
     server-schema.cpp
     server-schema.h
 )

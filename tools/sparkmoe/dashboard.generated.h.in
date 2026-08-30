@@ -1,3 +1,4 @@
 #pragma once
 
-inline constexpr char dashboard_html[] = R"SPARKMOE(@SPARKMOE_DASHBOARD_HTML@)SPARKMOE";
+inline constexpr unsigned char dashboard_html_bytes[] = { @SPARKMOE_DASHBOARD_HEX@ 0 };
+inline const char * dashboard_html = reinterpret_cast<const char *>(dashboard_html_bytes);
