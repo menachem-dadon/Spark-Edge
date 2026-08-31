@@ -28,6 +28,14 @@ The model activates more experts than the configured layer budget can hold. Incr
 
 ## Too many unique experts in a microbatch
 
+For long zero-progress intervals after submitting short chat messages, see
+[LATENCY_INVESTIGATION.md](LATENCY_INVESTIGATION.md). Chat token counts include
+the template and history. Progress advances at logical batch boundaries;
+microbatch size alone does not determine how often the UI updates. Version
+0.4.1-alpha also fixes native log creation and Desktop log reading under Hebrew
+Windows installation paths and enables timestamps. It does not automatically
+retune the user's settings or claim a latency speedup.
+
 Current builds automatically reduce the effective physical microbatch so that the maximum number of active experts fits in the per-layer slot cache. The adjustment is reported in the server log and as `effective_ubatch_size` from `GET /sparkmoe/v1/config`.
 
 If this message appears with an older binary, install the latest build or start the server with a smaller `--ubatch-size` value. `--ubatch-size 1` is the safest diagnostic setting, although prompt processing will be slower. Increasing the cache budget can also create more slots. SparkMoE never evicts a slot reserved by the same routing request.

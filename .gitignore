@@ -24,6 +24,7 @@
 
 # Local SparkMoE release outputs
 /artifacts/release/
+/artifacts/validation/
 
 # IDE / OS
 

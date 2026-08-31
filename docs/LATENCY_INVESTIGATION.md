@@ -18,7 +18,7 @@ was read-only: no request was submitted, settings changed, or server restarted.
 | MTP | On, up to 3 draft tokens |
 | Main expert cache hit rate | 39.7% |
 | Process working set / peak | 7.12 / 8.49 GB (decimal) |
-| Available system RAM at a later sample | About 1.4 GiB |
+| Available system RAM at inspection | About 1.4 GiB, rising to about 4 GiB in a later sample |
 | Cumulative uncached prompt tokens / prompt time | 334 / 89.876 seconds |
 | Cumulative generated tokens / generation time | 67 / 19.8314 seconds, about 3.38 tok/s |
 | Cumulative MTP accepted / drafted | 47 / 63, about 74.6% |
@@ -43,7 +43,8 @@ duration of a single pause. No same-settings old/new speedup was measured here.
    of this model; a 39.7% hit rate leaves substantial storage work. Direct I/O
    bypasses Windows' file cache, so it is not automatically faster on repeated
    warm reads. Low free RAM also warrants checking OS paging before allocating
-   more cache. The snapshot alone does not prove a page-fault stall.
+   more cache. Free RAM subsequently increased, so the snapshots do not prove
+   persistent memory pressure or a page-fault stall during the reported request.
 4. MTP adds draft processing and a wider target verification batch. Its benefit
    depends on accepted tokens versus extra compute, reads and memory. Acceptance
    alone is not speedup. Our earlier controlled short Qwen smoke measured 2.50

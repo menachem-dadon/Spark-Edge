@@ -1,5 +1,9 @@
 # מפת הפרויקט SparkMoE
 
+להמשך עבודה בשיחה חדשה, התחילו ב-[NEXT_SESSION.md](NEXT_SESSION.md).
+סיכום השדרוג נמצא ב-[REFRESH_REPORT.md](REFRESH_REPORT.md), ואבחון ההמתנה
+לפני התשובה נמצא ב-[LATENCY_INVESTIGATION.md](LATENCY_INVESTIGATION.md).
+
 עדכון בסיס llama.cpp ותחזוקה בטוחה מתועדים ב־[UPDATING_LLAMA_CPP.md](UPDATING_LLAMA_CPP.md).
 רשימת נקודות החיבור והשלבים המעודכנים נמצאת ב־[UPSTREAM_INTEGRATION.md](UPSTREAM_INTEGRATION.md),
 והבדיקה האוטומטית שלהן משתמשת ב־`config/upstream-integration.json`.

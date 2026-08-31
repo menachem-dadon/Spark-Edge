@@ -2,11 +2,11 @@
 
 Base: `c1d0e7a004015f23bc0233470b747b596f29b264`. Generated from the manifest and working-tree diff.
 
-46 patched upstream files; 10 integration groups. SparkMoE-owned additions are excluded.
+47 patched upstream files; 10 integration groups. SparkMoE-owned additions are excluded.
 
 | Upstream file | Added lines | Removed lines |
 | --- | ---: | ---: |
-| `.gitignore` | 11 | 0 |
+| `.gitignore` | 12 | 0 |
 | `CMakeLists.txt` | 3 | 0 |
 | `CONTRIBUTING.md` | 11 | 204 |
 | `README.md` | 95 | 108 |
@@ -15,6 +15,7 @@ Base: `c1d0e7a004015f23bc0233470b747b596f29b264`. Generated from the manifest an
 | `common/arg.cpp` | 4 | 0 |
 | `common/common.cpp` | 13 | 0 |
 | `common/common.h` | 10 | 0 |
+| `common/log.cpp` | 1 | 1 |
 | `ggml/include/ggml-cpu.h` | 4 | 0 |
 | `ggml/src/CMakeLists.txt` | 4 | 0 |
 | `ggml/src/ggml-cpu/arch/x86/repack.cpp` | 18 | 28 |
@@ -39,8 +40,8 @@ Base: `c1d0e7a004015f23bc0233470b747b596f29b264`. Generated from the manifest an
 | `tools/server/server-context.h` | 7 | 0 |
 | `tools/server/server.cpp` | 5 | 0 |
 | `tools/ui/.env.example` | 1 | 1 |
-| `tools/ui/package-lock.json` | 2 | 2 |
-| `tools/ui/package.json` | 2 | 2 |
+| `tools/ui/package-lock.json` | 79 | 19 |
+| `tools/ui/package.json` | 3 | 3 |
 | `tools/ui/pwa-assets-dark.config.ts` | 2 | 6 |
 | `tools/ui/pwa-assets.config.ts` | 3 | 8 |
 | `tools/ui/src/app.html` | 0 | 1 |
@@ -55,4 +56,4 @@ Base: `c1d0e7a004015f23bc0233470b747b596f29b264`. Generated from the manifest an
 
 Branding, documentation and package-lock changes are included. Line counts are
 a maintenance signal, not a correctness or complexity score. Use the updater
-check/drift commands to regenerate the current file inventory.
+check/drift commands for the current file inventory.

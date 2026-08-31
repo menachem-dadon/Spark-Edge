@@ -1,7 +1,9 @@
 # SparkMoE refresh and engine upgrade report
 
-Working branch: `codex/upstream-refresh-v0.3.0`. No push, upstream PR, history
-rewrite or change to `main` is part of this work.
+Implementation branch: `codex/upstream-refresh-v0.3.0`. The user subsequently
+authorized local promotion to `main` after successfully installing 0.4.0-alpha.
+No push, upstream PR or history rewrite is part of this work. Final maintenance
+entry point for a fresh conversation: `docs/NEXT_SESSION.md`.
 
 ## Recovery and upstream
 
@@ -33,10 +35,11 @@ Integration implementations moved into `common/sparkmoe.*`,
 tensor hook replaces the model-specific Qwen3.5 loader patch. Core algorithm code
 stays under `src/moe-paging/`; extracted MIT integration retains its MIT license.
 The upstream-derived src/common/include/server patch dropped from 525 inserted
-lines/21 deletions to 203/16 after extraction, and is now 244/16 after adding the
-engine API and memory telemetry (19 files in both comparisons). The CPU readiness
+lines/21 deletions to 203/16 after extraction (19 files), then 244/16 after adding
+the engine API and memory telemetry. The final Unicode logging correction makes
+that 245/17 across 20 files. The CPU readiness
 extension adds 17 lines in three GGML files. The whole maintained upstream-file
-inventory, including branding/build/docs/UI, contains 46 files in 10 groups.
+inventory, including branding/build/docs/UI, contains 47 files in 10 groups.
 See `UPSTREAM_PATCH_INVENTORY.md` for every file and line count and
 `config/upstream-integration.json` for checked markers.
 
@@ -117,14 +120,79 @@ direct I/O was slower in the measured warm-cache workload.
   source and CI are included, but the local WSL lacks a C++/CMake toolchain.
   Previous Gemma smoke evidence was not repeated on this refreshed build.
 
-## Packaging checkpoint
+## Packaging and final validation
 
-Product version: 0.4.0-alpha (independent of llama.cpp's stable version).
+Product versions: 0.4.0-alpha plus the 0.4.1-alpha Unicode logging correction
+(independent of llama.cpp's stable version).
+Local hardware: Intel Core i5-1235U, 12 logical CPUs, 16 GB RAM; measured model
+runs used four inference threads unless their individual test says otherwise.
 The Windows packaging script now includes llama/GGML/server DLLs and app-local
 MSVC runtime DLLs; the old EXE-only staging would not make this shared build
-portable. It also stages upstream third-party licenses and a per-binary SHA256
-manifest with source and binary build revisions. Installer/ZIP validation results
-will be appended after the isolated updater and packaging gates finish.
+portable. It also stages upstream and chat-UI dependency licenses and a per-binary SHA256
+manifest with source and binary build revisions. MSVC OpenMP's VCOMP140.DLL is
+included in addition to the CRT. The 0.4.0-alpha installer and ZIP were built;
+an extracted ZIP passed all 30 binary hashes, restricted-PATH CLI/server/bench
+startup, the I/O tool, dense/MoE/sharded HTTP tests and Desktop lifecycle/resize/
+diagnostics. The user then installed that version and reported that it works
+excellently, at least as well as the previous version. This user feedback is
+separate from our automated tests; no visual browser QA was claimed.
+
+The actual end-to-end updater created an isolated worktree and backup refs,
+resolved the latest stable target to c1d0e7a, built all native targets and the
+custom UI, and passed native, six HTTP configurations, Desktop and seven updater
+safety tests. The result was YELLOW, not RED: npm deprecations, UI chunk size and
+build-environment warnings remain. The scoped UI dependency update was followed
+by a second passing full gate. OpenSSL was unavailable, so this Windows package
+supports local HTTP but does not claim HTTPS support. Linux/generic/GPU and
+hosted CI remain unexecuted here. Packages are unsigned and were not published.
+
+Read-only investigation of the installed runtime found 334 cumulative uncached
+prompt tokens taking 89.876 seconds and generation at about 3.38 tok/s. The
+current settings use direct I/O and hybrid 5 GiB with MTP, but overlap/prefetch
+off; free host RAM was about 1.4 GiB. Batch-level progress can remain zero while
+prefill is already running. No request-level trace existed because logging used
+an ANSI file open under the Hebrew installation path. Version 0.4.1-alpha fixes
+that log writer/reader and enables timestamps. It does not claim a proven speedup
+or that the reported minute-long latency is resolved. See
+`LATENCY_INVESTIGATION.md` for evidence, BMoE comparisons and proposed A/B settings.
+The installed app and its configuration were left untouched.
+
+The logging correction passed both native suites and six isolated HTTP cases,
+including real native log creation at a Hebrew path. The seven updater safety
+tests also passed again. Desktop lifecycle is intentionally skipped on this
+last pass while the user's installed manager occupies port 18080; its previous
+0.4.0-alpha package test remains the lifecycle evidence.
+
+The final all-target Windows build also passed after the logging correction.
+Validated Mermaid/nanoid UI assets and dependencies were consolidated back into
+the original checkout. Both temporary updater worktrees were removed only after
+archiving their patches, modified files, state, configuration and validation logs
+under `artifacts/validation/worktree-checkpoints-20260831/`. Recovery refs and the
+implementation branch are retained. Earlier build folders and release binaries
+were not deleted. Build/research artifacts remain outside tracked source.
+
+The 0.4.1-alpha installer and ZIP were then built successfully. Extracted-ZIP
+validation passed all 30 binary hashes, required runtime DLLs, CLI/server/bench
+startup with a restricted PATH, the I/O tool, and dense/MoE/two-shard HTTP cases
+including direct + hybrid + overlap + temporal. The native build revision is
+`061e8657d`; subsequent handoff documentation does not change native code. Final
+artifacts are `artifacts/release/sparkmoe-0.4.1-alpha-windows-x64-avx2-setup.exe`
+and the corresponding `.zip`, with `SHA256SUMS` and a per-binary manifest.
+
+Local promotion uses a fast-forward from the implementation branch to `main`,
+with release checkpoint `sparkmoe-v0.4.1-alpha`. The original branch/tag
+`sparkmoe-pre-upstream-refresh` still points to `c77dd6800`. The only remaining
+worktree is the original project directory. There is no remote push/publication.
+Start future work from `docs/NEXT_SESSION.md`; latency tuning, platform CI,
+visual/release QA and a separately authorized model integration can each run in
+their own fresh conversation.
+
+The clean UI install surfaced Mermaid and transitive nanoid audit advisories.
+A scoped dependency update pins Mermaid 11.16.1 and resolves nanoid 3.3.18;
+the updated lockfile audit reports zero vulnerabilities. See the
+[Mermaid security advisory](https://github.com/mermaid-js/mermaid/security/advisories/GHSA-6x64-9x62-f2gx)
+and [nanoid advisory](https://github.com/advisories/GHSA-2v37-7h3g-55p8).
+This is dependency-audit evidence, not a complete product security review.
 
 ## Integration points
 
@@ -150,3 +218,23 @@ equivalence evidence, including quantization and shard layouts.
 Qwen3.8/Flash-Next-specific loading, routing and PLE graph integration are not
 implemented in this phase. Generic bounded row infrastructure is preparation for
 a separately validated future integration, not a model-support claim.
+
+## Logical checkpoints
+
+| Commit | Change |
+| --- | --- |
+| `b5364786d` | Two-parent upstream refresh and initial hook extraction |
+| `571da9801` | Server hook isolation and safe isolated updater gates |
+| `f1f1738b3` | Preserve Unicode environment during Visual Studio setup |
+| `bceb510e9` | Validated direct I/O and shared demand-priority scheduling |
+| `1d548eaa8` | Hybrid cache, safe resize and capability evidence |
+| `418faf526` | Per-expert overlap and temporal prefetch; measured predictor experiment |
+| `8a7ab7a8a` | Bounded row service, residency/UI/telemetry and recurrent MTP guard |
+| `05b9573c1` | Reject unregistered upstream patches before building |
+| `e55511bfb` | 0.4.0-alpha release preparation and cumulative report |
+| `44cb97945` | Mermaid/nanoid security dependency updates |
+| `e121a99d5` | Portable runtime, license and provenance packaging |
+| `061e8657d` | 0.4.1-alpha Unicode logging fix and latency evidence |
+
+Full commit IDs and subsequent documentation checkpoints are available in Git.
+No existing history was rewritten.
