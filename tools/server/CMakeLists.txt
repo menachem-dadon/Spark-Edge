@@ -32,6 +32,9 @@ endif()
 
 target_include_directories(${TARGET} PRIVATE ../mtmd)
 target_link_libraries(${TARGET} PUBLIC llama-common mtmd ${CMAKE_THREAD_LIBS_INIT})
+if (WIN32)
+    target_link_libraries(${TARGET} PRIVATE psapi)
+endif()
 
 # llama-server-impl: server logic, reusable by app
 

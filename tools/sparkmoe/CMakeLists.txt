@@ -2,12 +2,15 @@
 # Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 set(TARGET SparkMoE)
+file(STRINGS "${CMAKE_SOURCE_DIR}/VERSION" SPARKMOE_VERSION LIMIT_COUNT 1)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS dashboard.html "${CMAKE_SOURCE_DIR}/VERSION")
 
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/dashboard.html SPARKMOE_DASHBOARD_HEX HEX)
 string(REGEX REPLACE "(..)" "0x\\1,\n" SPARKMOE_DASHBOARD_HEX "${SPARKMOE_DASHBOARD_HEX}")
 configure_file(dashboard.generated.h.in dashboard.generated.h @ONLY)
 
 add_executable(${TARGET} sparkmoe.cpp)
+target_compile_definitions(${TARGET} PRIVATE SPARKMOE_VERSION="${SPARKMOE_VERSION}")
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/common)
 target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/vendor/cpp-httplib)

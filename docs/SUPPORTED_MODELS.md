@@ -6,7 +6,8 @@ SparkMoE separates base llama.cpp model support from explicit SSD expert paging 
 
 | Model family | Base inference | Explicit expert paging | Built-in MTP | Current validation |
 | --- | --- | --- | --- | --- |
-| Qwen3.5/Qwen3.6 MoE | Upstream implementation | Supported | Supported when the GGUF contains MTP tensors | Deterministic paging suite plus Qwen3.6 35B-A3B IQ4_NL load, prompt, generation, and process-survival regression. Full parity matrix pending. |
+| Qwen3.5/Qwen3.6 MoE | Upstream implementation | Supported | Supported when the GGUF contains MTP tensors | Refreshed Windows Qwen3.6 35B-A3B IQ4_NL HTTP generation and MTP passed, identical 12-token greedy output; 7/12 draft tokens accepted. Full-logit/quantization matrix pending. |
+| Ling-3.0-tiny / bailingmoe3 | Upstream implementation | Validated Q4_K_M on Windows CPU | Not tested | Exact 1,886,208-value full-logit parity with matching kernels and microbatch: resident/fixed/direct/hybrid/overlap/temporal, eviction/resize and dense residency policies. |
 | Gemma 4 26B-A4B | Upstream implementation | Supported through standard routed tensor layout detection | Supported when a compatible MTP head is present | Gemma 4 26B-A4B Q4_0 load, prompt, generation, and process-survival regression with explicit paging, CPU repack, and multiple threads. Resident-versus-paged logit parity pending. |
 | Other MoE models with standard `blk.N.ffn_*_exps.weight` tensors | Upstream-dependent | Accepted after strict load-time layout validation | Upstream-dependent | Experimental until a named model is added to validation evidence. |
 | Dense models | Upstream implementation | Not applicable | Upstream-dependent | Normal llama.cpp behavior, including verified automatic fallback from expert streaming to standard mmap. |
@@ -19,7 +20,18 @@ If a model does not satisfy these checks, loading fails explicitly. SparkMoE doe
 
 ## MTP notes
 
-MTP is optional and can reduce performance on some CPUs, backends, quantizations, or prompts. Start with three draft tokens and compare measured end-to-end throughput against MTP off. A GGUF without compatible MTP tensors will fail to initialize the draft context; disable MTP for that model.
+MTP is optional and can reduce performance on some CPUs, backends, quantizations, or prompts. Start with three draft tokens and compare measured end-to-end throughput against MTP off. Recurrent rollback requires effective microbatch at least draft tokens + 2, with enough expert slots/cache. Too-small paging configurations fail with an explanation instead of an assertion; runtime resize preserves this minimum. A GGUF without compatible MTP tensors will fail to initialize the draft context; disable MTP for that model.
+
+Hybrid cache, compute/I/O overlap and temporal prefetch are opt-in CPU modes.
+Direct-I/O fallback is byte-exact. Default routing/top-k remain unchanged.
+Ling comparisons deliberately fix microbatch and CPU repacking: different
+upstream numeric paths do not establish bitwise equivalence across batching.
+The evidence registry is `src/moe-paging/moe-capabilities.cpp`. Linux and GPU
+validation must not be inferred from Windows CPU results. Gemma evidence above
+predates this refresh and was not repeated in the final matrix.
+
+Generic bounded row streaming is infrastructure only. No SparkMoE-specific
+Qwen3.8/Flash-Next/PLE adapter is part of this release.
 
 ## Adding a validated family
 

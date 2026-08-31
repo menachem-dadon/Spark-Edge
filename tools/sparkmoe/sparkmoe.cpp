@@ -54,6 +54,12 @@ struct server_config {
     int cache = 2048;
     int slots = 0;
     int threads = 4;
+    std::string io_mode = "buffered";
+    std::string cache_policy = "lru";
+    std::string overlap = "off";
+    std::string prefetch = "off";
+    std::string dense_residency = "auto";
+    int paged_layers = 0;
     int inference_threads = 0;
     std::string cpu_repack = "auto";
     int port = 8080;
@@ -97,6 +103,12 @@ json config_json(const server_config & config, bool include_model = true) {
         {"cache", config.cache},
         {"slots", config.slots},
         {"threads", config.threads},
+        {"io_mode", config.io_mode},
+        {"cache_policy", config.cache_policy},
+        {"overlap", config.overlap},
+        {"prefetch", config.prefetch},
+        {"dense_residency", config.dense_residency},
+        {"paged_layers", config.paged_layers},
         {"inference_threads", config.inference_threads},
         {"cpu_repack", config.cpu_repack},
         {"port", config.port},
@@ -130,6 +142,12 @@ server_config config_from_json(const json & input, const server_config & base) {
     config.cache = input.value("cache", config.cache);
     config.slots = input.value("slots", config.slots);
     config.threads = input.value("threads", config.threads);
+    config.io_mode = input.value("io_mode", config.io_mode);
+    config.cache_policy = input.value("cache_policy", config.cache_policy);
+    config.overlap = input.value("overlap", config.overlap);
+    config.prefetch = input.value("prefetch", config.prefetch);
+    config.dense_residency = input.value("dense_residency", config.dense_residency);
+    config.paged_layers = input.value("paged_layers", config.paged_layers);
     config.inference_threads = input.value("inference_threads", config.inference_threads);
     config.cpu_repack = input.value("cpu_repack", config.cpu_repack);
     config.port = input.value("port", config.port);
@@ -160,6 +178,15 @@ void validate_config(const server_config & config) {
     }
     if (config.mode != "explicit" && config.mode != "auto" && config.mode != "os" && config.mode != "off") {
         throw std::runtime_error("invalid paging mode");
+    }
+    if ((config.io_mode != "buffered" && config.io_mode != "direct") ||
+            (config.cache_policy != "lru" && config.cache_policy != "hybrid") ||
+            (config.overlap != "on" && config.overlap != "off") ||
+            (config.prefetch != "off" && config.prefetch != "temporal") ||
+            (config.dense_residency != "auto" && config.dense_residency != "mmap" &&
+             config.dense_residency != "resident" && config.dense_residency != "locked") ||
+            config.paged_layers < 0 || config.paged_layers > 4096) {
+        throw std::runtime_error("invalid engine policy");
     }
     if (config.cpu_repack != "auto" && config.cpu_repack != "on" && config.cpu_repack != "off") {
         throw std::runtime_error("invalid CPU repack mode");
@@ -491,10 +518,19 @@ void start_process(process_state & state, const json & input) {
         config.context_shift ? "--context-shift" : "--no-context-shift",
         "--moe-paging", config.mode,
         "--moe-io-threads", std::to_string(config.threads),
+        "--moe-io-mode", config.io_mode,
+        "--moe-cache-policy", config.cache_policy,
+        "--moe-overlap", config.overlap,
+        "--moe-prefetch", config.prefetch,
+        "--moe-paged-layers", std::to_string(config.paged_layers),
+        "--moe-dense-residency", config.mode == "off" && config.dense_residency == "auto" ? "resident" : config.dense_residency,
         "--metrics",
         "--log-colors", "off",
         "--log-file", state.log_path,
     };
+    if (config.cache_policy == "hybrid" || config.overlap == "on" || config.prefetch != "off") {
+        args.insert(args.end(), {"--n-gpu-layers", "0"});
+    }
     if (config.cache > 0) {
         args.insert(args.end(), {"--moe-cache-mib", std::to_string(config.cache)});
     }
@@ -642,21 +678,40 @@ std::string tail_file(const std::string & path, size_t max_bytes) {
     return content.str();
 }
 
-json upstream_json(process_state & state, const std::string & path, bool post = false) {
+json upstream_json(process_state & state, const std::string & path, bool post = false, const std::string & body = "") {
     const json status = status_json(state);
     if (!status["server_ready"].get<bool>()) {
         throw std::runtime_error("inference server is not ready");
     }
     httplib::Client client("127.0.0.1", status["port"].get<int>());
     client.set_connection_timeout(0, 500000);
-    const auto response = post ? client.Post(path, "", "application/json") : client.Get(path);
+    const auto response = post ? client.Post(path, body, "application/json") : client.Get(path);
     if (!response) {
         throw std::runtime_error("inference server did not respond");
     }
     if (response->status < 200 || response->status >= 300) {
         throw std::runtime_error("inference server returned HTTP " + std::to_string(response->status));
     }
-    return json::parse(response->body);
+    auto result = json::parse(response->body);
+    if (!post && path == "/sparkmoe/v1/paging") {
+        client.set_read_timeout(2, 0);
+        const auto metrics = client.Get("/metrics");
+        if (metrics && metrics->status == 200) {
+            std::istringstream input(metrics->body);
+            std::string line;
+            double tokens = 0, seconds = 0;
+            while (std::getline(input, line)) {
+                std::istringstream item(line);
+                std::string key;
+                double value = 0;
+                if (!(item >> key >> value)) { continue; }
+                if (key == "llamacpp:tokens_predicted_total") { tokens = value; }
+                if (key == "llamacpp:tokens_predicted_seconds_total") { seconds = value; }
+            }
+            result["generation_tok_s"] = seconds > 0 ? tokens / seconds : 0;
+        }
+    }
+    return result;
 }
 
 std::string request_origin(const httplib::Request & request) {
@@ -889,6 +944,15 @@ int main() {
             json_response(response, {{"error", error.what()}}, 503);
         }
     });
+    server.Post("/api/paging/cache", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            const auto body = json::parse(request.body);
+            json_response(response, upstream_json(state, "/sparkmoe/v1/paging/cache", true, body.dump()), 202);
+        } catch (const std::exception & error) {
+            json_response(response, {{"error", error.what()}}, 400);
+        }
+    });
     server.Post("/api/paging/reset", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
@@ -919,7 +983,7 @@ int main() {
         safe_config.erase("model");
         safe_config.erase("model_directory");
         json diagnostic = {
-            {"sparkmoe_version", "0.2.0-alpha"},
+            {"sparkmoe_version", SPARKMOE_VERSION},
             {"manager", manager_status},
             {"configuration", safe_config},
 #if defined(_WIN32)

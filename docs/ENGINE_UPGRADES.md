@@ -163,16 +163,78 @@ cache pollution outweighed useful predictions on this workload.
 
 The predictor is therefore **not compiled or exposed as a product option**.
 Its reviewable prototype is `docs/experiments/predictive-transition.patch`.
-To repeat it, apply that patch only on an isolated experiment branch, rebuild,
+To repeat it, apply that patch with `git apply --unidiff-zero` only on an isolated experiment branch, rebuild,
 and run `benchmark-paging.py --cases config/benchmark-predictive-experiment.json
 --cache-mib 512 --tokens 32` with the normal binary/model/output arguments.
 The experiment configuration fails if predictive reads were not exercised, so
 running it against an unpatched release cannot masquerade as a predictor test.
 Raw logs are `build-upstream-refresh/e3-*-benchmark.json` and matching log files.
 
-## Remaining checkpoints
+## E4: bounded rows, residency and Desktop controls
 
-- E4: dense/shared residency controls, richer memory/stall/cache telemetry and
-  generic bounded row streaming, without a Flash-Next-specific graph adapter.
-- Release: repeat gates, complete updater candidate validation, package all
-  runtime dependencies, build installer/ZIP and validate the staged product.
+`moe-row-stream.*` is a byte-exact, fixed-budget gather service using the existing
+readers and shared demand executor. A source is a validated list of contiguous
+row spans, allowing separate shard readers and padded row strides. Requests are
+limited to 256 rows and at most 32 in flight (also bounded by cache capacity).
+The LRU budget covers row bytes, entry metadata and source-vector capacity;
+request/future bookkeeping is separately bounded by those fixed limits. Reader
+handles, executor state, direct-I/O bounce buffers and caller-owned output are
+outside the row-cache budget. This is not a whole-process memory limit.
+
+There is no full-table materialization fallback. Invalid shapes/ranges and failed
+reads fail explicitly; queued reads drain before destinations can be reused.
+Tests address 2^32 logical rows across two mock 512 GiB storage sources with a
+384-byte row cache. They check exact bytes, large IDs, duplicates, stride/shard
+boundaries, eviction, invalid spans, budget limits and failed-read retry. Actual
+file Unicode/direct-I/O and GGUF two-shard coverage use the existing reader and
+model regression suites. No 512 GiB file was allocated or downloaded. No PLE
+graph adapter, row quantization conversion or Qwen3.8 support is implied.
+
+`--moe-dense-residency auto|mmap|resident|locked` delegates dense/shared tensors
+to the upstream loader. Resident allocates them; mmap leaves OS-managed residency;
+locked requests OS locking, subject to OS limits. Routed expert cache remains
+separate. `--moe-paged-layers N` exposes existing partial-layer paging (first N
+model layers, 0 for all). Unpaged experts also follow the ordinary loader policy.
+
+Desktop now exposes I/O mode/workers, cache policy, overlap, temporal prefetch,
+dense residency, partial layers and queued hybrid cache resize. Existing context,
+MTP, logs, model selection, saved browser preferences and Hebrew/RTL remain.
+Telemetry adds cache committed/limit, RSS, peak RSS, private bytes, queue/stall
+times, overlap observations, prefetch usefulness and direct/fallback traffic.
+Desktop tok/s uses the upstream metrics queue and is a cumulative generation
+average, not instantaneous speed. Windows private bytes are commit; Linux's
+available counterpart is anonymous RSS and must not be compared as identical.
+
+Windows build, native tests, six HTTP configurations and manager-controlled
+start/generate/resize/restart/stop/diagnostics passed. Dashboard JavaScript syntax
+was checked; a full visual/browser interaction regression was not performed.
+
+Paired dense residency observations on Ling at 512 MiB expert cache:
+
+| Dense/shared policy | tok/s samples | Peak RSS | Peak private bytes |
+| --- | --- | --- | --- |
+| mmap | 8.07, 8.27, 4.85, 5.00 | about 1.34 GB | about 1.22 GB |
+| resident | 3.55, 3.80, 4.65, 4.38 | about 1.25 GB | about 1.61 GB |
+
+These short warm-cache observations favor neither a universal speed claim nor
+a default-policy change. An RSS decrease can coexist with higher private commit.
+Use `config/benchmark-residency.json` to repeat the paired observation.
+
+`test-moe-regression --residency MODEL` compares mmap and allocated dense/shared
+weights with unchanged paging and kernels. Ling passed all 1,886,208 values with
+max absolute error 0 (`e4-residency-parity.log`).
+
+### Final existing-model MTP compatibility
+
+The refreshed recurrent rollback splitter requires effective microbatch greater
+than `n_rs_seq + 1`. A 3-token Qwen MTP configuration clamped to microbatch 4
+initially hit an upstream assertion. Context initialization now rejects that
+configuration with an actionable error, and hybrid resize protects the rollback
+minimum. It does not reduce draft tokens, routing or top-k silently.
+
+Qwen3.6-35B-A3B IQ4_NL (18.54 GB existing file), 4,096 MiB per-layer cache,
+effective microbatch 6, CPU 4 threads: normal and MTP both returned the same
+12-token text. MTP drafted 12 tokens and accepted 7. Single short-run speeds
+were 2.50 tok/s normal and 2.35 MTP; these are smoke observations, not a stable
+benchmark. RSS after generation was about 5.74 GB and 6.42 GB respectively.
+Logs and JSON: `build-upstream-refresh/final-qwen-mtp-4096.*`.

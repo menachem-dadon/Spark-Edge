@@ -1,0 +1,4 @@
+[
+  {"name": "dense-mmap", "args": ["--moe-io-threads", "4", "--load-mode", "mmap"]},
+  {"name": "dense-resident", "args": ["--moe-io-threads", "4", "--load-mode", "none"]}
+]

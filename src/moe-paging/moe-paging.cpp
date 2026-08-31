@@ -21,7 +21,8 @@ paging_manager::paging_manager(
         ggml_backend_t backend,
         const llama_moe_paging_params & params,
         const model_index & index,
-        int64_t minimum_slots) :
+        int64_t minimum_slots,
+        uint32_t minimum_ubatch) :
     backend(backend), params(params), index(index), minimum_slots(minimum_slots),
     executor(std::make_shared<io_executor>(params.io_threads > 0 ? params.io_threads : 1)) {
     if (!backend || !mode_uses_explicit_paging(params.mode)) {
@@ -30,7 +31,7 @@ paging_manager::paging_manager(
     if (index.tensor_count() == 0 || index.layer_count() == 0) {
         throw std::runtime_error("the model does not contain a usable MoE paging index");
     }
-    if (minimum_slots <= 0) {
+    if (minimum_slots <= 0 || minimum_ubatch == 0) {
         throw std::runtime_error("invalid active expert count for MoE paging");
     }
     if (params.n_slots <= 0 && params.cache_bytes == 0) {
@@ -46,6 +47,16 @@ paging_manager::paging_manager(
                 std::max<int64_t>(minimum_slots, params.n_slots));
         }
         budget = std::make_shared<cache_budget>(params.cache_bytes ? params.cache_bytes : configured, minimum_budget, minimum_slots);
+        minimum_resize_budget = minimum_budget;
+        for (size_t layer = 0; layer < index.layer_count(); ++layer) {
+            if (!index.has_layer(static_cast<int32_t>(layer))) { continue; }
+            const uint64_t required = uint64_t(minimum_ubatch) * minimum_slots;
+            if (required > uint64_t(index.expert_count(static_cast<int32_t>(layer)))) {
+                throw std::runtime_error("speculative rollback microbatch exceeds available expert slots");
+            }
+            minimum_resize_budget = std::max(minimum_resize_budget, minimum_budget +
+                (required - minimum_slots) * index.committed_bytes_per_expert(static_cast<int32_t>(layer)));
+        }
     }
 }
 
@@ -239,7 +250,7 @@ stats_snapshot paging_manager::snapshot() const {
 }
 
 bool paging_manager::request_resize(uint64_t bytes) {
-    if (!budget || bytes < minimum_budget) { return false; }
+    if (!budget || bytes < minimum_resize_budget) { return false; }
     pending_resize.store(bytes);
     return true;
 }

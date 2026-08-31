@@ -94,6 +94,25 @@ std::vector<common_arg> sparkmoe_options() {
             params.moe_paging.temporal_prefetch = value == "temporal";
         }
     ).set_env("LLAMA_ARG_MOE_PREFETCH"));
+    add_opt(common_arg(
+        {"--moe-paged-layers"}, "N",
+        "page routed experts in the first N model layers (0 = all)",
+        [](common_params & params, int value) {
+            if (value < 0) { throw std::invalid_argument("invalid paged layer count"); }
+            params.moe_paging.n_layers = value;
+        }
+    ).set_env("LLAMA_ARG_MOE_PAGED_LAYERS"));
+    add_opt(common_arg(
+        {"--moe-dense-residency"}, "auto|mmap|resident|locked",
+        "upstream loader policy for dense/shared weights; locked requests OS RAM locking",
+        [](common_params & params, const std::string & value) {
+            if (value == "auto") { params.load_mode = LLAMA_LOAD_MODE_AUTO; }
+            else if (value == "mmap") { params.load_mode = LLAMA_LOAD_MODE_MMAP; }
+            else if (value == "resident") { params.load_mode = LLAMA_LOAD_MODE_NONE; }
+            else if (value == "locked") { params.load_mode = LLAMA_LOAD_MODE_MLOCK; }
+            else { throw std::invalid_argument("invalid dense/shared residency policy"); }
+        }
+    ).set_env("LLAMA_ARG_MOE_DENSE_RESIDENCY"));
     return options;
 }
 
@@ -110,7 +129,7 @@ void sparkmoe_normalize_params(common_params & params) {
         params.moe_paging.n_slots = 8;
         LOG_INF("MoE paging: using 8 slots per layer; the active expert count can raise this minimum\n");
     }
-    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_OS) {
+    if (params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_OS && params.load_mode == LLAMA_LOAD_MODE_AUTO) {
         params.load_mode = LLAMA_LOAD_MODE_MMAP;
     }
 

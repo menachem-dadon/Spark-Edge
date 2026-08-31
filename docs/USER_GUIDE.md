@@ -17,3 +17,34 @@ Context length, full-context behavior, and MTP are changed under **Chat settings
 Enable MTP only when the GGUF includes a compatible MTP head. Start with three draft tokens and measure throughput with the same prompt both on and off; MTP is not faster on every system.
 
 The launcher does not download models. Upstream CLI/server Hugging Face options remain available, but large downloads should be deliberate and model licenses must be reviewed first.
+
+## Advanced engine controls
+
+Keep buffered I/O and per-layer LRU initially. Direct I/O uses aligned native reads
+with byte validation and buffered fallback; it can be slower when the OS cache
+is warm. Hybrid shares a budget across layers while retaining layer floors and
+manual expert pinning. Hybrid, overlap and temporal prefetch currently require
+CPU-only inference. None changes routing, top-k or expert weight bytes.
+
+The hybrid resize button queues the cache MiB setting for the next decode without
+restarting the server. Accepted does not mean applied: watch pending/failure and
+committed/limit metrics. Pinned experts, layer floors and speculative rollback
+requirements can prevent a shrink. MTP owns a separate draft cache; the button
+resizes only the main context.
+
+Dense/shared residency controls the ordinary upstream loader: automatic, mmap,
+allocated resident memory or requested OS locking. This policy also applies to
+unpaged expert layers. OS locking may fail due to platform/privilege limits.
+First N paged layers means model-layer numbers, including any initial dense
+layers; 0 selects all routed layers.
+
+For recurrent MTP, effective microbatch must be at least draft tokens + 2. The
+expert cache must hold every selected expert for that microbatch. A too-small
+configuration is rejected; increase microbatch and cache/slots or disable MTP.
+Never reduce model top-k to fit memory. Runtime resize preserves this minimum.
+
+Cache RAM is separate from whole-process RSS/private memory and system RAM.
+Displayed tok/s is the cumulative generation average from llama-server metrics.
+Stall/queue counters are cumulative observations, not independent percentages.
+Compare options with the same model, context, threads and prompt; see
+`ENGINE_UPGRADES.md` for measured limitations.

@@ -114,9 +114,11 @@ static void fixture(const char * path, bool moe) {
 
 static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode, int layers = 0,
                                   llama_moe_io_mode io_mode = LLAMA_MOE_IO_MODE_BUFFERED, bool synthetic = true,
-                                  bool hybrid = false, bool overlap = false, bool prefetch = false, uint32_t real_ubatch = 1) {
+                                  bool hybrid = false, bool overlap = false, bool prefetch = false, uint32_t real_ubatch = 1,
+                                  llama_load_mode load_mode = LLAMA_LOAD_MODE_AUTO) {
     common_params params;
     params.model.path = path;
+    params.load_mode = load_mode;
     params.n_ctx = 64;
     params.n_batch = 8;
     params.n_ubatch = 8;
@@ -224,6 +226,15 @@ static void parity(const std::vector<float> & a, const std::vector<float> & b, b
 int main(int argc, char ** argv) {
     try {
         llama_backend_init();
+        if (argc == 3 && std::string(argv[1]) == "--residency") {
+            const auto mapped = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED,
+                                         false, false, false, false, 1, LLAMA_LOAD_MODE_MMAP);
+            parity(mapped, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED,
+                                    false, false, false, false, 1, LLAMA_LOAD_MODE_NONE));
+            llama_backend_free();
+            std::puts("SparkMoE dense/shared residency full-logit regression PASS");
+            return 0;
+        }
         if (argc == 3 && std::string(argv[1]) == "--compare-batching") {
             const auto single = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_OFF, 0, LLAMA_MOE_IO_MODE_BUFFERED, false);
             const auto batched = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_OFF, 0, LLAMA_MOE_IO_MODE_BUFFERED, false, false, false, false, 8);

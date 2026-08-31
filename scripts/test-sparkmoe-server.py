@@ -96,6 +96,78 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
                 proc.wait()
 
 
+def run_manager(binary_dir, root, log_dir):
+    base = "http://127.0.0.1:18080"
+    try:
+        with socket.create_connection(("127.0.0.1", 18080), timeout=.2):
+            raise RuntimeError("Manager port 18080 is occupied; refusing to modify an existing instance")
+    except (ConnectionRefusedError, TimeoutError, OSError):
+        pass
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    suffix = ".exe" if os.name == "nt" else ""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
+    env["SPARKMOE_NO_BROWSER"] = "1"
+    with (log_dir / "manager.log").open("wb") as log:
+        proc = subprocess.Popen([str(binary_dir / ("SparkMoE" + suffix))], cwd=binary_dir, env=env,
+                                stdout=log, stderr=log,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        try:
+            deadline = time.monotonic() + 20
+            while True:
+                try:
+                    config = request(base, "/api/config")
+                    break
+                except (OSError, RuntimeError):
+                    if proc.poll() is not None or time.monotonic() > deadline:
+                        raise RuntimeError("manager did not start")
+                    time.sleep(.1)
+            assert config["io_mode"] == "buffered" and config["cache_policy"] == "lru"
+            with urllib.request.urlopen(base, timeout=10) as response:
+                assert 'id="resize-cache"' in response.read().decode()
+            config.update(model=str(root / "test-sharded-00001-of-00002.gguf"), model_directory=str(root),
+                          mode="explicit", cache=1, slots=4, threads=2, inference_threads=2, port=port,
+                          ctx_size=256, batch_size=4, ubatch_size=4, parallel=1, cache_policy="hybrid",
+                          overlap="on", prefetch="temporal", io_mode="direct", dense_residency="resident")
+            request(base, "/api/start", config)
+            deadline = time.monotonic() + 45
+            while not request(base, "/api/status")["server_ready"]:
+                if time.monotonic() > deadline:
+                    raise RuntimeError("manager-controlled server did not become ready")
+                time.sleep(.2)
+            backend = f"http://127.0.0.1:{port}"
+            result = request(backend, "/completion", {"prompt": "ABC", "n_predict": 4, "temperature": 0, "ignore_eos": True})
+            assert result["tokens_predicted"] == 4 and result["content"]
+            stats = request(base, "/api/paging")
+            assert stats["enabled"] and stats["process_rss_bytes"] > 0 and stats["generation_tok_s"] > 0
+            active = request(base, "/api/server-config")
+            assert active["overlap"] and active["cache_policy"] == "hybrid" and active["dense_load_mode"] == "none"
+            assert request(base, "/api/paging/cache", {"cache_mib": 2})["accepted"]
+            request(backend, "/completion", {"prompt": "ABCD", "n_predict": 2, "ignore_eos": True})
+            assert request(base, "/api/paging")["cache_limit_bytes"] == 2 * 1048576
+            diagnostic = request(base, "/api/diagnostics")
+            assert "model" not in diagnostic["configuration"] and diagnostic["sparkmoe_version"]
+            request(base, "/api/restart", {"dense_residency": "mmap", "overlap": "off"})
+            deadline = time.monotonic() + 45
+            while not request(base, "/api/status")["server_ready"]:
+                if time.monotonic() > deadline:
+                    raise RuntimeError("manager restart timed out")
+                time.sleep(.2)
+            assert request(base, "/api/config")["model"] == config["model"]
+            assert not request(base, "/api/server-config")["overlap"]
+            request(base, "/api/stop", {})
+            assert not request(base, "/api/status")["running"]
+            print("PASS Desktop manager: default/config/start/generation/telemetry/resize/restart/stop/diagnostics, no browser")
+        finally:
+            try:
+                request(base, "/api/stop", {})
+            except (OSError, RuntimeError):
+                pass
+            proc.terminate()
+            proc.wait(timeout=10)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin-dir", type=Path, required=True)
@@ -114,6 +186,9 @@ def main():
         run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct", "hybrid")
         run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "buffered", "hybrid",
                  ["--moe-overlap", "on", "--moe-prefetch", "temporal"])
+        run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf", "explicit", args.log_dir, "buffered", "lru",
+                 ["--moe-paged-layers", "1", "--moe-dense-residency", "resident"])
+        run_manager(binary_dir, root, args.log_dir)
 
 
 if __name__ == "__main__":

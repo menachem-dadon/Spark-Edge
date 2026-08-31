@@ -2,6 +2,7 @@
 // SparkMoE integration extracted from MIT-licensed upstream patches.
 
 #include "server-api.h"
+#include "process-memory.h"
 #include "../server/server-context.h"
 #include "../server/server-common.h"
 #include <algorithm>
@@ -30,9 +31,13 @@ json sparkmoe_paging_stats_json(const llama_context * ctx) {
     llama_moe_paging_stats stats{};
     const bool enabled = llama_context_moe_paging_get_stats(ctx, &stats);
     const uint64_t accesses = stats.cache_hits + stats.cache_misses;
+    const auto memory = sparkmoe_memory_snapshot();
 
     return {
         {"enabled", enabled},
+        {"process_rss_bytes", memory.rss},
+        {"process_peak_rss_bytes", memory.peak_rss},
+        {"process_private_bytes", memory.private_bytes},
         {"cache_hits", stats.cache_hits},
         {"cache_misses", stats.cache_misses},
         {"cache_hit_rate", accesses == 0 ? 0.0 : (double) stats.cache_hits / (double) accesses},
@@ -66,12 +71,21 @@ json sparkmoe_paging_stats_json(const llama_context * ctx) {
 }
 
 json sparkmoe_config_json(const common_params & params, const llama_context * context, int slot_n_ctx) {
+        char architecture[128]{};
+        llama_model_meta_val_str(llama_get_model(context), "general.architecture", architecture, sizeof(architecture));
+        llama_moe_paging_capabilities capabilities{};
+        llama_model_moe_paging_capabilities(llama_get_model(context), &capabilities);
         const bool mtp_enabled = std::find(
             params.speculative.types.begin(),
             params.speculative.types.end(),
             COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != params.speculative.types.end();
         return {
             {"mode", sparkmoe_paging_mode_name(params.moe_paging.mode)},
+            {"model_architecture", architecture},
+            {"expert_count", capabilities.expert_count},
+            {"active_expert_count", capabilities.active_expert_count},
+            {"indexed_expert_tensors", capabilities.indexed_tensor_count},
+            {"dense_load_mode", llama_load_mode_name(params.load_mode)},
             {"io_mode", sparkmoe_io_mode_name(params.moe_paging.io_mode)},
             {"cache_bytes", params.moe_paging.cache_bytes},
             {"cache_policy", params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID ? "hybrid" : "lru"},

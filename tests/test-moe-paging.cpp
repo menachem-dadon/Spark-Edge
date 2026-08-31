@@ -10,6 +10,7 @@
 #include "moe-paging/moe-model-index.h"
 #include "moe-paging/moe-paging.h"
 #include "moe-paging/moe-capabilities.h"
+#include "moe-row-stream-check.h"
 
 #include <cstdio>
 #include <cstring>
@@ -148,6 +149,7 @@ static int io_regression() {
 }
 
 int main() {
+    check_bounded_rows();
     REQUIRE(llama_moe::capability_for("llama").full_logit_tested);
     REQUIRE(!llama_moe::capability_for("unlisted").full_logit_tested);
     REQUIRE(io_regression() == 0);
@@ -424,6 +426,17 @@ int main() {
         auto * draft_pool = draft_manager.bind_pool(0, original);
         REQUIRE(target_pool && draft_pool);
         REQUIRE(target_pool != draft_pool && target_pool->data != draft_pool->data);
+    }
+    {
+        const uint64_t page = llama_moe::memory_page_size();
+        safe_params.cache_policy = LLAMA_MOE_CACHE_HYBRID;
+        safe_params.cache_bytes = 6 * page;
+        llama_moe::paging_manager rollback_manager(backend.get(), safe_params, index, 2, 2);
+        REQUIRE(rollback_manager.max_safe_ubatch() == 2);
+        REQUIRE(!rollback_manager.request_resize(4 * page));
+        REQUIRE(rollback_manager.request_resize(6 * page));
+        rollback_manager.apply_pending_resize();
+        REQUIRE(rollback_manager.max_safe_ubatch() == 2);
     }
 
     backend.reset();

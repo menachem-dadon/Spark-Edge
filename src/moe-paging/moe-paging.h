@@ -23,7 +23,8 @@ public:
         ggml_backend_t backend,
         const llama_moe_paging_params & params,
         const model_index & index,
-        int64_t minimum_slots);
+        int64_t minimum_slots,
+        uint32_t minimum_ubatch = 1);
     ~paging_manager();
 
     ggml_tensor * bind_pool(int32_t layer, const ggml_tensor * original);
@@ -56,6 +57,7 @@ private:
     std::shared_ptr<io_executor> executor;
     std::shared_ptr<cache_budget> budget;
     uint64_t minimum_budget = 0;
+    uint64_t minimum_resize_budget = 0;
     std::atomic<uint64_t> pending_resize{0};
     std::atomic<uint64_t> resize_failures{0};
 
