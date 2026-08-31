@@ -4,7 +4,7 @@
 
 SparkMoE is an independent, CPU-first fork of `llama.cpp` that can keep standard routed MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
 
-This is **v0.4.0-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows regression suite includes synthetic full-logit equivalence, real two-shard GGUF, HTTP/Desktop controls and exact Ling-3.0-tiny Q4_K_M logits with matching CPU kernels and microbatch. Qwen3.6 and Gemma 4 have separate smoke-test evidence; see [supported models](docs/SUPPORTED_MODELS.md). This remains an alpha rather than a performance or memory-fit guarantee.
+This is **v0.4.1-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows regression suite includes synthetic full-logit equivalence, real two-shard GGUF, HTTP/Desktop controls and exact Ling-3.0-tiny Q4_K_M logits with matching CPU kernels and microbatch. Qwen3.6 and Gemma 4 have separate smoke-test evidence; see [supported models](docs/SUPPORTED_MODELS.md). This remains an alpha rather than a performance or memory-fit guarantee.
 
 ## What it does
 
@@ -32,7 +32,7 @@ It does not promise that every model or quantization fits in 16 GB. Advanced hyb
 
 Permanent Windows installation:
 
-1. Use `sparkmoe-0.4.0-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
+1. Use `sparkmoe-0.4.1-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
 2. Run the installer. It installs for the current user, creates an uninstall entry, and can create desktop and Start menu shortcuts.
 3. Run `SparkMoE` from the Start menu.
 

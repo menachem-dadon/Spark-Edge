@@ -526,7 +526,7 @@ void start_process(process_state & state, const json & input) {
         "--moe-dense-residency", config.mode == "off" && config.dense_residency == "auto" ? "resident" : config.dense_residency,
         "--metrics",
         "--log-colors", "off",
-        "--log-file", state.log_path,
+        "--log-file", state.log_path, "--log-timestamps",
     };
     if (config.cache_policy == "hybrid" || config.overlap == "on" || config.prefetch != "off") {
         args.insert(args.end(), {"--n-gpu-layers", "0"});
@@ -665,7 +665,7 @@ json current_config_json(process_state & state) {
 }
 
 std::string tail_file(const std::string & path, size_t max_bytes) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(std::filesystem::u8path(path), std::ios::binary | std::ios::ate);
     if (!file) {
         return {};
     }

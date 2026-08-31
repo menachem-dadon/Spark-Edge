@@ -10,6 +10,7 @@
     "common/arg.cpp",
     "common/common.cpp",
     "common/common.h",
+    "common/log.cpp",
     "ggml/include/ggml-cpu.h",
     "ggml/src/CMakeLists.txt",
     "ggml/src/ggml-cpu/arch/x86/repack.cpp",
@@ -152,6 +153,9 @@
     {
       "id": "desktop-ui",
       "files": {
+        "common/log.cpp": [
+          "ggml_fopen(path, \"w\")"
+        ],
         "tools/ui/src/lib/constants/settings.constants.ts": [
           "Context & MTP"
         ],

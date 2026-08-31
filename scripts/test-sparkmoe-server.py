@@ -29,9 +29,11 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
+    native_log = model.parent / f"native-{port}.log"
     args = [str(binary), "-m", str(model), "--host", "127.0.0.1", "--port", str(port),
             "-c", "256", "-b", "4", "-ub", "4", "-t", "2", "-ngl", "0", "--parallel", "1",
-            "--fit", "off", "--no-warmup", "--chat-template", "chatml", "--moe-paging", mode]
+            "--fit", "off", "--no-warmup", "--chat-template", "chatml", "--moe-paging", mode,
+            "--log-file", str(native_log), "--log-timestamps"]
     if mode == "explicit":
         args += ["--moe-slots", "4", "--moe-io-mode", io_mode, "--moe-io-threads", "4", "--moe-cache-policy", policy]
     args += extra or []
@@ -59,6 +61,11 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
             body = {"prompt": "ABC", "n_predict": 4, "temperature": 0, "seed": 42, "ignore_eos": True}
             completion = request(base, "/completion", body)
             assert completion["tokens_predicted"] == 4 and completion["content"], "empty generation"
+            deadline = time.monotonic() + 5
+            while not native_log.exists() or "prompt eval time" not in native_log.read_text(encoding="utf-8", errors="replace"):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Native logger did not write generation timings to the Unicode path")
+                time.sleep(.1)
             chat = request(base, "/v1/chat/completions", {
                 "messages": [{"role": "system", "content": "Hi"}, {"role": "user", "content": "ABC"}],
                 "max_tokens": 4, "temperature": 0, "ignore_eos": True,
@@ -86,7 +93,7 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
                 assert resized["cache_committed_bytes"] <= resized["cache_limit_bytes"] and not resized["resize_failures"]
             reset = request(base, "/sparkmoe/v1/paging/reset-stats", {})
             assert reset["paging"]["bytes_read"] == 0, "reset failed"
-            print(f"PASS server {mode}/{io_mode}/{policy}: completion, chat, SSE, props, paging, reset, Unicode model path")
+            print(f"PASS server {mode}/{io_mode}/{policy}: completion, chat, SSE, props, paging, reset, Unicode model/log paths")
         finally:
             proc.terminate()
             try:
@@ -172,6 +179,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin-dir", type=Path, required=True)
     parser.add_argument("--log-dir", type=Path, required=True)
+    parser.add_argument("--skip-manager", action="store_true", help="Do not use port 18080 or touch an existing Desktop instance")
     args = parser.parse_args()
     binary_dir = args.bin_dir.resolve()
     args.log_dir.mkdir(parents=True, exist_ok=True)
@@ -188,7 +196,10 @@ def main():
                  ["--moe-overlap", "on", "--moe-prefetch", "temporal"])
         run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf", "explicit", args.log_dir, "buffered", "lru",
                  ["--moe-paged-layers", "1", "--moe-dense-residency", "resident"])
-        run_manager(binary_dir, root, args.log_dir)
+        if args.skip_manager:
+            print("SKIP Desktop lifecycle (--skip-manager); isolated HTTP cases still ran")
+        else:
+            run_manager(binary_dir, root, args.log_dir)
 
 
 if __name__ == "__main__":

@@ -319,7 +319,7 @@ public:
         }
 
         if (path) {
-            file = fopen(path, "w");
+            file = ggml_fopen(path, "w");
         } else {
             file = nullptr;
         }

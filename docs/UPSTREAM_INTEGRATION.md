@@ -131,12 +131,18 @@ The Qwen3.5-specific tensor-loader patch was removed in favor of the common hook
 
 ### Engine additions
 
-The maintained inventory now contains 46 upstream files. E3 adds only 17 lines
+The maintained inventory now contains 47 upstream files. E3 adds only 17 lines
 across `ggml/include/ggml-cpu.h`, `ggml/src/ggml-cpu/ggml-cpu.cpp` and
 `ggml/src/ggml-cpu/ggml-cpu.c`: a callback declaration/dispatch and one wait before
 each used expert in MUL_MAT_ID. Its readiness tables, scheduling, cache leases
 and error handling are SparkMoE-owned. Public parameter/stat fields, benchmark
 flags and Windows server memory linking account for the other justified growth.
+
+The Desktop group also tracks the one-line `common/log.cpp` change from `fopen`
+to upstream's existing `ggml_fopen`. Without it, native logs silently fail under
+Hebrew Windows installation paths. Desktop's own tail reader uses `u8path`.
+The final src/common/include/server patch is 245 insertions/17 deletions across
+20 files, including that portability correction.
 
 Direct I/O, scheduling, hybrid commitment, eviction, prefetch, row streaming and
 capability evidence remain under `src/moe-paging/`. Model/context initialization
