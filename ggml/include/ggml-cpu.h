@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+    typedef bool (*ggml_cpu_moe_wait_t)(const struct ggml_tensor * tensor, int64_t expert);
+    GGML_BACKEND_API void ggml_cpu_set_moe_wait(ggml_cpu_moe_wait_t callback);
+    GGML_BACKEND_API bool ggml_cpu_moe_wait(const struct ggml_tensor * tensor, int64_t expert);
+
     // the compute plan that needs to be prepared for ggml_graph_compute()
     // since https://github.com/ggml-org/ggml/issues/287
     struct ggml_cplan {

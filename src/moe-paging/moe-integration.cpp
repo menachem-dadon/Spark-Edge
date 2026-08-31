@@ -82,8 +82,9 @@ std::unique_ptr<paging_manager> init_context(ggml_backend_t cpu, const llama_mod
     }
     const auto & capability = capability_for(model.arch_name().c_str());
     LLAMA_LOG_INFO("MoE paging capability: %s - %s\n", capability.architecture, capability.evidence);
-    if (params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID && model.n_gpu_layers() > 0) {
-        throw std::runtime_error("hybrid cache currently requires CPU-only inference (--n-gpu-layers 0)");
+    if ((params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID || params.moe_paging.overlap ||
+            params.moe_paging.temporal_prefetch) && model.n_gpu_layers() > 0) {
+        throw std::runtime_error("hybrid/overlap/prefetch currently require CPU-only inference (--n-gpu-layers 0)");
     }
     auto manager = std::make_unique<paging_manager>(cpu, params.moe_paging, model.moe_index, model.hparams.n_expert_used);
     const uint32_t safe_ubatch = manager->max_safe_ubatch();
@@ -146,6 +147,16 @@ bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
         snapshot.pinned_experts,
         snapshot.resize_pending_bytes,
         snapshot.resize_failures,
+        snapshot.io_queue_us,
+        snapshot.remap_wait_us,
+        snapshot.compute_wait_us,
+        snapshot.async_experts,
+        snapshot.compute_with_io_pending,
+        snapshot.prefetch_reads,
+        snapshot.prefetch_hits,
+        snapshot.prefetch_wasted,
+        snapshot.prefetch_promoted,
+        snapshot.prefetch_skipped,
     };
     return true;
 }

@@ -853,6 +853,16 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                     break;
                 }
                 params.moe_paging.n_slots = std::stoi(argv[i]);
+            } else if (arg == "--moe-overlap" || arg == "--moe-prefetch") {
+                if (++i >= argc) { invalid_param = true; break; }
+                const std::string value = argv[i];
+                if (arg == "--moe-overlap") {
+                    if (value != "on" && value != "off") { invalid_param = true; break; }
+                    params.moe_paging.overlap = value == "on";
+                } else {
+                    if (value != "temporal" && value != "off") { invalid_param = true; break; }
+                    params.moe_paging.temporal_prefetch = value == "temporal";
+                }
             } else if (arg == "--moe-cache-policy") {
                 if (++i >= argc) { invalid_param = true; break; }
                 const std::string value(argv[i]);
@@ -1342,6 +1352,8 @@ struct cmd_params_instance {
                moe_paging.mode == other.moe_paging.mode &&
                moe_paging.io_mode == other.moe_paging.io_mode &&
                moe_paging.cache_policy == other.moe_paging.cache_policy &&
+               moe_paging.overlap == other.moe_paging.overlap &&
+               moe_paging.temporal_prefetch == other.moe_paging.temporal_prefetch &&
                moe_paging.cache_bytes == other.moe_paging.cache_bytes &&
                moe_paging.n_slots == other.moe_paging.n_slots &&
                moe_paging.io_threads == other.moe_paging.io_threads &&
@@ -1551,6 +1563,7 @@ struct test {
     uint64_t                 moe_bytes_read = 0;
     uint64_t                 moe_read_count = 0;
     uint64_t                 moe_evictions = 0;
+    llama_moe_paging_stats    moe_stats{};
     int                      n_prompt;
     int                      n_gen;
     int                      n_depth;
@@ -1615,6 +1628,7 @@ struct test {
     void update_moe_stats(const llama_context * ctx) {
         llama_moe_paging_stats stats{};
         if (llama_context_moe_paging_get_stats(ctx, &stats)) {
+            moe_stats = stats;
             moe_cache_hits = stats.cache_hits;
             moe_cache_misses = stats.cache_misses;
             moe_bytes_read = stats.bytes_read;
@@ -1683,6 +1697,7 @@ struct test {
             "moe_paging",     "moe_cache_mib",  "moe_slots",      "moe_io_threads",
             "moe_cache_hits", "moe_cache_misses", "moe_hit_rate", "moe_bytes_read",
             "moe_bytes_per_token", "moe_read_count", "moe_evictions",
+            "moe_compute_wait_us", "moe_overlap_events", "moe_prefetch_hits", "moe_prefetch_reads", "moe_prefetch_wasted",
             "n_prompt",       "n_gen",          "n_depth",
             "test_time",      "avg_ns",         "stddev_ns",     "avg_ts",         "stddev_ts"
         };
@@ -1699,7 +1714,8 @@ struct test {
             field == "fit_target" || field == "fit_min_ctx" || field == "flash_attn" ||
             field == "moe_cache_mib" || field == "moe_slots" || field == "moe_io_threads" ||
             field == "moe_cache_hits" || field == "moe_cache_misses" || field == "moe_bytes_read" ||
-            field == "moe_read_count" || field == "moe_evictions") {
+            field == "moe_read_count" || field == "moe_evictions" || field == "moe_compute_wait_us" ||
+            field == "moe_overlap_events" || field == "moe_prefetch_hits" || field == "moe_prefetch_reads" || field == "moe_prefetch_wasted") {
             return INT;
         }
         if (field == "f16_kv" || field == "no_kv_offload" || field == "cpu_strict" ||
@@ -1795,6 +1811,11 @@ struct test {
                                             std::to_string(moe_bytes_per_token()),
                                             std::to_string(moe_read_count),
                                             std::to_string(moe_evictions),
+                                            std::to_string(moe_stats.compute_wait_us),
+                                            std::to_string(moe_stats.compute_with_io_pending),
+                                            std::to_string(moe_stats.prefetch_hits),
+                                            std::to_string(moe_stats.prefetch_reads),
+                                            std::to_string(moe_stats.prefetch_wasted),
                                             std::to_string(n_prompt),
                                             std::to_string(n_gen),
                                             std::to_string(n_depth),

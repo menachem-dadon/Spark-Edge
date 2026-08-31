@@ -2,6 +2,7 @@
 // Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 #include "ggml-backend.h"
+#include "ggml-cpu.h"
 #include "ggml-cpp.h"
 #include "llama-mmap.h"
 #include "llama.h"
@@ -89,11 +90,59 @@ static int io_regression() {
         auto blocker = executor.submit([&] { started.set_value(); released.wait(); return llama_moe::io_result{}; });
         started.get_future().wait();
         std::vector<int> order;
-        auto speculative = executor.submit([&] { order.push_back(2); return llama_moe::io_result{}; }, llama_moe::io_priority::prefetch);
+        auto speculative = executor.submit([&] { order.push_back(2); return llama_moe::io_result{}; }, llama_moe::io_priority::prefetch, 22);
+        auto cancelled = executor.submit([&] { order.push_back(3); return llama_moe::io_result{}; }, llama_moe::io_priority::prefetch, 33);
         auto demand = executor.submit([&] { order.push_back(1); return llama_moe::io_result{}; });
+        REQUIRE(executor.promote(22));
+        REQUIRE(executor.cancel(33));
+        REQUIRE(!executor.cancel(33));
         release.set_value();
         blocker.get(); demand.get(); speculative.get();
+        bool cancellation_reported = false;
+        try { cancelled.get(); } catch (const std::future_error &) { cancellation_reported = true; }
+        REQUIRE(cancellation_reported);
         REQUIRE((order == std::vector<int>{1, 2}));
+    }
+    {
+        auto executor = std::make_shared<llama_moe::io_executor>(1);
+        auto counters = std::make_shared<llama_moe::stats>();
+        int calls = 0;
+        llama_moe::read_ticket ticket(executor, counters, [&] {
+            llama_moe::io_result result;
+            result.ok = ++calls > 1;
+            result.bytes = 16;
+            return result;
+        }, true);
+        REQUIRE(!ticket.finish(false).ok);
+        REQUIRE(ticket.finish(true).ok && ticket.finish(true).ok && calls == 2);
+        REQUIRE(counters->snapshot().read_count == 1);
+    }
+    {
+        auto executor = std::make_shared<llama_moe::io_executor>(2);
+        auto counters = std::make_shared<llama_moe::stats>();
+        auto table = std::make_shared<llama_moe::readiness_table>(2);
+        auto batch = std::make_shared<llama_moe::read_batch>();
+        std::promise<void> slow_started, release;
+        auto released = release.get_future().share();
+        table->reads[0] = std::make_shared<llama_moe::read_ticket>(executor, counters, [] {
+            llama_moe::io_result result; result.ok = true; return result;
+        }, false);
+        table->reads[1] = std::make_shared<llama_moe::read_ticket>(executor, counters, [&] {
+            slow_started.set_value(); released.wait();
+            llama_moe::io_result result; result.ok = true; return result;
+        }, false);
+        for (const auto & read : table->reads) { batch->reads.push_back(read); read->set_batch(batch); }
+        ggml_tensor identity{};
+        llama_moe::register_readiness(&identity, table);
+        slow_started.get_future().wait();
+        auto compute = std::async(std::launch::async, [&] { return ggml_cpu_moe_wait(&identity, 0); });
+        const bool fast_ready = compute.wait_for(std::chrono::seconds(1)) == std::future_status::ready;
+        const auto pending = counters->snapshot().compute_with_io_pending;
+        release.set_value();
+        const bool completed = compute.get() && ggml_cpu_moe_wait(&identity, 1);
+        llama_moe::unregister_readiness(&identity);
+        REQUIRE(fast_ready && completed && pending == 1);
+        REQUIRE(ggml_cpu_moe_wait(&identity, 99));
     }
     return 0;
 }
@@ -297,6 +346,42 @@ int main() {
         REQUIRE(!budget->resize(2 * page));
         REQUIRE(a.set_pinned(1, false) && a.set_pinned(2, false));
         REQUIRE(budget->resize(2 * page));
+        REQUIRE(budget->resize(3 * page));
+        b.resolve(ids, 2, slots);
+        a.prefetch_previous(1);
+        a.resolve(ids, 2, slots);
+        REQUIRE(a.get_stats().snapshot().prefetch_hits == 1);
+        REQUIRE(a.get_stats().snapshot().prefetch_reads == 1);
+        REQUIRE(budget->committed <= budget->limit);
+    }
+
+    {
+        auto executor = std::make_shared<llama_moe::io_executor>(1);
+        std::promise<void> started, release;
+        auto released = release.get_future().share();
+        auto blocker = executor->submit([&] { started.set_value(); released.wait(); return llama_moe::io_result{}; });
+        started.get_future().wait();
+        llama_moe::layer_cache async_cache(0, 4, 2, 1, 30000, index, backend.get(), executor, nullptr, true);
+        auto * pool = async_cache.bind_tensor(original, *index.find(original->name));
+        const int32_t ids[] = {1, 3};
+        int32_t slots[2]{};
+        auto routed = std::async(std::launch::async, [&] { async_cache.resolve(ids, 2, slots, true); });
+        const bool returned = routed.wait_for(std::chrono::seconds(1)) == std::future_status::ready;
+        if (!returned) { release.set_value(); }
+        REQUIRE(returned);
+        routed.get();
+        auto compute = std::async(std::launch::async, [&] { return ggml_cpu_moe_wait(pool, slots[0]); });
+        const bool waited = compute.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout;
+        release.set_value();
+        REQUIRE(waited && compute.get());
+        REQUIRE(ggml_cpu_moe_wait(pool, slots[1]));
+        for (int i = 0; i < 2; ++i) {
+            const auto * row = reinterpret_cast<const float *>(static_cast<const uint8_t *>(pool->data) + slots[i] * pool->nb[2]);
+            REQUIRE(row[0] == float(ids[i] * 10));
+        }
+        REQUIRE(async_cache.get_stats().snapshot().async_experts == 2);
+        REQUIRE(async_cache.get_stats().snapshot().compute_wait_us > 0);
+        blocker.get();
     }
 
     bool small_budget_rejected = false;

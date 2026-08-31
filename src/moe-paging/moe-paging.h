@@ -41,6 +41,7 @@ public:
 private:
     layer_cache & get_or_create_layer(int32_t layer);
     int64_t slots_for_layer(int32_t layer) const;
+    void prefetch_after(int32_t layer);
     static void remap_callback(
         ggml_tensor * destination,
         const ggml_tensor * source,

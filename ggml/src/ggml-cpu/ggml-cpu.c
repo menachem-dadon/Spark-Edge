@@ -1651,6 +1651,7 @@ static void ggml_compute_forward_mul_mat_id(
             continue;
         }
 
+        GGML_ASSERT(ggml_cpu_moe_wait(src0, cur_a));
         const char * src0_cur = (const char *) src0->data + cur_a * nb02;
         const void * wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
         const size_t row_size = ggml_row_size(vec_dot_type, ne10);

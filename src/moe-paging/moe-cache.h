@@ -9,6 +9,7 @@
 #include "moe-model-index.h"
 #include "moe-stats.h"
 #include "moe-memory.h"
+#include "moe-readiness.h"
 
 #include <cstdint>
 #include <memory>
@@ -37,6 +38,7 @@ private:
     int64_t floor;
     layer_cache * active = nullptr;
     std::vector<layer_cache *> layers;
+    bool reclaim_pending(layer_cache * recipient);
 };
 
 enum class entry_state {
@@ -56,6 +58,7 @@ struct cache_entry {
     uint32_t active_refs = 0;
     uint64_t generation = 0;
     bool committed = false;
+    bool prefetched = false;
 };
 
 struct tensor_pool {
@@ -64,6 +67,7 @@ struct tensor_pool {
     std::unique_ptr<virtual_memory> memory;
     ggml_backend_buffer_ptr buffer;
     const tensor_descriptor * descriptor = nullptr;
+    std::shared_ptr<readiness_table> readiness;
 };
 
 class layer_cache {
@@ -77,7 +81,8 @@ public:
         const model_index & index,
         ggml_backend_t backend,
         std::shared_ptr<io_executor> executor = nullptr,
-        std::shared_ptr<cache_budget> budget = nullptr);
+        std::shared_ptr<cache_budget> budget = nullptr,
+        bool overlap = false);
     ~layer_cache();
 
     ggml_tensor * bind_tensor(const ggml_tensor * original, const tensor_descriptor & descriptor);
@@ -90,6 +95,8 @@ public:
     uint64_t resident_count() const;
     uint64_t pinned_count() const;
     uint64_t committed_bytes() const;
+    void prefetch_previous(size_t maximum);
+    void after_resolve(std::function<void()> callback) { next_layer_prefetch = std::move(callback); }
 
 private:
     friend class cache_budget;
@@ -97,6 +104,9 @@ private:
     void evict(int32_t slot);
     void commit_slot(int32_t slot);
     void release_active();
+    bool finish_slot(int32_t slot, bool required);
+    void refresh_completed();
+    void queue_slot(int32_t expert, int32_t slot, bool speculative);
     int32_t choose_victim(const std::vector<bool> & reserved) const;
 
     int32_t layer;
@@ -116,7 +126,10 @@ private:
     std::vector<bool> pin_requested;
     std::vector<tensor_pool> pools;
     std::unordered_map<std::string, size_t> pool_by_name;
-    stats counters;
+    std::shared_ptr<stats> counters = std::make_shared<stats>();
+    bool overlap;
+    std::vector<int32_t> previous_experts;
+    std::function<void()> next_layer_prefetch;
 };
 
 }

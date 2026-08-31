@@ -52,6 +52,16 @@ json sparkmoe_paging_stats_json(const llama_context * ctx) {
         {"pinned_experts", stats.pinned_experts},
         {"resize_pending_bytes", stats.resize_pending_bytes},
         {"resize_failures", stats.resize_failures},
+        {"io_queue_us", stats.io_queue_us},
+        {"remap_wait_us", stats.remap_wait_us},
+        {"compute_wait_us", stats.compute_wait_us},
+        {"async_experts", stats.async_experts},
+        {"compute_with_io_pending", stats.compute_with_io_pending},
+        {"prefetch_reads", stats.prefetch_reads},
+        {"prefetch_hits", stats.prefetch_hits},
+        {"prefetch_wasted", stats.prefetch_wasted},
+        {"prefetch_promoted", stats.prefetch_promoted},
+        {"prefetch_skipped", stats.prefetch_skipped},
     };
 }
 
@@ -67,6 +77,8 @@ json sparkmoe_config_json(const common_params & params, const llama_context * co
             {"cache_policy", params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID ? "hybrid" : "lru"},
             {"slots_per_layer", params.moe_paging.n_slots},
             {"io_threads", params.moe_paging.io_threads},
+            {"overlap", params.moe_paging.overlap},
+            {"prefetch", params.moe_paging.temporal_prefetch ? "temporal" : "off"},
             {"paged_layers", params.moe_paging.n_layers},
             {"io_timeout_ms", params.moe_paging.io_timeout_ms},
             {"context_size", llama_n_ctx(context)},

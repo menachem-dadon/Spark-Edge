@@ -70,7 +70,9 @@ def main():
         observed = {}
         start = time.monotonic()
         with output.open("wb") as stdout, errors.open("wb") as stderr:
-            proc = subprocess.Popen(command, stdout=stdout, stderr=stderr,
+            environment = os.environ.copy()
+            environment.update(case.get("env", {}))
+            proc = subprocess.Popen(command, stdout=stdout, stderr=stderr, env=environment,
                                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             while proc.poll() is None:
                 for key, value in memory(proc.pid).items():
@@ -79,7 +81,11 @@ def main():
         if proc.returncode:
             raise RuntimeError(f"{case['name']} failed: {errors}")
         result = {"name": case["name"], "command": command, "wall_seconds": time.monotonic() - start,
+                  "environment_overrides": case.get("env", {}),
                   "memory": observed, "bench": json.loads(output.read_text(encoding="utf-8"))}
+        for metric, minimum in case.get("min_metrics", {}).items():
+            if result["bench"][0].get(metric, 0) < minimum:
+                raise RuntimeError(f"{case['name']}: {metric} was not exercised; check the experiment patch/configuration")
         report["runs"].append(result)
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(case["name"], result["bench"][0]["samples_ts"], observed, flush=True)

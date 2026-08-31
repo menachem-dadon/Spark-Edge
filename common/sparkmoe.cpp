@@ -78,6 +78,22 @@ std::vector<common_arg> sparkmoe_options() {
             else { throw std::invalid_argument("invalid MoE cache policy"); }
         }
     ).set_env("LLAMA_ARG_MOE_CACHE_POLICY"));
+    add_opt(common_arg(
+        {"--moe-overlap"}, "on|off",
+        "CPU compute/I/O overlap with per-expert readiness (default: off)",
+        [](common_params & params, const std::string & value) {
+            if (value != "on" && value != "off") { throw std::invalid_argument("invalid MoE overlap mode"); }
+            params.moe_paging.overlap = value == "on";
+        }
+    ).set_env("LLAMA_ARG_MOE_OVERLAP"));
+    add_opt(common_arg(
+        {"--moe-prefetch"}, "off|temporal",
+        "bounded, demand-priority next-layer temporal prefetch (default: off)",
+        [](common_params & params, const std::string & value) {
+            if (value != "off" && value != "temporal") { throw std::invalid_argument("invalid MoE prefetch mode"); }
+            params.moe_paging.temporal_prefetch = value == "temporal";
+        }
+    ).set_env("LLAMA_ARG_MOE_PREFETCH"));
     return options;
 }
 

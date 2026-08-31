@@ -20,6 +20,7 @@ struct io_result {
     uint64_t physical_bytes = 0;
     uint64_t direct_bytes = 0;
     uint64_t fallback_reads = 0;
+    uint64_t queue_us = 0;
 };
 
 class file_reader {
@@ -45,7 +46,9 @@ public:
     io_executor(const io_executor &) = delete;
     io_executor & operator=(const io_executor &) = delete;
 
-    std::future<io_result> submit(std::function<io_result()> task, io_priority priority = io_priority::demand);
+    std::future<io_result> submit(std::function<io_result()> task, io_priority priority = io_priority::demand, uint64_t tag = 0);
+    bool promote(uint64_t tag);
+    bool cancel(uint64_t tag);
 
 private:
     struct impl;

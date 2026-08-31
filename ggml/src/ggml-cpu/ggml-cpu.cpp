@@ -7,6 +7,7 @@
 #include "amx/amx.h"
 
 #include <cctype>
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,17 @@
 #endif
 
 // ggml-backend interface
+
+static std::atomic<ggml_cpu_moe_wait_t> moe_wait_callback{nullptr};
+
+void ggml_cpu_set_moe_wait(ggml_cpu_moe_wait_t callback) {
+    moe_wait_callback.store(callback, std::memory_order_release);
+}
+
+bool ggml_cpu_moe_wait(const struct ggml_tensor * tensor, int64_t expert) {
+    const auto callback = moe_wait_callback.load(std::memory_order_acquire);
+    return !callback || callback(tensor, expert);
+}
 
 std::vector<ggml_backend_buffer_type_t> & ggml_backend_cpu_get_extra_buffer_types() {
     static std::vector<ggml_backend_buffer_type_t> bufts = []() {

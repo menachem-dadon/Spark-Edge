@@ -1,0 +1,4 @@
+[
+  {"name": "temporal-control", "args": ["--moe-io-threads", "4", "--moe-cache-policy", "hybrid", "--moe-overlap", "on", "--moe-prefetch", "temporal"], "env": {"SPARKMOE_PREFETCH_EXPERIMENT": "off"}},
+  {"name": "transition-experiment", "args": ["--moe-io-threads", "4", "--moe-cache-policy", "hybrid", "--moe-overlap", "on", "--moe-prefetch", "temporal"], "env": {"SPARKMOE_PREFETCH_EXPERIMENT": "transitions"}, "min_metrics": {"moe_prefetch_reads": 1}}
+]

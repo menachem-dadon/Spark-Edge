@@ -112,6 +112,8 @@ def main():
         run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf", "explicit", args.log_dir)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct")
         run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct", "hybrid")
+        run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "buffered", "hybrid",
+                 ["--moe-overlap", "on", "--moe-prefetch", "temporal"])
 
 
 if __name__ == "__main__":

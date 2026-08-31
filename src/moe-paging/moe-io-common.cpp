@@ -4,6 +4,8 @@
 #include "moe-io.h"
 
 #include <condition_variable>
+#include <algorithm>
+#include <chrono>
 #include <deque>
 #include <mutex>
 #include <stdexcept>
@@ -20,8 +22,13 @@ struct io_executor::impl {
             thread_count = 1;
         }
         workers.reserve(thread_count);
-        for (uint32_t i = 0; i < thread_count; ++i) {
-            workers.emplace_back([this] { worker_loop(); });
+        try {
+            for (uint32_t i = 0; i < thread_count; ++i) { workers.emplace_back([this] { worker_loop(); }); }
+        } catch (...) {
+            { std::lock_guard<std::mutex> lock(mutex); stopping = true; }
+            condition.notify_all();
+            for (auto & worker : workers) { worker.join(); }
+            throw;
         }
     }
 
@@ -38,14 +45,21 @@ struct io_executor::impl {
         }
     }
 
-    std::future<io_result> submit(std::function<io_result()> task, io_priority priority) {
-        auto packaged = std::make_shared<std::packaged_task<io_result()>>([task = std::move(task)] {
-            try { return task(); }
+    std::future<io_result> submit(std::function<io_result()> task, io_priority priority, uint64_t tag) {
+        const auto queued = std::chrono::steady_clock::now();
+        auto packaged = std::make_shared<std::packaged_task<io_result()>>([task = std::move(task), queued] {
+            try {
+                const auto delay = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - queued).count();
+                auto result = task();
+                result.queue_us = static_cast<uint64_t>(delay);
+                return result;
+            }
             catch (const std::exception & error) {
                 io_result result;
                 result.error = error.what();
                 return result;
             }
+            catch (...) { io_result result; result.error = "unknown I/O exception"; return result; }
         });
         auto future = packaged->get_future();
         {
@@ -61,10 +75,28 @@ struct io_executor::impl {
                 rejected.set_value(result);
                 return rejected.get_future();
             }
-            queue.emplace_back([packaged] { (*packaged)(); });
+            queue.push_back({tag, [packaged] { (*packaged)(); }});
         }
         condition.notify_one();
         return future;
+    }
+
+    bool promote(uint64_t tag) {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto found = std::find_if(prefetch.begin(), prefetch.end(), [tag](const job & item) { return item.tag == tag; });
+        if (found == prefetch.end()) { return false; }
+        tasks.push_back(std::move(*found));
+        prefetch.erase(found);
+        condition.notify_one();
+        return true;
+    }
+
+    bool cancel(uint64_t tag) {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto found = std::find_if(prefetch.begin(), prefetch.end(), [tag](const job & item) { return item.tag == tag; });
+        if (found == prefetch.end()) { return false; }
+        prefetch.erase(found); // A cancelled packaged_task completes its future with broken_promise.
+        return true;
     }
 
     void worker_loop() {
@@ -77,7 +109,7 @@ struct io_executor::impl {
                     return;
                 }
                 auto & queue = tasks.empty() ? prefetch : tasks;
-                task = std::move(queue.front());
+                task = std::move(queue.front().run);
                 queue.pop_front();
             }
             task();
@@ -86,8 +118,9 @@ struct io_executor::impl {
 
     std::mutex mutex;
     std::condition_variable condition;
-    std::deque<std::function<void()>> tasks;
-    std::deque<std::function<void()>> prefetch;
+    struct job { uint64_t tag; std::function<void()> run; };
+    std::deque<job> tasks;
+    std::deque<job> prefetch;
     std::vector<std::thread> workers;
     bool stopping = false;
 };
@@ -95,8 +128,10 @@ struct io_executor::impl {
 io_executor::io_executor(uint32_t thread_count) : pimpl(std::make_unique<impl>(thread_count)) {}
 io_executor::~io_executor() = default;
 
-std::future<io_result> io_executor::submit(std::function<io_result()> task, io_priority priority) {
-    return pimpl->submit(std::move(task), priority);
+std::future<io_result> io_executor::submit(std::function<io_result()> task, io_priority priority, uint64_t tag) {
+    return pimpl->submit(std::move(task), priority, tag);
 }
+bool io_executor::promote(uint64_t tag) { return pimpl->promote(tag); }
+bool io_executor::cancel(uint64_t tag) { return pimpl->cancel(tag); }
 
 }

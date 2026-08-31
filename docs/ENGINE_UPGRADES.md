@@ -94,10 +94,84 @@ page padding and a shared LRU also have costs. Per-layer remains the default.
 Logs: `build-upstream-refresh/e2-real-parity.log`, `e2-benchmark.json` and
 `server-smoke-e2/`. Build/HTTP activity was finished before the paired benchmark.
 
+## E3: per-expert readiness and temporal prefetch
+
+`--moe-overlap on` submits independent expert/projection reads, publishes the
+unchanged routing-to-slot mapping, and lets the CPU start each expert as soon as
+its weights are ready. A small GGML CPU callback precedes each used expert in
+MUL_MAT_ID. The SparkMoE-owned readiness registry is keyed by tensor, not a global
+current-model pointer, so separate contexts do not share cache state. Queued and
+running reads are drained before their destination is released or reused.
+
+`--moe-prefetch temporal` speculates up to top-k (capped at 16) previous-token
+experts for the next routed layer. It uses the same reader, executor and cache.
+Demand hits promote queued speculation; allocation can cancel unconsumed queued
+prefetch before reusing memory. Running OS reads cannot be preempted. A failed
+speculative read is retried as demand when consumed, never replaced with zeros.
+Pinned entries and active graph leases remain protected. Neither switch is on
+by default, and both require CPU-only inference.
+
+Telemetry distinguishes remap wait time, first-waiter compute stall time, queue
+delay, asynchronous experts, prefetch projection reads, useful expert hits,
+unconsumed expert evictions, skipped requests and promotions. The
+`compute_with_io_pending` counter observes a ready expert about to compute while
+another demand read remains pending. It is evidence that overlap is possible at
+that boundary, not a wall-clock estimate of all overlapped CPU work.
+
+The new upstream hook is isolated to the GGML CPU header, C++ callback dispatch
+and one C kernel call site. The manifest checks all three. Unsupported future
+kernel paths must not bypass this readiness check.
+
+Windows build, native readiness/cancellation/retry tests, synthetic full-logit
+matrix and five HTTP cases passed. A controlled reader proves that one ready
+expert can start while another remains blocked. Ling also passes exact equality
+over 1,886,208 logits in each mode at 512 MiB, including hundreds of evictions,
+hybrid resize, direct I/O and overlap plus temporal prefetch.
+
+The strict real-model comparison now fixes both repacking and microbatch (1) on
+both sides. A resident-only diagnostic found max absolute delta 1.4616346 when
+Ling's microbatch changes from 8 to 1, with no paging at all. Resident microbatch
+1 versus paged microbatch 1 has max delta 0. The cross-batch diagnostic is not an
+equivalence gate; the actual paging gate retains its original 1e-4 tolerance.
+`--compare-batching MODEL` reproduces this upstream numeric-path distinction.
+
+At 1,500 MiB, the forward/reverse short tg8 observations were:
+
+| Configuration | tok/s samples | Compute boundaries with I/O pending |
+| --- | --- | --- |
+| Fixed synchronous | 2.73, 2.94, 7.94, 8.58 | 0 |
+| Fixed overlap | 6.19, 5.43, 5.34, 5.70 | 325 per run |
+| Hybrid overlap | 8.54, 6.22, 7.16, 6.05 | 321-322 per run |
+| Hybrid + temporal | 7.33, 5.62, 8.76, 6.69 | 320-321 per run |
+
+At 512 MiB, hybrid overlap measured 4.05, 3.51, 3.29, 3.26 tok/s; adding temporal
+measured 4.49, 3.51, 3.76, 2.68. Peak RSS was about 1.36 GB. Temporal read zero
+extra rows on these decode traces: the per-layer top-k floor already retains the
+previous token's selected experts. Temporal is useful only when that prior set
+is larger or no longer resident (the unit test exercises that case). These
+observations do not justify changing defaults or promise a speedup on every CPU.
+
+### Predictive experiment: rejected for this release
+
+A bounded 64-state per-layer transition predictor used the previous top expert
+to rank likely next experts. It used the same cache, demand priority and readiness
+path; synthetic correctness tests passed. A paired tg32 x 2, 512 MiB experiment
+on Ling measured temporal control at 3.89, 4.60, 4.07, 3.96 tok/s versus predictive
+at 3.43, 2.97, 3.68, 3.13. Predictive recorded 1,041 useful expert hits, 9,918
+projection reads and 2,148 unused expert evictions per run. The extra traffic and
+cache pollution outweighed useful predictions on this workload.
+
+The predictor is therefore **not compiled or exposed as a product option**.
+Its reviewable prototype is `docs/experiments/predictive-transition.patch`.
+To repeat it, apply that patch only on an isolated experiment branch, rebuild,
+and run `benchmark-paging.py --cases config/benchmark-predictive-experiment.json
+--cache-mib 512 --tokens 32` with the normal binary/model/output arguments.
+The experiment configuration fails if predictive reads were not exercised, so
+running it against an unpatched release cannot masquerade as a predictor test.
+Raw logs are `build-upstream-refresh/e3-*-benchmark.json` and matching log files.
+
 ## Remaining checkpoints
 
-- E3: per-expert readiness, compute/I/O overlap, temporal prefetch and measured
-  predictive-prefetch evaluation. New modes remain opt-in.
 - E4: dense/shared residency controls, richer memory/stall/cache telemetry and
   generic bounded row streaming, without a Flash-Next-specific graph adapter.
 - Release: repeat gates, complete updater candidate validation, package all

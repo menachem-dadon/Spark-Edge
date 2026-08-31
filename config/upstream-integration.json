@@ -10,8 +10,11 @@
     "common/arg.cpp",
     "common/common.cpp",
     "common/common.h",
+    "ggml/include/ggml-cpu.h",
     "ggml/src/CMakeLists.txt",
     "ggml/src/ggml-cpu/arch/x86/repack.cpp",
+    "ggml/src/ggml-cpu/ggml-cpu.c",
+    "ggml/src/ggml-cpu/ggml-cpu.cpp",
     "include/llama.h",
     "src/CMakeLists.txt",
     "src/llama-context.cpp",
@@ -166,6 +169,24 @@
         "tools/llama-bench/llama-bench.cpp": [
           "--moe-paging",
           "params.moe_paging           = cmd_params_defaults.moe_paging"
+        ]
+      }
+    },
+    {
+      "id": "cpu-expert-readiness",
+      "files": {
+        "ggml/include/ggml-cpu.h": [
+          "ggml_cpu_set_moe_wait"
+        ],
+        "ggml/src/ggml-cpu/ggml-cpu.c": [
+          "ggml_cpu_moe_wait(src0, cur_a)"
+        ],
+        "ggml/src/ggml-cpu/ggml-cpu.cpp": [
+          "moe_wait_callback"
+        ],
+        "src/moe-paging/moe-readiness.cpp": [
+          "register_readiness",
+          "wait_tensor"
         ]
       }
     }

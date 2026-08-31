@@ -352,6 +352,16 @@ extern "C" {
         uint64_t pinned_experts;
         uint64_t resize_pending_bytes;
         uint64_t resize_failures;
+        uint64_t io_queue_us;
+        uint64_t remap_wait_us;
+        uint64_t compute_wait_us;
+        uint64_t async_experts;
+        uint64_t compute_with_io_pending;
+        uint64_t prefetch_reads;
+        uint64_t prefetch_hits;
+        uint64_t prefetch_wasted;
+        uint64_t prefetch_promoted;
+        uint64_t prefetch_skipped;
     };
 
     struct llama_moe_paging_capabilities {

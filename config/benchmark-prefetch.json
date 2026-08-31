@@ -1,0 +1,4 @@
+[
+  {"name": "hybrid-overlap", "args": ["--moe-io-threads", "4", "--moe-cache-policy", "hybrid", "--moe-overlap", "on"]},
+  {"name": "hybrid-temporal", "args": ["--moe-io-threads", "4", "--moe-cache-policy", "hybrid", "--moe-overlap", "on", "--moe-prefetch", "temporal"]}
+]

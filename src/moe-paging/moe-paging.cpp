@@ -94,10 +94,28 @@ layer_cache & paging_manager::get_or_create_layer(int32_t layer) {
             params.io_threads > 0 ? static_cast<uint32_t>(params.io_threads) : 1,
             params.io_timeout_ms,
             index,
-            backend, executor, budget);
+            backend, executor, budget, params.overlap);
+        if (params.temporal_prefetch) { cache->after_resolve([this, layer] { prefetch_after(layer); }); }
         LLAMA_LOG_INFO("MoE paging: layer %d uses %lld expert slots\n", layer, static_cast<long long>(cache->slots()));
     }
     return *cache;
+}
+
+void paging_manager::prefetch_after(int32_t layer) {
+    layer_cache * next = nullptr;
+    int32_t next_id = INT32_MAX;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto & item : layers) {
+            if (item.first > layer && item.first < next_id) { next = item.second.get(); next_id = item.first; }
+        }
+        if (!next) {
+            for (const auto & item : layers) {
+                if (item.first < next_id) { next = item.second.get(); next_id = item.first; }
+            }
+        }
+    }
+    if (next && next_id != layer) { next->prefetch_previous(static_cast<size_t>(std::min<int64_t>(minimum_slots, 16))); }
 }
 
 ggml_tensor * paging_manager::bind_pool(int32_t layer, const ggml_tensor * original) {
@@ -197,6 +215,16 @@ stats_snapshot paging_manager::snapshot() const {
         total.physical_bytes += value.physical_bytes;
         total.direct_bytes += value.direct_bytes;
         total.fallback_reads += value.fallback_reads;
+        total.io_queue_us += value.io_queue_us;
+        total.remap_wait_us += value.remap_wait_us;
+        total.compute_wait_us += value.compute_wait_us;
+        total.async_experts += value.async_experts;
+        total.compute_with_io_pending += value.compute_with_io_pending;
+        total.prefetch_reads += value.prefetch_reads;
+        total.prefetch_hits += value.prefetch_hits;
+        total.prefetch_wasted += value.prefetch_wasted;
+        total.prefetch_promoted += value.prefetch_promoted;
+        total.prefetch_skipped += value.prefetch_skipped;
         total.cache_committed_bytes += item.second->committed_bytes();
         total.resident_experts += item.second->resident_count();
         total.pinned_experts += item.second->pinned_count();

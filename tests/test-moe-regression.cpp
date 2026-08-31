@@ -114,7 +114,7 @@ static void fixture(const char * path, bool moe) {
 
 static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode, int layers = 0,
                                   llama_moe_io_mode io_mode = LLAMA_MOE_IO_MODE_BUFFERED, bool synthetic = true,
-                                  bool hybrid = false) {
+                                  bool hybrid = false, bool overlap = false, bool prefetch = false, uint32_t real_ubatch = 1) {
     common_params params;
     params.model.path = path;
     params.n_ctx = 64;
@@ -127,13 +127,16 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     params.moe_paging.mode = mode;
     params.moe_paging.n_slots = 4;
     if (!synthetic) {
+        params.n_ubatch = real_ubatch;
         params.moe_paging.n_slots = 0;
-        params.moe_paging.cache_bytes = 1500ull * 1024 * 1024;
+        params.moe_paging.cache_bytes = 512ull * 1024 * 1024;
     }
     params.moe_paging.n_layers = layers;
     params.moe_paging.io_mode = io_mode;
     params.moe_paging.io_threads = 4;
     params.moe_paging.cache_policy = hybrid ? LLAMA_MOE_CACHE_HYBRID : LLAMA_MOE_CACHE_PER_LAYER;
+    params.moe_paging.overlap = overlap;
+    params.moe_paging.temporal_prefetch = prefetch;
     params.warmup = false;
     params.fit_params = false;
     if (!synthetic) { params.no_extra_bufts = true; }
@@ -163,10 +166,10 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     for (int step = 0; step < 12; ++step) {
         if (hybrid && step == 3) {
             require(!llama_context_moe_paging_request_cache_resize(ctx, 1), "unsafe resize was accepted");
-            require(llama_context_moe_paging_request_cache_resize(ctx, synthetic ? 98304 : 1400ull * 1024 * 1024), "safe shrink was rejected");
+            require(llama_context_moe_paging_request_cache_resize(ctx, synthetic ? 98304 : 448ull * 1024 * 1024), "safe shrink was rejected");
         }
         if (hybrid && step == 7) {
-            require(llama_context_moe_paging_request_cache_resize(ctx, synthetic ? 196608 : 1500ull * 1024 * 1024), "safe grow was rejected");
+            require(llama_context_moe_paging_request_cache_resize(ctx, synthetic ? 196608 : 512ull * 1024 * 1024), "safe grow was rejected");
         }
         const auto * row = llama_get_logits_ith(ctx, -1);
         require(row != nullptr, "missing logits");
@@ -182,6 +185,7 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     require(llama_context_moe_paging_get_stats(ctx, &stats) == paging, "paging enabled in the wrong mode");
     if (paging) {
         require(stats.cache_committed_bytes && stats.resident_experts, "cache residency telemetry is empty");
+        if (overlap) { require(stats.async_experts > 0, "async reads did not run"); }
         if (hybrid) {
             require(stats.cache_committed_bytes <= stats.cache_limit_bytes && !stats.resize_pending_bytes && !stats.resize_failures,
                 "hybrid budget/resize invariant failed");
@@ -205,7 +209,7 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     return logits;
 }
 
-static void parity(const std::vector<float> & a, const std::vector<float> & b) {
+static void parity(const std::vector<float> & a, const std::vector<float> & b, bool strict = true) {
     require(a.size() == b.size() && !a.empty(), "empty or inconsistent output");
     float max_error = 0;
     size_t errors = 0;
@@ -214,17 +218,28 @@ static void parity(const std::vector<float> & a, const std::vector<float> & b) {
         errors += std::abs(a[i] - b[i]) > 1e-4f + 1e-4f * std::abs(a[i]);
     }
     std::printf("logits parity: %zu values, max abs error %.8g\n", a.size(), max_error);
-    require(errors == 0, "paged logits differ from resident baseline");
+    if (strict) { require(errors == 0, "paged logits differ from resident baseline"); }
 }
 
 int main(int argc, char ** argv) {
     try {
         llama_backend_init();
+        if (argc == 3 && std::string(argv[1]) == "--compare-batching") {
+            const auto single = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_OFF, 0, LLAMA_MOE_IO_MODE_BUFFERED, false);
+            const auto batched = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_OFF, 0, LLAMA_MOE_IO_MODE_BUFFERED, false, false, false, false, 8);
+            std::puts("Resident-only microbatch 1 versus 8 (diagnostic, not a paging gate):");
+            parity(single, batched, false);
+            parity(single, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, false));
+            llama_backend_free();
+            return 0;
+        }
         if (argc == 3 && std::string(argv[1]) == "--model") {
             const auto baseline = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_OFF, 0, LLAMA_MOE_IO_MODE_BUFFERED, false);
             parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, false));
             parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT, false));
             parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, false, true));
+            parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, false, false, true));
+            parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, false, true, true, true));
             llama_backend_free();
             std::puts("SparkMoE real-model full-logit regression PASS");
             return 0;
@@ -241,6 +256,9 @@ int main(int argc, char ** argv) {
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT));
         parity(resident, evaluate("test-sharded-00001-of-00002.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT));
         parity(resident, evaluate("test-sharded-00001-of-00002.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT, true, true));
+        parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, true, false, true));
+        parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, true, false, false, true));
+        parity(resident, evaluate("test-sharded-00001-of-00002.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT, true, true, true, true));
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_OS));
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_AUTO));
         parity(evaluate("test-dense-regression.gguf", LLAMA_MOE_PAGING_MODE_OFF),

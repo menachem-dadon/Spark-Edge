@@ -1,0 +1,57 @@
+--- a/src/moe-paging/moe-cache.cpp
++++ b/src/moe-paging/moe-cache.cpp
+@@ -7,0 +8,2 @@
++#include <cstdlib>
++#include <map>
+@@ -14,0 +17,44 @@
++
++// Local A/B experiment. Retained in production only if paired measurements justify it.
++struct transition_history {
++    std::vector<int32_t> previous;
++    std::map<int32_t, std::vector<uint16_t>> counts;
++};
++static std::mutex transition_mutex;
++static std::unordered_map<const layer_cache *, transition_history> transition_histories;
++static bool predictive_experiment() {
++    static const bool enabled = [] {
++        const auto * value = std::getenv("SPARKMOE_PREFETCH_EXPERIMENT");
++        return value && std::string(value) == "transitions";
++    }();
++    return enabled;
++}
++static void learn_transition(const layer_cache * cache, const std::vector<int32_t> & actual, size_t experts) {
++    if (!predictive_experiment()) { return; }
++    std::lock_guard<std::mutex> lock(transition_mutex);
++    auto & history = transition_histories[cache];
++    if (!history.previous.empty()) {
++        const int32_t key = history.previous.front();
++        if (!history.counts.count(key) && history.counts.size() >= 64) { history.counts.erase(history.counts.begin()); }
++        auto & scores = history.counts[key];
++        if (scores.empty()) { scores.resize(experts); }
++        for (const auto id : actual) {
++            if (scores[id] == 65535) { for (auto & value : scores) { value /= 2; } }
++            ++scores[id];
++        }
++    }
++    history.previous = actual;
++}
++static std::vector<int32_t> predict_transition(const layer_cache * cache, const std::vector<int32_t> & fallback) {
++    if (!predictive_experiment() || fallback.empty()) { return fallback; }
++    std::lock_guard<std::mutex> lock(transition_mutex);
++    const auto history = transition_histories.find(cache);
++    if (history == transition_histories.end()) { return fallback; }
++    const auto found = history->second.counts.find(fallback.front());
++    if (found == history->second.counts.end()) { return fallback; }
++    std::vector<int32_t> result;
++    for (size_t i = 0; i < found->second.size(); ++i) { if (found->second[i]) { result.push_back(static_cast<int32_t>(i)); } }
++    std::stable_sort(result.begin(), result.end(), [&](int32_t a, int32_t b) { return found->second[a] > found->second[b]; });
++    if (result.size() > fallback.size()) { result.resize(fallback.size()); }
++    return result;
++}
+@@ -124,0 +171 @@
++    if (predictive_experiment()) { std::lock_guard<std::mutex> lock(transition_mutex); transition_histories.erase(this); }
+@@ -396,0 +444 @@
++        learn_transition(this, unique, static_cast<size_t>(n_experts));
+@@ -413 +461 @@
+-    for (const int32_t expert : previous_experts) {
++    for (const int32_t expert : predict_transition(this, previous_experts)) {
