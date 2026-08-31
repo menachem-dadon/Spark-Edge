@@ -1,0 +1,4 @@
+[
+  {"name": "per-layer", "args": ["--moe-io-threads", "4", "--moe-cache-policy", "lru"]},
+  {"name": "hybrid", "args": ["--moe-io-threads", "4", "--moe-cache-policy", "hybrid"]}
+]

@@ -2,6 +2,7 @@
 // Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 #include "moe-model-index.h"
+#include "moe-memory.h"
 
 #include "llama-mmap.h"
 
@@ -88,7 +89,12 @@ void model_index::add_tensor(
     if (descriptor.layer < 0) {
         throw std::runtime_error("cannot determine layer for paged tensor: " + name);
     }
-    if (descriptor.expert_stride == 0 || descriptor.expert_stride * descriptor.expert_count > descriptor.length) {
+    if (tensor->ne[0] <= 0 || tensor->ne[1] <= 0 || tensor->ne[3] != 1 ||
+            tensor->nb[1] != ggml_row_size(tensor->type, tensor->ne[0]) ||
+            tensor->nb[2] / static_cast<uint64_t>(tensor->ne[1]) != tensor->nb[1] ||
+            tensor->nb[2] % static_cast<uint64_t>(tensor->ne[1]) != 0 ||
+            descriptor.expert_stride == 0 ||
+            static_cast<uint64_t>(descriptor.expert_count) > descriptor.length / descriptor.expert_stride) {
         throw std::runtime_error("invalid expert layout for paged tensor: " + name);
     }
 
@@ -168,6 +174,17 @@ int64_t model_index::expert_count(int32_t layer) const {
         }
     }
     return count;
+}
+
+uint64_t model_index::committed_bytes_per_expert(int32_t layer) const {
+    uint64_t total = 0;
+    for (const auto & tensor : descriptors) {
+        if (tensor.layer != layer) { continue; }
+        const auto bytes = page_aligned(tensor.expert_stride);
+        if (bytes > UINT64_MAX - total) { throw std::overflow_error("expert size overflow"); }
+        total += bytes;
+    }
+    return total;
 }
 
 }

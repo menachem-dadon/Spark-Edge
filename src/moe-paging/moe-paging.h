@@ -34,6 +34,9 @@ public:
 
     stats_snapshot snapshot() const;
     void reset_stats();
+    bool request_resize(uint64_t bytes);
+    bool has_pending_resize() const;
+    void apply_pending_resize();
 
 private:
     layer_cache & get_or_create_layer(int32_t layer);
@@ -50,6 +53,10 @@ private:
     const model_index & index;
     int64_t minimum_slots;
     std::shared_ptr<io_executor> executor;
+    std::shared_ptr<cache_budget> budget;
+    uint64_t minimum_budget = 0;
+    std::atomic<uint64_t> pending_resize{0};
+    std::atomic<uint64_t> resize_failures{0};
 
     mutable std::mutex mutex;
     std::unordered_map<int32_t, std::unique_ptr<layer_cache>> layers;

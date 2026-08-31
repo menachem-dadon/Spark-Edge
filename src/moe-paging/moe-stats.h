@@ -20,6 +20,12 @@ struct stats_snapshot {
     uint64_t physical_bytes = 0;
     uint64_t direct_bytes = 0;
     uint64_t fallback_reads = 0;
+    uint64_t cache_committed_bytes = 0;
+    uint64_t cache_limit_bytes = 0;
+    uint64_t resident_experts = 0;
+    uint64_t pinned_experts = 0;
+    uint64_t resize_pending_bytes = 0;
+    uint64_t resize_failures = 0;
 };
 
 class stats {

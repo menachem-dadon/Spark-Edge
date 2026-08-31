@@ -8,6 +8,7 @@
 #include "moe-paging/moe-cache.h"
 #include "moe-paging/moe-model-index.h"
 #include "moe-paging/moe-paging.h"
+#include "moe-paging/moe-capabilities.h"
 
 #include <cstdio>
 #include <cstring>
@@ -98,6 +99,8 @@ static int io_regression() {
 }
 
 int main() {
+    REQUIRE(llama_moe::capability_for("llama").full_logit_tested);
+    REQUIRE(!llama_moe::capability_for("unlisted").full_logit_tested);
     REQUIRE(io_regression() == 0);
     REQUIRE(llama_moe::is_pageable_expert_weight("blk.0.ffn_up_exps.weight"));
     REQUIRE(llama_moe::is_pageable_expert_weight("blk.7.ffn_gate_up_exps.weight"));
@@ -258,6 +261,42 @@ int main() {
         REQUIRE(values[i] == static_cast<float>(130 + i));
     }
     REQUIRE(shard_cache.get_stats().snapshot().bytes_read == sharded->nb[2]);
+    }
+
+    {
+        const uint64_t page = llama_moe::memory_page_size();
+        auto budget = std::make_shared<llama_moe::cache_budget>(5 * page, 2 * page, 1);
+        llama_moe::layer_cache a(0, 4, 2, 2, 30000, index, backend.get(), nullptr, budget);
+        llama_moe::layer_cache b(1, 4, 2, 2, 30000, index, backend.get(), nullptr, budget);
+        auto * pa = a.bind_tensor(original, *index.find(original->name));
+        auto * pb = b.bind_tensor(sharded, *index.find(sharded->name));
+        const int32_t ids[] = {0, 1, 2, 3};
+        int32_t slots[4]{};
+        a.resolve(ids, 4, slots);
+        REQUIRE(a.resident_count() == 4 && budget->committed == 4 * page);
+        REQUIRE(a.set_pinned(0, true));
+        b.resolve(ids, 3, slots);
+        REQUIRE(a.resident_count() == 2 && b.resident_count() == 3);
+        REQUIRE(budget->committed == 5 * page);
+        for (int i = 0; i < 3; ++i) {
+            const auto * row = reinterpret_cast<const float *>(static_cast<const uint8_t *>(pb->data) + slots[i] * pb->nb[2]);
+            REQUIRE(row[0] == float(100 + i * 10));
+        }
+        REQUIRE(!budget->resize(page));
+        REQUIRE(budget->limit == 5 * page);
+        REQUIRE(budget->resize(2 * page));
+        REQUIRE(a.resident_count() == 1 && b.resident_count() == 1 && budget->committed == 2 * page);
+        a.resolve(ids, 1, slots);
+        REQUIRE(*reinterpret_cast<const float *>(static_cast<const uint8_t *>(pa->data) + slots[0] * pa->nb[2]) == 0);
+        REQUIRE(budget->resize(5 * page));
+        a.resolve(ids, 3, slots, true);
+        REQUIRE(!budget->resize(2 * page));
+        REQUIRE(budget->limit == 5 * page);
+        budget->release_active();
+        REQUIRE(a.set_pinned(1, true) && a.set_pinned(2, true));
+        REQUIRE(!budget->resize(2 * page));
+        REQUIRE(a.set_pinned(1, false) && a.set_pinned(2, false));
+        REQUIRE(budget->resize(2 * page));
     }
 
     bool small_budget_rejected = false;

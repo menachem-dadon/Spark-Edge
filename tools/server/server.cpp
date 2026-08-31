@@ -239,6 +239,7 @@ int llama_server(common_params & params, int argc, char ** argv) {
     ctx_http.get ("/sparkmoe/v1/status",     ex_wrapper(routes.get_sparkmoe_status));
     ctx_http.get ("/sparkmoe/v1/paging",     ex_wrapper(routes.get_sparkmoe_paging));
     ctx_http.post("/sparkmoe/v1/paging/reset-stats", ex_wrapper(routes.post_sparkmoe_reset_stats));
+    ctx_http.post("/sparkmoe/v1/paging/cache", ex_wrapper(routes.post_sparkmoe_cache));
     ctx_http.get ("/sparkmoe/v1/config",     ex_wrapper(routes.get_sparkmoe_config));
     ctx_http.get ("/models",                   ex_wrapper(routes.get_models));
     ctx_http.get ("/v1/models",                ex_wrapper(routes.get_models));

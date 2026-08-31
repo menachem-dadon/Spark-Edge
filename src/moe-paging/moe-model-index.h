@@ -56,6 +56,7 @@ public:
     size_t layer_count() const;
     bool has_layer(int32_t layer) const;
     uint64_t bytes_per_expert(int32_t layer) const;
+    uint64_t committed_bytes_per_expert(int32_t layer) const;
     int64_t expert_count(int32_t layer) const;
 
 private:

@@ -257,6 +257,7 @@ public:
     bool moe_paging_get_stats(llama_moe_paging_stats * stats) const;
     void moe_paging_reset_stats();
     bool moe_paging_set_expert_pinned(int32_t layer, int32_t expert, bool pinned);
+    bool moe_paging_request_cache_resize(uint64_t bytes);
 
 private:
     llm_graph_params graph_params(

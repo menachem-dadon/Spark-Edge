@@ -1637,6 +1637,11 @@ static bool needs_raw_logits(const llama_ubatch & ubatch, const std::map<llama_s
 }
 
 int llama_context::decode(const llama_batch & batch_inp) {
+    if (moe_paging && moe_paging->has_pending_resize()) {
+        synchronize();
+        moe_paging->apply_pending_resize();
+        cparams.n_ubatch = std::min(cparams.n_ubatch, moe_paging->max_safe_ubatch());
+    }
     // MTP hook batches carry both token (next-token id) and embd (h_nextn row),
     // so accept either present rather than requiring exactly one.
     GGML_ASSERT(batch_inp.token || batch_inp.embd);

@@ -91,7 +91,9 @@
       "files": {
         "src/llama-context.cpp": [
           "llama_moe::init_context",
-          "moe_paging.get()"
+          "moe_paging.get()",
+          "apply_pending_resize()",
+          "max_safe_ubatch()"
         ],
         "src/llama-context.h": [
           "moe_paging"
@@ -116,7 +118,8 @@
       "files": {
         "tools/server/server.cpp": [
           "/sparkmoe/v1/config",
-          "/sparkmoe/v1/paging/reset-stats"
+          "/sparkmoe/v1/paging/reset-stats",
+          "/sparkmoe/v1/paging/cache"
         ],
         "tools/server/server-context.cpp": [
           "init_sparkmoe_routes("

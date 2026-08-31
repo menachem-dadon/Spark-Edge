@@ -137,6 +137,7 @@ struct server_routes {
     server_http_context::handler_t get_sparkmoe_status;
     server_http_context::handler_t get_sparkmoe_paging;
     server_http_context::handler_t post_sparkmoe_reset_stats;
+    server_http_context::handler_t post_sparkmoe_cache;
     server_http_context::handler_t get_sparkmoe_config;
     server_http_context::handler_t post_infill;
     server_http_context::handler_t post_completions;

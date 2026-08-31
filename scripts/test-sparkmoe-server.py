@@ -24,7 +24,7 @@ def request(base, route, body=None):
         raise RuntimeError(f"{route}: HTTP {error.code}: {error.read().decode(errors='replace')}") from error
 
 
-def run_case(binary, model, mode, log_dir, io_mode="buffered"):
+def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", extra=None):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -33,9 +33,10 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered"):
             "-c", "256", "-b", "4", "-ub", "4", "-t", "2", "-ngl", "0", "--parallel", "1",
             "--fit", "off", "--no-warmup", "--chat-template", "chatml", "--moe-paging", mode]
     if mode == "explicit":
-        args += ["--moe-slots", "4", "--moe-io-mode", io_mode, "--moe-io-threads", "4"]
+        args += ["--moe-slots", "4", "--moe-io-mode", io_mode, "--moe-io-threads", "4", "--moe-cache-policy", policy]
+    args += extra or []
     env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
-    log_path = log_dir / f"server-{mode}-{io_mode}.log"
+    log_path = log_dir / f"server-{mode}-{io_mode}-{policy}.log"
     with log_path.open("wb") as log:
         proc = subprocess.Popen(args, stdout=log, stderr=log, env=env,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
@@ -75,9 +76,17 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered"):
             assert stats["enabled"] == (mode == "explicit"), "wrong paging activation"
             if mode == "explicit":
                 assert stats["bytes_read"] > 0 and stats["cache_misses"] > 0, "inactive paging"
+                assert stats["cache_committed_bytes"] > 0, "missing memory telemetry"
+            if policy == "hybrid":
+                assert request(base, "/sparkmoe/v1/paging/cache", {"cache_mib": 1})["accepted"]
+                assert request(base, "/sparkmoe/v1/paging")["resize_pending_bytes"] == 1048576
+                request(base, "/completion", {**body, "prompt": "ABCD"})
+                resized = request(base, "/sparkmoe/v1/paging")
+                assert resized["cache_limit_bytes"] == 1048576 and resized["resize_pending_bytes"] == 0
+                assert resized["cache_committed_bytes"] <= resized["cache_limit_bytes"] and not resized["resize_failures"]
             reset = request(base, "/sparkmoe/v1/paging/reset-stats", {})
             assert reset["paging"]["bytes_read"] == 0, "reset failed"
-            print(f"PASS server {mode}/{io_mode}: completion, chat, SSE, props, paging, reset, Unicode model path")
+            print(f"PASS server {mode}/{io_mode}/{policy}: completion, chat, SSE, props, paging, reset, Unicode model path")
         finally:
             proc.terminate()
             try:
@@ -102,6 +111,7 @@ def main():
         run_case(binary_dir / ("llama-server" + suffix), root / "test-dense-regression.gguf", "off", args.log_dir)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf", "explicit", args.log_dir)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct")
+        run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct", "hybrid")
 
 
 if __name__ == "__main__":

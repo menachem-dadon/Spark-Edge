@@ -316,6 +316,11 @@ extern "C" {
         LLAMA_MOE_IO_MODE_DIRECT = 1,
     };
 
+    enum llama_moe_cache_policy {
+        LLAMA_MOE_CACHE_PER_LAYER = 0,
+        LLAMA_MOE_CACHE_HYBRID = 1,
+    };
+
     struct llama_moe_paging_params {
         enum llama_moe_paging_mode mode;
         enum llama_moe_io_mode io_mode;
@@ -324,6 +329,9 @@ extern "C" {
         int32_t io_threads;
         int32_t n_layers;
         uint32_t io_timeout_ms;
+        enum llama_moe_cache_policy cache_policy;
+        bool overlap;
+        bool temporal_prefetch;
     };
 
     struct llama_moe_paging_stats {
@@ -338,6 +346,12 @@ extern "C" {
         uint64_t physical_bytes;
         uint64_t direct_bytes;
         uint64_t fallback_reads;
+        uint64_t cache_committed_bytes;
+        uint64_t cache_limit_bytes;
+        uint64_t resident_experts;
+        uint64_t pinned_experts;
+        uint64_t resize_pending_bytes;
+        uint64_t resize_failures;
     };
 
     struct llama_moe_paging_capabilities {
@@ -646,6 +660,9 @@ extern "C" {
         struct llama_moe_paging_stats * stats);
 
     LLAMA_API void llama_context_moe_paging_reset_stats(struct llama_context * ctx);
+
+    // Queue a hybrid-cache resize; applied before the next decode. False means unsupported/invalid.
+    LLAMA_API bool llama_context_moe_paging_request_cache_resize(struct llama_context * ctx, uint64_t bytes);
 
     LLAMA_API bool llama_context_moe_paging_set_expert_pinned(
         struct llama_context * ctx,

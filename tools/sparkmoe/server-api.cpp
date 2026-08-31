@@ -46,6 +46,12 @@ json sparkmoe_paging_stats_json(const llama_context * ctx) {
         {"physical_bytes", stats.physical_bytes},
         {"direct_bytes", stats.direct_bytes},
         {"fallback_reads", stats.fallback_reads},
+        {"cache_committed_bytes", stats.cache_committed_bytes},
+        {"cache_limit_bytes", stats.cache_limit_bytes},
+        {"resident_experts", stats.resident_experts},
+        {"pinned_experts", stats.pinned_experts},
+        {"resize_pending_bytes", stats.resize_pending_bytes},
+        {"resize_failures", stats.resize_failures},
     };
 }
 
@@ -58,6 +64,7 @@ json sparkmoe_config_json(const common_params & params, const llama_context * co
             {"mode", sparkmoe_paging_mode_name(params.moe_paging.mode)},
             {"io_mode", sparkmoe_io_mode_name(params.moe_paging.io_mode)},
             {"cache_bytes", params.moe_paging.cache_bytes},
+            {"cache_policy", params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID ? "hybrid" : "lru"},
             {"slots_per_layer", params.moe_paging.n_slots},
             {"io_threads", params.moe_paging.io_threads},
             {"paged_layers", params.moe_paging.n_layers},
@@ -80,6 +87,20 @@ json sparkmoe_config_json(const common_params & params, const llama_context * co
 
 
 void server_routes::init_sparkmoe_routes(std::function<server_http_res_ptr()> make_response) {
+    this->post_sparkmoe_cache = [this, make_response](const server_http_req & req) {
+        auto res = make_response();
+        const auto body = json::parse(req.body);
+        const int64_t mib = body.value("cache_mib", int64_t(0));
+        if (mib <= 0 || static_cast<uint64_t>(mib) > UINT64_MAX / (1024 * 1024) ||
+                !llama_context_moe_paging_request_cache_resize(ctx_server_api.get_llama_context(), static_cast<uint64_t>(mib) * 1024 * 1024)) {
+            res->status = 400;
+            res->data = safe_json_to_str({{"error", "resize requires hybrid mode and a budget covering every layer floor"}});
+        } else {
+            res->status = 202;
+            res->data = safe_json_to_str({{"accepted", true}, {"apply", "before next decode"}});
+        }
+        return res;
+    };
     this->get_sparkmoe_status = [this, make_response](const server_http_req &) {
         auto res = make_response();
         res->data = safe_json_to_str({

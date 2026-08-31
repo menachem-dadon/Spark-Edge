@@ -2,6 +2,7 @@
 // SparkMoE integration extracted from MIT-licensed upstream patches.
 
 #include "moe-integration.h"
+#include "moe-capabilities.h"
 #include "llama-context.h"
 #include "llama-cparams.h"
 #include "llama-model.h"
@@ -79,6 +80,11 @@ std::unique_ptr<paging_manager> init_context(ggml_backend_t cpu, const llama_mod
     if (!explicit_mode) {
         return nullptr;
     }
+    const auto & capability = capability_for(model.arch_name().c_str());
+    LLAMA_LOG_INFO("MoE paging capability: %s - %s\n", capability.architecture, capability.evidence);
+    if (params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID && model.n_gpu_layers() > 0) {
+        throw std::runtime_error("hybrid cache currently requires CPU-only inference (--n-gpu-layers 0)");
+    }
     auto manager = std::make_unique<paging_manager>(cpu, params.moe_paging, model.moe_index, model.hparams.n_expert_used);
     const uint32_t safe_ubatch = manager->max_safe_ubatch();
     if (params.n_ubatch > safe_ubatch) {
@@ -134,6 +140,12 @@ bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
         snapshot.physical_bytes,
         snapshot.direct_bytes,
         snapshot.fallback_reads,
+        snapshot.cache_committed_bytes,
+        snapshot.cache_limit_bytes,
+        snapshot.resident_experts,
+        snapshot.pinned_experts,
+        snapshot.resize_pending_bytes,
+        snapshot.resize_failures,
     };
     return true;
 }
@@ -160,4 +172,12 @@ bool llama_context_moe_paging_set_expert_pinned(
 
 bool llama_context::moe_paging_set_expert_pinned(int32_t layer, int32_t expert, bool pinned) {
     return moe_paging && moe_paging->set_expert_pinned(layer, expert, pinned);
+}
+
+bool llama_context_moe_paging_request_cache_resize(llama_context * ctx, uint64_t bytes) {
+    return ctx && ctx->moe_paging_request_cache_resize(bytes);
+}
+
+bool llama_context::moe_paging_request_cache_resize(uint64_t bytes) {
+    return moe_paging && moe_paging->request_resize(bytes);
 }

@@ -36,6 +36,17 @@ paging_manager::paging_manager(
     if (params.n_slots <= 0 && params.cache_bytes == 0) {
         throw std::runtime_error("explicit MoE paging requires a slot count or cache byte budget");
     }
+    if (params.cache_policy == LLAMA_MOE_CACHE_HYBRID) {
+        uint64_t configured = 0;
+        for (size_t layer = 0; layer < index.layer_count(); ++layer) {
+            if (!index.has_layer(static_cast<int32_t>(layer))) { continue; }
+            const uint64_t bytes = index.committed_bytes_per_expert(static_cast<int32_t>(layer));
+            minimum_budget += bytes * minimum_slots;
+            configured += bytes * std::min<int64_t>(index.expert_count(static_cast<int32_t>(layer)),
+                std::max<int64_t>(minimum_slots, params.n_slots));
+        }
+        budget = std::make_shared<cache_budget>(params.cache_bytes ? params.cache_bytes : configured, minimum_budget, minimum_slots);
+    }
 }
 
 paging_manager::~paging_manager() = default;
@@ -45,9 +56,13 @@ int64_t paging_manager::slots_for_layer(int32_t layer) const {
     if (experts <= 0) {
         throw std::runtime_error("missing expert metadata for layer " + std::to_string(layer));
     }
+    if (params.cache_policy == LLAMA_MOE_CACHE_HYBRID) { return experts; }
 
-    const uint64_t layer_bytes = index.bytes_per_expert(layer);
-    const uint64_t layers_count = std::max<size_t>(1, index.layer_count());
+    const uint64_t layer_bytes = params.cache_policy == LLAMA_MOE_CACHE_HYBRID ?
+        index.committed_bytes_per_expert(layer) : index.bytes_per_expert(layer);
+    uint64_t layers_count = 0;
+    for (size_t i = 0; i < index.layer_count(); ++i) { layers_count += index.has_layer(static_cast<int32_t>(i)); }
+    layers_count = std::max<uint64_t>(1, layers_count);
     int64_t budget_slots = experts;
     if (params.cache_bytes > 0) {
         if (layer_bytes == 0) {
@@ -79,7 +94,7 @@ layer_cache & paging_manager::get_or_create_layer(int32_t layer) {
             params.io_threads > 0 ? static_cast<uint32_t>(params.io_threads) : 1,
             params.io_timeout_ms,
             index,
-            backend, executor);
+            backend, executor, budget);
         LLAMA_LOG_INFO("MoE paging: layer %d uses %lld expert slots\n", layer, static_cast<long long>(cache->slots()));
     }
     return *cache;
@@ -115,7 +130,13 @@ uint32_t paging_manager::max_safe_ubatch() const {
             continue;
         }
         found_layer = true;
-        const int64_t slots = slots_for_layer(static_cast<int32_t>(layer));
+        int64_t slots = slots_for_layer(static_cast<int32_t>(layer));
+        if (budget) {
+            std::lock_guard<std::recursive_mutex> lock(budget->mutex);
+            const uint64_t bytes = index.committed_bytes_per_expert(static_cast<int32_t>(layer));
+            slots = std::min<uint64_t>(index.expert_count(static_cast<int32_t>(layer)),
+                minimum_slots + (budget->limit - minimum_budget) / bytes);
+        }
         result = std::min(result, static_cast<uint64_t>(slots / minimum_slots));
     }
     if (!found_layer || result == 0) {
@@ -143,7 +164,7 @@ void paging_manager::remap_callback(
         cache->resolve(
             static_cast<const int32_t *>(source->data),
             static_cast<size_t>(ggml_nelements(source)),
-            static_cast<int32_t *>(destination->data));
+            static_cast<int32_t *>(destination->data), true);
     } catch (const std::exception & error) {
         std::fprintf(stderr, "MoE paging failed: %s\n", error.what());
         GGML_ABORT("MoE paging I/O or cache failure");
@@ -176,11 +197,39 @@ stats_snapshot paging_manager::snapshot() const {
         total.physical_bytes += value.physical_bytes;
         total.direct_bytes += value.direct_bytes;
         total.fallback_reads += value.fallback_reads;
+        total.cache_committed_bytes += item.second->committed_bytes();
+        total.resident_experts += item.second->resident_count();
+        total.pinned_experts += item.second->pinned_count();
     }
+    if (budget) {
+        std::lock_guard<std::recursive_mutex> cache_lock(budget->mutex);
+        total.cache_limit_bytes = budget->limit;
+    } else { total.cache_limit_bytes = params.cache_bytes ? params.cache_bytes : total.cache_committed_bytes; }
+    total.resize_pending_bytes = pending_resize.load();
+    total.resize_failures = resize_failures.load();
     return total;
 }
 
+bool paging_manager::request_resize(uint64_t bytes) {
+    if (!budget || bytes < minimum_budget) { return false; }
+    pending_resize.store(bytes);
+    return true;
+}
+
+bool paging_manager::has_pending_resize() const { return pending_resize.load() != 0; }
+
+void paging_manager::apply_pending_resize() {
+    const uint64_t bytes = pending_resize.exchange(0);
+    if (!bytes || !budget) { return; }
+    budget->release_active();
+    if (!budget->resize(bytes)) {
+        ++resize_failures;
+        LLAMA_LOG_WARN("MoE paging: resize rejected by pinned/active expert or per-layer floor constraints\n");
+    }
+}
+
 void paging_manager::reset_stats() {
+    resize_failures.store(0);
     std::lock_guard<std::mutex> lock(mutex);
     for (auto & item : layers) {
         item.second->reset_stats();

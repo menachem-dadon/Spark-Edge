@@ -8,6 +8,7 @@
 #include "moe-io.h"
 #include "moe-model-index.h"
 #include "moe-stats.h"
+#include "moe-memory.h"
 
 #include <cstdint>
 #include <memory>
@@ -17,6 +18,26 @@
 #include <vector>
 
 namespace llama_moe {
+
+class layer_cache;
+class cache_budget {
+public:
+    cache_budget(uint64_t limit, uint64_t minimum, int64_t floor);
+    bool resize(uint64_t bytes);
+    void release_active();
+    uint64_t limit;
+    uint64_t committed = 0;
+    uint64_t clock = 0;
+    std::recursive_mutex mutex;
+private:
+    friend class layer_cache;
+    void make_room(layer_cache * recipient, uint64_t bytes);
+    std::pair<layer_cache *, int32_t> oldest(layer_cache * recipient) const;
+    uint64_t minimum;
+    int64_t floor;
+    layer_cache * active = nullptr;
+    std::vector<layer_cache *> layers;
+};
 
 enum class entry_state {
     empty,
@@ -34,11 +55,13 @@ struct cache_entry {
     bool pinned = false;
     uint32_t active_refs = 0;
     uint64_t generation = 0;
+    bool committed = false;
 };
 
 struct tensor_pool {
     ggml_tensor * tensor = nullptr;
     ggml_context_ptr context;
+    std::unique_ptr<virtual_memory> memory;
     ggml_backend_buffer_ptr buffer;
     const tensor_descriptor * descriptor = nullptr;
 };
@@ -53,17 +76,27 @@ public:
         uint32_t io_timeout_ms,
         const model_index & index,
         ggml_backend_t backend,
-        std::shared_ptr<io_executor> executor = nullptr);
+        std::shared_ptr<io_executor> executor = nullptr,
+        std::shared_ptr<cache_budget> budget = nullptr);
+    ~layer_cache();
 
     ggml_tensor * bind_tensor(const ggml_tensor * original, const tensor_descriptor & descriptor);
-    void resolve(const int32_t * expert_ids, size_t count, int32_t * slot_ids);
+    void resolve(const int32_t * expert_ids, size_t count, int32_t * slot_ids, bool graph = false);
     bool set_pinned(int32_t expert, bool pinned);
 
     int64_t slots() const;
     const stats & get_stats() const;
     void reset_stats();
+    uint64_t resident_count() const;
+    uint64_t pinned_count() const;
+    uint64_t committed_bytes() const;
 
 private:
+    friend class cache_budget;
+    std::recursive_mutex & cache_mutex() const;
+    void evict(int32_t slot);
+    void commit_slot(int32_t slot);
+    void release_active();
     int32_t choose_victim(const std::vector<bool> & reserved) const;
 
     int32_t layer;
@@ -73,8 +106,10 @@ private:
     const model_index & index;
     ggml_backend_t backend;
     std::shared_ptr<io_executor> executor;
+    std::shared_ptr<cache_budget> budget;
+    uint64_t expert_bytes = 0;
 
-    mutable std::mutex mutex;
+    mutable std::recursive_mutex mutex;
     uint64_t clock = 0;
     std::vector<cache_entry> entries;
     std::vector<int32_t> expert_to_slot;

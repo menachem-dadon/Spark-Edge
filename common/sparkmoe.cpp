@@ -70,12 +70,12 @@ std::vector<common_arg> sparkmoe_options() {
         }
     ).set_env("LLAMA_ARG_MOE_IO_MODE"));
     add_opt(common_arg(
-        {"--moe-cache-policy"}, "lru",
-        "expert cache policy; only exact per-layer LRU is supported",
-        [](common_params &, const std::string & value) {
-            if (value != "lru") {
-                throw std::invalid_argument("only the lru MoE cache policy is supported");
-            }
+        {"--moe-cache-policy"}, "lru|hybrid",
+        "per-layer LRU (default), or a shared budget with per-layer floors and runtime resize",
+        [](common_params & params, const std::string & value) {
+            if (value == "lru") { params.moe_paging.cache_policy = LLAMA_MOE_CACHE_PER_LAYER; }
+            else if (value == "hybrid") { params.moe_paging.cache_policy = LLAMA_MOE_CACHE_HYBRID; }
+            else { throw std::invalid_argument("invalid MoE cache policy"); }
         }
     ).set_env("LLAMA_ARG_MOE_CACHE_POLICY"));
     return options;
