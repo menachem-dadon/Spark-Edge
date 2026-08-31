@@ -5,7 +5,8 @@
 param(
     [Parameter(Mandatory)][string]$BuildDir,
     [ValidateSet('avx2', 'generic')][string]$Variant = 'avx2',
-    [string]$OutputDir = ''
+    [string]$OutputDir = '',
+    [string]$UiNodeModulesDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +35,10 @@ foreach ($file in $required) {
 Get-ChildItem -LiteralPath $bin -Filter '*.dll' -File | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $stage
 }
-if (Test-Path (Join-Path $bin 'llama.dll')) {
+$buildInfo = Join-Path $BuildDir 'common/build-info.cpp'
+$buildInfoText = if (Test-Path -LiteralPath $buildInfo) { Get-Content -LiteralPath $buildInfo -Raw } else { '' }
+$isMsvcBuild = $buildInfoText -match 'LLAMA_COMPILER = "MSVC'
+if ($isMsvcBuild) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
     $vsInstall = if (Test-Path $vswhere) { & $vswhere -latest -products '*' -property installationPath }
     if ($vsInstall) {
@@ -47,16 +51,28 @@ if (Test-Path (Join-Path $bin 'llama.dll')) {
             Get-ChildItem -LiteralPath $crt -Filter '*.dll' -File | ForEach-Object {
                 Copy-Item -LiteralPath $_.FullName -Destination $stage
             }
+            $openMp = Join-Path (Split-Path -Parent $crt) 'Microsoft.VC143.OpenMP'
+            if (Test-Path -LiteralPath $openMp) {
+                Get-ChildItem -LiteralPath $openMp -Filter '*.dll' -File | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $stage
+                }
+            }
         }
     }
     if (-not (Test-Path (Join-Path $stage 'vcruntime140.dll'))) {
         throw 'The MSVC runtime must be staged from the Visual Studio redistributable directory'
     }
+    if ((Get-Content -LiteralPath (Join-Path $BuildDir 'CMakeCache.txt') -Raw) -match 'GGML_OPENMP:BOOL=ON' -and
+            -not (Test-Path (Join-Path $stage 'vcomp140.dll'))) {
+        throw 'The MSVC OpenMP runtime vcomp140.dll is required by this build'
+    }
 }
 
-foreach ($dll in @('libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll', 'libgomp-1.dll', 'libdl.dll')) {
-    $found = Get-Command $dll -ErrorAction SilentlyContinue
-    if ($found) { Copy-Item -LiteralPath $found.Source -Destination $stage }
+if (-not $isMsvcBuild) {
+    foreach ($dll in @('libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll', 'libgomp-1.dll', 'libdl.dll')) {
+        $found = Get-Command $dll -ErrorAction SilentlyContinue
+        if ($found) { Copy-Item -LiteralPath $found.Source -Destination $stage }
+    }
 }
 Copy-Item -Recurse -Force -LiteralPath (Join-Path $repo 'config/presets') -Destination (Join-Path $stage 'config')
 Copy-Item -Recurse -Force -LiteralPath (Join-Path $repo 'assets/branding') -Destination (Join-Path $stage 'assets')
@@ -68,18 +84,28 @@ foreach ($relative in (& git -C $repo ls-files '*LICENSE*' '*COPYING*')) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
     Copy-Item -LiteralPath (Join-Path $repo $relative) -Destination $target
 }
+if (-not $UiNodeModulesDir) { $UiNodeModulesDir = Join-Path $repo 'tools/ui/node_modules' }
+if (-not (Test-Path -LiteralPath $UiNodeModulesDir)) { throw 'Build the chat UI first so its dependency notices can be staged' }
+$uiModules = (Resolve-Path -LiteralPath $UiNodeModulesDir).Path
+Get-ChildItem -LiteralPath $uiModules -File -Recurse | Where-Object {
+    $_.Name -match '^(LICENSE|LICENCE|COPYING|NOTICE)([.-]|$)'
+} | ForEach-Object {
+    $relative = $_.FullName.Substring($uiModules.Length).TrimStart([char[]]'\/')
+    $target = Join-Path (Join-Path $stage 'licenses/chat-ui') $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+    Copy-Item -LiteralPath $_.FullName -Destination $target
+}
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $stage 'README.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README_HE.md') -Destination (Join-Path $stage 'README_HE.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'VERSION') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/sparkmoe/dashboard.html') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'docs/USER_GUIDE.md'), (Join-Path $repo 'docs/TROUBLESHOOTING.md'), (Join-Path $repo 'docs/PROJECT_MAP.md'), (Join-Path $repo 'docs/SUPPORTED_MODELS.md') -Destination (Join-Path $stage 'docs')
-foreach ($document in @('ENGINE_UPGRADES.md', 'UPSTREAM_INTEGRATION.md', 'UPSTREAM_PATCH_INVENTORY.md', 'UPDATING_LLAMA_CPP.md', 'REFRESH_REPORT.md')) {
+foreach ($document in @('ENGINE_UPGRADES.md', 'UPSTREAM_INTEGRATION.md', 'UPSTREAM_PATCH_INVENTORY.md', 'UPDATING_LLAMA_CPP.md', 'REFRESH_REPORT.md', 'LATENCY_INVESTIGATION.md', 'NEXT_SESSION.md')) {
     $source = Join-Path $repo "docs/$document"
     if (Test-Path $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $stage 'docs') }
 }
-$buildInfo = Join-Path $BuildDir 'common/build-info.cpp'
 $binaryCommit = if (Test-Path -LiteralPath $buildInfo) {
-    $match = [regex]::Match((Get-Content -LiteralPath $buildInfo -Raw), 'LLAMA_COMMIT = "([^"]+)"')
+    $match = [regex]::Match($buildInfoText, 'LLAMA_COMMIT = "([^"]+)"')
     if ($match.Success) { $match.Groups[1].Value }
 }
 @{
@@ -87,6 +113,7 @@ $binaryCommit = if (Test-Path -LiteralPath $buildInfo) {
     variant = $Variant
     source_revision = (& git -C $repo rev-parse HEAD)
     binary_build_commit = $binaryCommit
+    ui_package_lock_sha256 = (Get-FileHash -LiteralPath (Join-Path (Split-Path -Parent $uiModules) 'package-lock.json') -Algorithm SHA256).Hash.ToLower()
     upstream_revision = (Get-Content (Join-Path $repo 'UPSTREAM_BASE.txt') -Raw).Trim()
     files = @(Get-ChildItem -LiteralPath $stage -File | Where-Object { $_.Extension -in @('.exe', '.dll') } | ForEach-Object {
         @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower() }
