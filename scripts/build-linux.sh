@@ -8,6 +8,8 @@ case "$variant" in avx2|generic) ;; *) echo "usage: $0 [avx2|generic]" >&2; exit
 root="$(cd "$(dirname "$0")/.." && pwd)"
 build="${2:-$root/build-linux-$variant}"
 command -v npm >/dev/null || { echo "Node.js 22 and npm are required to build the SparkMoE chat UI" >&2; exit 1; }
+unset NODE_TLS_REJECT_UNAUTHORIZED
+export NODE_USE_SYSTEM_CA=1
 (cd "$root/tools/ui" && npm ci && npm run check && npm run build)
 args=(-S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=ON)
 if [[ "$variant" == generic ]]; then

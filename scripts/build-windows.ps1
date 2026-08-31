@@ -12,11 +12,18 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $BuildRoot) { $BuildRoot = Join-Path $repo "build-windows-$Variant" }
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+    $unicodeEnvironment = @{}
+    Get-ChildItem Env: | Where-Object { $_.Value -match '[^\x00-\x7F]' } | ForEach-Object { $unicodeEnvironment[$_.Name] = $_.Value }
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
     $vsPath = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
     if (-not $vsPath) { throw 'Visual Studio C++ Build Tools are required' }
     Import-Module (Join-Path $vsPath 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
     Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+    $changedProfile = $env:USERPROFILE
+    foreach ($name in $unicodeEnvironment.Keys) {
+        if ($name -ne 'PATH') { [Environment]::SetEnvironmentVariable($name, $unicodeEnvironment[$name], 'Process') }
+    }
+    if ($changedProfile -ne $env:USERPROFILE) { $env:PATH = $env:PATH.Replace($changedProfile, $env:USERPROFILE) }
 }
 
 $cmakeRepo = $repo
@@ -32,6 +39,8 @@ if ($env:OS -eq 'Windows_NT') {
 $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 if (-not $npm) { throw 'Node.js 22 and npm are required to build the SparkMoE chat UI' }
 $npmPath = $npm.Source
+if ($env:NODE_TLS_REJECT_UNAUTHORIZED -eq '0') { Remove-Item Env:NODE_TLS_REJECT_UNAUTHORIZED }
+$env:NODE_USE_SYSTEM_CA = '1'
 Push-Location (Join-Path $repo 'tools/ui')
 try {
     & $npmPath ci

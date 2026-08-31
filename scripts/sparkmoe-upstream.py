@@ -6,6 +6,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -136,6 +137,11 @@ def run_gate(repo, stage, argv, state):
     if result.returncode:
         raise RuntimeError(f"{stage} failed ({result.returncode}); {log}\n" +
                            "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-35:]))
+    warnings = [line for line in log.read_text(encoding="utf-8", errors="replace").splitlines()
+                if re.search(r"\bwarn(?:ing)?\b|[1-9][0-9]* vulnerabilities", line, re.IGNORECASE)]
+    if warnings:
+        state.setdefault("warnings", []).append({"stage": stage, "log": str(log), "examples": warnings[:10]})
+        save_state(repo, state)
 
 
 def validate(repo, state):
@@ -152,7 +158,7 @@ def validate(repo, state):
     run_gate(repo, "build-tests-ui-http", command, state)
     run_gate(repo, "updater-tests", [sys.executable, repo / "tests/test-upstream-updater.py"], state)
     (repo / "UPSTREAM_BASE.txt").write_text(state["target"] + "\n", encoding="ascii")
-    state.update(status="YELLOW" if state["touched"] else "GREEN", stage="validated")
+    state.update(status="YELLOW" if state["touched"] or state.get("warnings") else "GREEN", stage="validated")
     state["patched_upstream_files"] = inventory(repo, state["target"])
     save_state(repo, state)
     print(json.dumps(state, indent=2), flush=True)
@@ -202,4 +208,6 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     sys.exit(main())

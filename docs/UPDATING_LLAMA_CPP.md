@@ -44,7 +44,7 @@ gate; the automated tests generate small GGUF files and never download models.
 | Result / exit code | Meaning |
 | --- | --- |
 | GREEN / 0 | Merge and all required local validation passed; upstream did not touch a recorded patched file. |
-| YELLOW / 2 | Validation passed, but upstream touched a patched file. Review semantics even if rerere or Git merged it cleanly. |
+| YELLOW / 2 | Validation passed, but upstream touched a patched file or a build/dependency warning needs review. |
 | RED / 1 | Fetch, merge, integration check, build or regression failed. The baseline is not advanced. |
 
 These colors are local validation results, not a claim that GitHub CI, every
