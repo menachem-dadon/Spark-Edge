@@ -111,6 +111,16 @@ class UpdateSafety(unittest.TestCase):
         self.assertEqual(updater.base(candidate), state["target"])
         self.unchanged()
 
+    def test_unregistered_patch_fails_before_build(self):
+        candidate, state = updater.prepare(self.repo, self.advance(), self.candidate)
+        (candidate / "new.cpp").write_text("unregistered local change\n")
+        with patch.object(updater, "run_gate") as build:
+            with self.assertRaisesRegex(RuntimeError, "Unregistered"):
+                updater.validate(candidate, state)
+            build.assert_not_called()
+        self.assertEqual(updater.base(candidate), self.base)
+        self.unchanged()
+
 
 if __name__ == "__main__":
     unittest.main()

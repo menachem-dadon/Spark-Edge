@@ -61,6 +61,12 @@ def inventory(repo, revision):
     return sorted(upstream & set(git(repo, "diff", "--name-only", revision).splitlines()))
 
 
+def check_inventory(repo, revision, manifest):
+    unknown = sorted(set(inventory(repo, revision)) - set(manifest["patched_upstream_files"]))
+    if unknown:
+        raise RuntimeError("Unregistered upstream patches: " + ", ".join(unknown))
+
+
 def target_revision(repo, target):
     if target == "latest":
         request = urllib.request.Request(
@@ -96,6 +102,7 @@ def prepare(repo, target, destination=None):
                       capture_output=True).returncode:
         raise RuntimeError("Target is not a descendant of UPSTREAM_BASE.txt")
     manifest = integration_check(repo)
+    check_inventory(repo, before, manifest)
     touched = sorted(set(manifest["patched_upstream_files"]) & changed(repo, before, target))
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
     branch, backup = "codex/upstream-" + stamp, "sparkmoe-backup/" + stamp
@@ -149,7 +156,9 @@ def validate(repo, state):
     save_state(repo, state)
     if git(repo, "diff", "--name-only", "--diff-filter=U"):
         raise RuntimeError("Unresolved conflicts remain")
-    integration_check(repo)
+    manifest = integration_check(repo)
+    check_inventory(repo, state["target"], manifest)
+    state.pop("warnings", None)
     if os.name == "nt":
         command = [shutil.which("pwsh") or "powershell", "-NoProfile", "-File",
                    repo / "scripts/build-windows.ps1", "-RunTests", "-BuildRoot", repo / "build-upstream-gate/native"]
@@ -178,9 +187,7 @@ def main():
     try:
         if args.command == "check":
             manifest = integration_check(repo)
-            unknown = sorted(set(inventory(repo, base(repo))) - set(manifest["patched_upstream_files"]))
-            if unknown:
-                raise RuntimeError("Unregistered upstream patches: " + ", ".join(unknown))
+            check_inventory(repo, base(repo), manifest)
             print(f"PASS: {len(manifest['points'])} integration groups; no unregistered patches")
             return 0
         if args.command == "drift":
