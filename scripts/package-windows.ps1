@@ -31,6 +31,29 @@ foreach ($file in $required) {
     Copy-Item -LiteralPath $source -Destination $stage
 }
 
+Get-ChildItem -LiteralPath $bin -Filter '*.dll' -File | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $stage
+}
+if (Test-Path (Join-Path $bin 'llama.dll')) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    $vsInstall = if (Test-Path $vswhere) { & $vswhere -latest -products '*' -property installationPath }
+    if ($vsInstall) {
+        $redistRoot = Join-Path $vsInstall 'VC/Redist/MSVC'
+        $crt = Get-ChildItem -LiteralPath $redistRoot -Directory | Where-Object { $_.Name -match '^\d+\.' } |
+            Sort-Object { [version]$_.Name } -Descending | ForEach-Object {
+                Join-Path $_.FullName 'x64/Microsoft.VC143.CRT'
+            } | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($crt) {
+            Get-ChildItem -LiteralPath $crt -Filter '*.dll' -File | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination $stage
+            }
+        }
+    }
+    if (-not (Test-Path (Join-Path $stage 'vcruntime140.dll'))) {
+        throw 'The MSVC runtime must be staged from the Visual Studio redistributable directory'
+    }
+}
+
 foreach ($dll in @('libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll', 'libgomp-1.dll', 'libdl.dll')) {
     $found = Get-Command $dll -ErrorAction SilentlyContinue
     if ($found) { Copy-Item -LiteralPath $found.Source -Destination $stage }
@@ -39,11 +62,36 @@ Copy-Item -Recurse -Force -LiteralPath (Join-Path $repo 'config/presets') -Desti
 Copy-Item -Recurse -Force -LiteralPath (Join-Path $repo 'assets/branding') -Destination (Join-Path $stage 'assets')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'packaging/webui/README.txt') -Destination (Join-Path $stage 'webui')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'LICENSE'), (Join-Path $repo 'LICENSE-SPARKMOE-NONCOMMERCIAL.md'), (Join-Path $repo 'LICENSING.md'), (Join-Path $repo 'NOTICE'), (Join-Path $repo 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $stage 'licenses')
+foreach ($relative in (& git -C $repo ls-files '*LICENSE*' '*COPYING*')) {
+    if ($relative -notmatch '^(vendor|ggml|common|tools)/') { continue }
+    $target = Join-Path (Join-Path $stage 'licenses/upstream') $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repo $relative) -Destination $target
+}
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $stage 'README.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README_HE.md') -Destination (Join-Path $stage 'README_HE.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'VERSION') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/sparkmoe/dashboard.html') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'docs/USER_GUIDE.md'), (Join-Path $repo 'docs/TROUBLESHOOTING.md'), (Join-Path $repo 'docs/PROJECT_MAP.md'), (Join-Path $repo 'docs/SUPPORTED_MODELS.md') -Destination (Join-Path $stage 'docs')
+foreach ($document in @('ENGINE_UPGRADES.md', 'UPSTREAM_INTEGRATION.md', 'UPSTREAM_PATCH_INVENTORY.md', 'UPDATING_LLAMA_CPP.md', 'REFRESH_REPORT.md')) {
+    $source = Join-Path $repo "docs/$document"
+    if (Test-Path $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $stage 'docs') }
+}
+$buildInfo = Join-Path $BuildDir 'common/build-info.cpp'
+$binaryCommit = if (Test-Path -LiteralPath $buildInfo) {
+    $match = [regex]::Match((Get-Content -LiteralPath $buildInfo -Raw), 'LLAMA_COMMIT = "([^"]+)"')
+    if ($match.Success) { $match.Groups[1].Value }
+}
+@{
+    version = $version
+    variant = $Variant
+    source_revision = (& git -C $repo rev-parse HEAD)
+    binary_build_commit = $binaryCommit
+    upstream_revision = (Get-Content (Join-Path $repo 'UPSTREAM_BASE.txt') -Raw).Trim()
+    files = @(Get-ChildItem -LiteralPath $stage -File | Where-Object { $_.Extension -in @('.exe', '.dll') } | ForEach-Object {
+        @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower() }
+    })
+} | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $stage 'release-manifest.json')
 
 $zip = Join-Path $OutputDir "$name.zip"
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }

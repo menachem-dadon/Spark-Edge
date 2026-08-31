@@ -64,10 +64,10 @@ chat UI, manager, MTP and context settings.
 | R1 | Finish the frozen v0.3.0 refresh; restore build, model/graph equivalence and existing UI/server behavior | CPU build, paging unit tests, finite full-logit fixture parity, dense/MoE smoke, UI check/build | Passed on Windows |
 | R2 | Finish owned integration modules, manifest, safe updater, drift checker, CI and rollback docs | Clean candidate worktree, integration checks, failure-path updater tests, build/regression gate | Windows build/HTTP and 6 updater safety tests passed; hosted CI not run |
 | E1 | Aligned Windows/Linux direct reads, byte validation, buffered fallback; demand-priority worker scheduling | Buffered/direct byte and logits parity, Unicode/shards/tail/error checks; paired local I/O observations | Passed on Windows; measurements in ENGINE_UPGRADES.md |
-| E2 | Hybrid global budget over per-layer pools; runtime resize, capacity/eviction telemetry, capability registry | Preserve pins and partial layers; resize only at quiescent boundaries; budget/error and full-logit parity | Pending |
-| E3 | Per-expert readiness and compute/I/O overlap in the same cache; temporal prefetch behind an option | Demand always wins over queued speculation; no early weight consumption; overlap/prefetch parity and paired A/B | Pending |
-| E4 | Dense/shared residency policy and generic bounded row streaming; Windows RAM sensors | Bounded residency, finite row-gather parity, Unicode/multi-shard reads; no huge-tensor materialization fallback | Pending |
-| E5 | Predictive prefetch evaluation | Experimental only; retain only when paired benchmarks show useful reads and an actual benefit | Pending |
+| E2 | Hybrid global budget over per-layer pools; runtime resize, capacity/eviction telemetry, capability registry | Preserve pins and partial layers; resize only at quiescent boundaries; budget/error and full-logit parity | Passed on Windows; defaults unchanged |
+| E3 | Per-expert readiness and compute/I/O overlap in the same cache; temporal prefetch behind an option | Demand always wins over queued speculation; no early weight consumption; overlap/prefetch parity and paired A/B | Passed on Windows with real cache pressure |
+| E4 | Dense/shared residency policy and generic bounded row streaming; Windows RAM sensors | Bounded residency, finite row-gather parity, Unicode/multi-shard reads; no huge-tensor materialization fallback | Windows native/HTTP/Desktop gates passed |
+| E5 | Predictive prefetch evaluation | Experimental only; retain only when paired benchmarks show useful reads and an actual benefit | Evaluated and rejected as slower; prototype archived, excluded from product |
 
 All modes must preserve original routing/top-k and every routed expert. No
 dropping, substitution or quality-changing optimization is part of this plan.
@@ -111,9 +111,9 @@ infer the upstream base from an unqualified local release tag.
 ### R2 integration boundary
 
 The executable inventory is `config/upstream-integration.json`. It records every
-patched upstream file, including branding/build portability, and nine hook groups:
+patched upstream file, including branding/build portability, and ten hook groups:
 public API, CLI, model loading, context lifetime, graph routing, server API,
-build, desktop UI and benchmark. `scripts/sparkmoe-upstream.py check` detects
+build, desktop UI, benchmark and CPU expert readiness. `scripts/sparkmoe-upstream.py check` detects
 missing symbols/files and unregistered upstream patches. `drift` compares the
 whole inventory against fetched upstream history.
 
@@ -128,6 +128,20 @@ files, the integration changed from 525 insertions/21 deletions in 19 files to
 the upstream patch surface, not total project code. Most remaining lines are
 public structures, original-ID preservation for scales/LoRA, and lifecycle hooks.
 The Qwen3.5-specific tensor-loader patch was removed in favor of the common hook.
+
+### Engine additions
+
+The maintained inventory now contains 46 upstream files. E3 adds only 17 lines
+across `ggml/include/ggml-cpu.h`, `ggml/src/ggml-cpu/ggml-cpu.cpp` and
+`ggml/src/ggml-cpu/ggml-cpu.c`: a callback declaration/dispatch and one wait before
+each used expert in MUL_MAT_ID. Its readiness tables, scheduling, cache leases
+and error handling are SparkMoE-owned. Public parameter/stat fields, benchmark
+flags and Windows server memory linking account for the other justified growth.
+
+Direct I/O, scheduling, hybrid commitment, eviction, prefetch, row streaming and
+capability evidence remain under `src/moe-paging/`. Model/context initialization
+also guards the upstream recurrent rollback microbatch contract; hybrid resize
+cannot invalidate that contract. No model-family implementation was added.
 
 Sensitive future updates include routed tensor layouts, graph scheduling and
 MUL_MAT_ID, model/context ownership, public parameter structs, common argument

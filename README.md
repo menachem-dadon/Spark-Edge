@@ -4,21 +4,22 @@
 
 SparkMoE is an independent, CPU-first fork of `llama.cpp` that can keep standard routed MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
 
-This is **v0.2.0-alpha**. Qwen3.6 35B-A3B and Gemma 4 26B-A4B have completed short real-model paging and inference regressions on Windows, and the deterministic paging suite covers the cache and file mapping layer. Other models using standard three-dimensional routed expert tensors are accepted through layout-based validation. This remains an alpha rather than a performance or memory-fit guarantee.
+This is **v0.4.0-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows regression suite includes synthetic full-logit equivalence, real two-shard GGUF, HTTP/Desktop controls and exact Ling-3.0-tiny Q4_K_M logits with matching CPU kernels and microbatch. Qwen3.6 and Gemma 4 have separate smoke-test evidence; see [supported models](docs/SUPPORTED_MODELS.md). This remains an alpha rather than a performance or memory-fit guarantee.
 
 ## What it does
 
 - Leaves non-routed weights on the normal `llama.cpp` path.
 - Indexes routed expert tensor offsets across single or split GGUF files.
 - Loads selected experts exactly, without zero weights, expert substitution, or approximation.
-- Uses bounded per-layer LRU slot pools and asynchronous buffered file I/O.
+- Keeps bounded per-layer LRU by default, with optional hybrid global budgeting and runtime resize.
+- Offers validated Windows/Linux direct I/O with buffered fallback, shared demand-priority workers, per-expert compute/I/O overlap and temporal prefetch.
 - Exposes real cache/I/O statistics through C, `llama-server`, and `llama-bench`.
 - Supports built-in MTP draft contexts together with bounded expert paging.
 - Uses hardware-aware safe defaults and an automatic loading mode that falls back to standard mmap for dense or incompatible models.
 - Keeps model selection, loading mode, expert paging, RAM status, and diagnostics in the control center; context size, batching, KV precision, context shift, and MTP live in the chat settings page.
 - Includes a local-only English/Hebrew control center, a folder-backed GGUF model picker, real system RAM usage, live server state, log tail, and SSD I/O benchmark.
 
-It does not page GPU weights, support direct/unbuffered expert I/O, or promise that every model or quantization fits in 16 GB. Explicit mode validates routed expert tensor names, shapes, strides, shard bounds, and active-expert capacity before inference.
+It does not promise that every model or quantization fits in 16 GB. Advanced hybrid/overlap/prefetch modes require CPU-only inference. Buffered per-layer paging remains the default; direct I/O and speculative prefetch are not always faster. Explicit mode validates routed expert tensor names, shapes, strides, shard bounds, and active-expert capacity before inference. See [engine measurements](docs/ENGINE_UPGRADES.md) and [refresh report](docs/REFRESH_REPORT.md).
 
 ## Hardware
 
@@ -31,7 +32,7 @@ It does not page GPU weights, support direct/unbuffered expert I/O, or promise t
 
 Permanent Windows installation:
 
-1. Download `sparkmoe-0.2.0-alpha-windows-x64-avx2-setup.exe` from the release page.
+1. Use `sparkmoe-0.4.0-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
 2. Run the installer. It installs for the current user, creates an uninstall entry, and can create desktop and Start menu shortcuts.
 3. Run `SparkMoE` from the Start menu.
 

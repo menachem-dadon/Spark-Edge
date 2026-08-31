@@ -3,10 +3,10 @@
 
 #define AppName "SparkMoE"
 #ifndef AppVersion
-#define AppVersion "0.2.0-alpha"
+#define AppVersion "0.4.0-alpha"
 #endif
 #ifndef SourceDir
-#define SourceDir "..\..\artifacts\release\sparkmoe-0.2.0-alpha-windows-x64-avx2"
+#define SourceDir "..\..\artifacts\release\sparkmoe-0.4.0-alpha-windows-x64-avx2"
 #endif
 #ifndef OutputDir
 #define OutputDir "..\..\artifacts\release"

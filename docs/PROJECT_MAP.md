@@ -209,12 +209,7 @@ tests/test-moe-paging.cpp
 
 כל התכונות שהיו קיימות ב-commit הבסיס שנרשם ב-`UPSTREAM_BASE.txt` נמצאות במאגר, למעט שינויים מכוונים שמתועדים ב-`docs/DECISIONS.md` או build options שלא הופעלו בחבילה מסוימת.
 
-עם זאת, llama.cpp מתפתח במהירות. נכון לביקורת המקומית ב-2026-07-13:
-
-- בסיס הפרויקט הרשום: `6b4dc2116a92c5c8f2782bfe51fabe5ee66fb5ef`.
-- upstream `master` שנבדק: `f4253ef965c59e902fac7b8193f96bcc89f66e55`.
-- ה-fork מכיל 9 commits מקומיים ונמצא 11 commits מאחורי upstream.
-- לכן אין לטעון שהמאגר כולל כל שינוי upstream העדכני ביותר.
+עם זאת, llama.cpp מתפתח במהירות. ברענון ב-2026-08-31 הבסיס עודכן ל-`c1d0e7a004015f23bc0233470b747b596f29b264`, גרסת stable v0.3.0: התקדמות של 644 commits. נקודת השחזור היא `sparkmoe-pre-upstream-refresh`. בעת הבחירה, master היה 90 commits נוספים קדימה. המלאי המדויק נמצא ב-`config/upstream-integration.json`, ולא ברשימה ידנית שמתיישנת.
 
 סנכרון upstream צריך להתבצע בתהליך מבוקר עם `scripts/update-upstream.ps1`, פתרון conflicts והרצת כל הבדיקות. אין לבצע merge אוטומטי לפני פרסום בלי לבדוק את נקודות החיבור שמופיעות בטבלה למעלה.
 
@@ -242,7 +237,7 @@ tools/ui/dist/
 - `llama-cli.exe`: שימוש בשורת פקודה.
 - `llama-bench.exe`: benchmark למודל.
 - `sparkmoe-iobench.exe`: בדיקת כונן.
-- DLLs של MinGW ו-OpenMP.
+- DLLs של llama/GGML וה-runtime הנדרש לבנייה (MSVC בבנייה המקומית הנוכחית).
 - `dashboard.html` ונכסי המיתוג.
 - presets, מסמכי שימוש, רישיונות ו-third-party notices.
 
@@ -252,7 +247,7 @@ tools/ui/dist/
 
 1. לעדכן את שם בעל הזכויות ב-`LICENSE-SPARKMOE-NONCOMMERCIAL.md` ובכותרות `Required Notice`.
 2. להחליף את אייקוני ה-placeholder.
-3. להחליט אם לפרסם על בסיס ה-commit הנוכחי או לבצע merge מבוקר של 11 commits מ-upstream.
+3. להריץ drift detection ולבחון את תוצאות העדכון והבדיקות ב-`docs/REFRESH_REPORT.md`.
 4. להריץ build, tests, packaging ומתקין.
 5. לבדוק `git status --short` ו-`git diff --check`.
 6. לוודא שאין GGUF, לוגים, credentials או נתיבים אישיים ב-Git.

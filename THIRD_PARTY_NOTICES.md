@@ -9,3 +9,10 @@ The local dashboard uses the `cpp-httplib` and `nlohmann/json` copies already di
 Original SparkMoE components are separately covered by PolyForm Noncommercial 1.0.0 as mapped in `LICENSING.md`. That license does not replace or restrict the MIT rights already granted by upstream authors.
 
 Qwen, Gemma, and other model weights are not bundled. Users must obtain weights separately and comply with the exact model repository's license and use terms.
+
+BigMoeOnEdge (Helldez/BigMoeOnEdge) informed the engine comparison and mechanisms
+evaluated here. No BigMoeOnEdge source file was copied and it is not a dependency.
+
+Windows MSVC packages include Microsoft Visual C++ runtime DLLs from the Visual
+Studio redistributable directory. These Microsoft components retain their own
+copyright and distribution terms; the SparkMoE license does not apply to them.
