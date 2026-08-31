@@ -107,3 +107,13 @@ These are proposed A/B settings, not changes already applied to the user's app.
 The outstanding question is the request-level split between queue/setup, target
 prefill, draft prefill and UI reporting. Timestamped logs plus SSE capture can
 answer it; the current cumulative snapshot cannot.
+
+## Follow-up: browser tool confirmed
+
+The user subsequently supplied the chat template and confirmed that a browser
+tool was enabled. Rendering that template without a system message or tools adds
+only role/thinking delimiters; supplying nonempty `tools` injects a long system
+block containing the tool definitions and calling instructions. An empty system
+prompt field therefore did not mean there were no additional instructions in this
+case. This establishes a source of extra input, not the exact token count or
+timing split of the reported request. The 334-token counter remains cumulative.

@@ -3,6 +3,10 @@
 Updated 2026-08-31. This document replaces the need to reload the long research
 and implementation conversation. Verify `git status` before doing new work.
 
+For a separate Qwen3.8 Flash-Next research conversation, use the advisory
+[QWEN38_FLASH_NEXT_HANDOFF.md](QWEN38_FLASH_NEXT_HANDOFF.md). It carries forward
+earlier findings and open questions without prescribing the new design.
+
 ## Decisions that must persist
 
 - SparkMoE remains the product and the only paging engine. BigMoeOnEdge is a
@@ -52,6 +56,12 @@ hybrid 5120 MiB, 3 I/O workers, auto CPU threads, context 4096, batch 1024,
 effective microbatch 32, MTP 3, overlap off, prefetch off. Its cumulative metrics
 showed 334 prompt tokens in 89.876 seconds and 67 generation tokens in 19.8314
 seconds. These do not isolate the reported request or prove a regression.
+
+Follow-up: the user confirmed an enabled browser tool. The supplied chat template
+adds a long system block for nonempty `tools`, even without a system prompt in
+the UI. Inspect the rendered request and actual token count in future benchmarks;
+do not assume the typed two-token message was the entire model input. This does
+not establish the exact duration or cause of every part of the reported delay.
 
 Version 0.4.1-alpha repairs Unicode log creation/reading and enables timestamps.
 Ask the user to use it at their next convenient restart; do not kill an active
