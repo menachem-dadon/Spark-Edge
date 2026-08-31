@@ -47,7 +47,7 @@ struct tensor_descriptor {
 class model_index {
 public:
     void add_tensor(const std::string & name, uint16_t shard, uint64_t file_offset, const ggml_tensor * tensor);
-    void open_files(const std::vector<std::unique_ptr<llama_file>> & files);
+    void open_files(const std::vector<std::unique_ptr<llama_file>> & files, bool direct = false);
 
     const tensor_descriptor * find(const std::string & name) const;
     const std::shared_ptr<file_reader> & reader(uint16_t shard) const;

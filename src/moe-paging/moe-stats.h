@@ -17,13 +17,16 @@ struct stats_snapshot {
     uint64_t evictions = 0;
     uint64_t waits = 0;
     uint64_t duplicate_requests = 0;
+    uint64_t physical_bytes = 0;
+    uint64_t direct_bytes = 0;
+    uint64_t fallback_reads = 0;
 };
 
 class stats {
 public:
     void add_hit(uint64_t n = 1);
     void add_miss(uint64_t n = 1);
-    void add_read(uint64_t bytes, uint64_t latency_us);
+    void add_read(uint64_t bytes, uint64_t latency_us, uint64_t physical = 0, uint64_t direct = 0, uint64_t fallback = 0);
     void add_eviction(uint64_t n = 1);
     void add_wait(uint64_t n = 1);
     void add_duplicate(uint64_t n = 1);
@@ -40,6 +43,9 @@ private:
     std::atomic<uint64_t> evictions{0};
     std::atomic<uint64_t> waits{0};
     std::atomic<uint64_t> duplicate_requests{0};
+    std::atomic<uint64_t> physical_bytes{0};
+    std::atomic<uint64_t> direct_bytes{0};
+    std::atomic<uint64_t> fallback_reads{0};
 };
 
 }

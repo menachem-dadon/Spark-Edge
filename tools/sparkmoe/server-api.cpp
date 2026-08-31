@@ -43,6 +43,9 @@ json sparkmoe_paging_stats_json(const llama_context * ctx) {
         {"evictions", stats.evictions},
         {"waits", stats.waits},
         {"duplicate_requests", stats.duplicate_requests},
+        {"physical_bytes", stats.physical_bytes},
+        {"direct_bytes", stats.direct_bytes},
+        {"fallback_reads", stats.fallback_reads},
     };
 }
 

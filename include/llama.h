@@ -335,6 +335,9 @@ extern "C" {
         uint64_t evictions;
         uint64_t waits;
         uint64_t duplicate_requests;
+        uint64_t physical_bytes;
+        uint64_t direct_bytes;
+        uint64_t fallback_reads;
     };
 
     struct llama_moe_paging_capabilities {

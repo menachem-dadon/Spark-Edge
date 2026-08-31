@@ -11,7 +11,10 @@ void stats::add_eviction(uint64_t n) { evictions.fetch_add(n, std::memory_order_
 void stats::add_wait(uint64_t n) { waits.fetch_add(n, std::memory_order_relaxed); }
 void stats::add_duplicate(uint64_t n) { duplicate_requests.fetch_add(n, std::memory_order_relaxed); }
 
-void stats::add_read(uint64_t bytes, uint64_t latency_us) {
+void stats::add_read(uint64_t bytes, uint64_t latency_us, uint64_t physical, uint64_t direct, uint64_t fallback) {
+    physical_bytes.fetch_add(physical, std::memory_order_relaxed);
+    direct_bytes.fetch_add(direct, std::memory_order_relaxed);
+    fallback_reads.fetch_add(fallback, std::memory_order_relaxed);
     bytes_read.fetch_add(bytes, std::memory_order_relaxed);
     read_count.fetch_add(1, std::memory_order_relaxed);
     read_latency_us.fetch_add(latency_us, std::memory_order_relaxed);
@@ -27,6 +30,9 @@ stats_snapshot stats::snapshot() const {
         evictions.load(std::memory_order_relaxed),
         waits.load(std::memory_order_relaxed),
         duplicate_requests.load(std::memory_order_relaxed),
+        physical_bytes.load(std::memory_order_relaxed),
+        direct_bytes.load(std::memory_order_relaxed),
+        fallback_reads.load(std::memory_order_relaxed),
     };
 }
 
@@ -39,6 +45,9 @@ void stats::reset() {
     evictions.store(0, std::memory_order_relaxed);
     waits.store(0, std::memory_order_relaxed);
     duplicate_requests.store(0, std::memory_order_relaxed);
+    physical_bytes.store(0, std::memory_order_relaxed);
+    direct_bytes.store(0, std::memory_order_relaxed);
+    fallback_reads.store(0, std::memory_order_relaxed);
 }
 
 }

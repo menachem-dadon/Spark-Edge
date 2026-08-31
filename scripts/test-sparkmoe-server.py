@@ -24,7 +24,7 @@ def request(base, route, body=None):
         raise RuntimeError(f"{route}: HTTP {error.code}: {error.read().decode(errors='replace')}") from error
 
 
-def run_case(binary, model, mode, log_dir):
+def run_case(binary, model, mode, log_dir, io_mode="buffered"):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -33,9 +33,9 @@ def run_case(binary, model, mode, log_dir):
             "-c", "256", "-b", "4", "-ub", "4", "-t", "2", "-ngl", "0", "--parallel", "1",
             "--fit", "off", "--no-warmup", "--chat-template", "chatml", "--moe-paging", mode]
     if mode == "explicit":
-        args += ["--moe-slots", "4"]
+        args += ["--moe-slots", "4", "--moe-io-mode", io_mode, "--moe-io-threads", "4"]
     env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
-    log_path = log_dir / f"server-{mode}.log"
+    log_path = log_dir / f"server-{mode}-{io_mode}.log"
     with log_path.open("wb") as log:
         proc = subprocess.Popen(args, stdout=log, stderr=log, env=env,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
@@ -47,7 +47,7 @@ def run_case(binary, model, mode, log_dir):
                 try:
                     if request(base, "/health")["status"] == "ok":
                         break
-                except (OSError, urllib.error.URLError):
+                except (OSError, urllib.error.URLError, RuntimeError):
                     pass
                 if time.monotonic() >= deadline:
                     raise TimeoutError(f"server startup: {log_path}")
@@ -63,13 +63,21 @@ def run_case(binary, model, mode, log_dir):
                 "max_tokens": 4, "temperature": 0, "ignore_eos": True,
             })
             assert chat["choices"] and chat["usage"]["completion_tokens"] > 0, "chat failed"
+            sse_body = {"messages": [{"role": "user", "content": "ABC"}], "max_tokens": 4,
+                        "temperature": 0, "ignore_eos": True, "stream": True}
+            req = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(sse_body).encode(),
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as stream:
+                events = [line[6:] for line in stream.read().decode().splitlines() if line.startswith("data: ")]
+            assert events and events[-1] == "[DONE]", "incomplete SSE stream"
+            assert any(json.loads(event).get("choices") for event in events[:-1]), "empty SSE stream"
             stats = request(base, "/sparkmoe/v1/paging")
             assert stats["enabled"] == (mode == "explicit"), "wrong paging activation"
             if mode == "explicit":
                 assert stats["bytes_read"] > 0 and stats["cache_misses"] > 0, "inactive paging"
             reset = request(base, "/sparkmoe/v1/paging/reset-stats", {})
             assert reset["paging"]["bytes_read"] == 0, "reset failed"
-            print(f"PASS server {mode}: completion, chat, props, paging, reset, Unicode model path")
+            print(f"PASS server {mode}/{io_mode}: completion, chat, SSE, props, paging, reset, Unicode model path")
         finally:
             proc.terminate()
             try:
@@ -93,6 +101,7 @@ def main():
                        cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-dense-regression.gguf", "off", args.log_dir)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf", "explicit", args.log_dir)
+        run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct")
 
 
 if __name__ == "__main__":

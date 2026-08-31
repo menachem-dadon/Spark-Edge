@@ -288,8 +288,9 @@ add_executable(test-moe-paging test-moe-paging.cpp)
 file(GLOB SPARKMOE_UNIT_SOURCES "${PROJECT_SOURCE_DIR}/src/moe-paging/*.cpp")
 list(FILTER SPARKMOE_UNIT_SOURCES EXCLUDE REGEX "/moe-integration.cpp$")
 # Exercise private code without exporting its C++ ABI from shared libllama.
-target_sources(test-moe-paging PRIVATE ${SPARKMOE_UNIT_SOURCES}
-    ../src/llama-mmap.cpp ../src/llama-impl.cpp)
+    target_sources(test-moe-paging PRIVATE ${SPARKMOE_UNIT_SOURCES}
+        ../src/llama-mmap.cpp ../src/llama-impl.cpp)
+    target_compile_features(test-moe-paging PRIVATE cxx_std_17)
 target_link_libraries(test-moe-paging PRIVATE llama)
 target_include_directories(test-moe-paging PRIVATE ${PROJECT_SOURCE_DIR}/src)
 llama_test(test-moe-paging LABEL "moe-paging")

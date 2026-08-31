@@ -49,6 +49,7 @@ private:
     llama_moe_paging_params params;
     const model_index & index;
     int64_t minimum_slots;
+    std::shared_ptr<io_executor> executor;
 
     mutable std::mutex mutex;
     std::unordered_map<int32_t, std::unique_ptr<layer_cache>> layers;

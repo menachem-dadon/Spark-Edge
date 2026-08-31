@@ -17,14 +17,15 @@ layer_cache::layer_cache(
         uint32_t io_threads,
         uint32_t io_timeout_ms,
         const model_index & index,
-        ggml_backend_t backend) :
+        ggml_backend_t backend,
+        std::shared_ptr<io_executor> executor) :
     layer(layer),
     n_experts(expert_count),
     n_slots(slot_count),
     io_timeout_ms(io_timeout_ms),
     index(index),
     backend(backend),
-    executor(io_threads) {
+    executor(executor ? std::move(executor) : std::make_shared<io_executor>(io_threads)) {
     if (n_experts <= 0 || n_slots <= 0 || n_slots > n_experts) {
         throw std::runtime_error("invalid MoE cache dimensions");
     }
@@ -179,7 +180,7 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
             const size_t length = static_cast<size_t>(descriptor->expert_stride);
             const auto reader = index.reader(descriptor->shard);
             const uint32_t timeout = io_timeout_ms;
-            futures.push_back(executor.submit([reader, source_offset, destination, length, timeout] {
+            futures.push_back(executor->submit([reader, source_offset, destination, length, timeout] {
                 return reader->read_exact(source_offset, destination, length, timeout);
             }));
         }
@@ -189,7 +190,7 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
     for (auto & future : futures) {
         const io_result result = future.get();
         if (result.ok) {
-            counters.add_read(result.bytes, result.latency_us);
+            counters.add_read(result.bytes, result.latency_us, result.physical_bytes, result.direct_bytes, result.fallback_reads);
         } else if (read_error.empty()) {
             read_error = result.error;
         }

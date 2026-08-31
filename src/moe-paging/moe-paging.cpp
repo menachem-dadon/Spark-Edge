@@ -22,7 +22,8 @@ paging_manager::paging_manager(
         const llama_moe_paging_params & params,
         const model_index & index,
         int64_t minimum_slots) :
-    backend(backend), params(params), index(index), minimum_slots(minimum_slots) {
+    backend(backend), params(params), index(index), minimum_slots(minimum_slots),
+    executor(std::make_shared<io_executor>(params.io_threads > 0 ? params.io_threads : 1)) {
     if (!backend || !mode_uses_explicit_paging(params.mode)) {
         throw std::runtime_error("explicit MoE paging requires a CPU backend");
     }
@@ -78,7 +79,7 @@ layer_cache & paging_manager::get_or_create_layer(int32_t layer) {
             params.io_threads > 0 ? static_cast<uint32_t>(params.io_threads) : 1,
             params.io_timeout_ms,
             index,
-            backend);
+            backend, executor);
         LLAMA_LOG_INFO("MoE paging: layer %d uses %lld expert slots\n", layer, static_cast<long long>(cache->slots()));
     }
     return *cache;
@@ -172,6 +173,9 @@ stats_snapshot paging_manager::snapshot() const {
         total.evictions += value.evictions;
         total.waits += value.waits;
         total.duplicate_requests += value.duplicate_requests;
+        total.physical_bytes += value.physical_bytes;
+        total.direct_bytes += value.direct_bytes;
+        total.fallback_reads += value.fallback_reads;
     }
     return total;
 }

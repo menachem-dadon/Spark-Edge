@@ -101,11 +101,11 @@ void model_index::add_tensor(
     descriptors.push_back(std::move(descriptor));
 }
 
-void model_index::open_files(const std::vector<std::unique_ptr<llama_file>> & files) {
+void model_index::open_files(const std::vector<std::unique_ptr<llama_file>> & files, bool direct) {
     readers.clear();
     readers.reserve(files.size());
     for (const auto & file : files) {
-        readers.push_back(make_file_reader(file->file_id(), file->size()));
+        readers.push_back(make_file_reader(file->file_id(), file->size(), direct));
     }
 
     for (const auto & descriptor : descriptors) {

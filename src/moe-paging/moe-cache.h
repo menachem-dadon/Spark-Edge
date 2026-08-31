@@ -52,7 +52,8 @@ public:
         uint32_t io_threads,
         uint32_t io_timeout_ms,
         const model_index & index,
-        ggml_backend_t backend);
+        ggml_backend_t backend,
+        std::shared_ptr<io_executor> executor = nullptr);
 
     ggml_tensor * bind_tensor(const ggml_tensor * original, const tensor_descriptor & descriptor);
     void resolve(const int32_t * expert_ids, size_t count, int32_t * slot_ids);
@@ -71,7 +72,7 @@ private:
     uint32_t io_timeout_ms;
     const model_index & index;
     ggml_backend_t backend;
-    io_executor executor;
+    std::shared_ptr<io_executor> executor;
 
     mutable std::mutex mutex;
     uint64_t clock = 0;

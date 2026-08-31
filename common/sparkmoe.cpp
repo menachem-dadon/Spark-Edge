@@ -58,7 +58,7 @@ std::vector<common_arg> sparkmoe_options() {
     ).set_env("LLAMA_ARG_MOE_IO_THREADS"));
     add_opt(common_arg(
         {"--moe-io-mode"}, "buffered|direct",
-        "expert read mode; direct is rejected until alignment-safe support is available",
+        "expert read mode; aligned direct I/O validates bytes and falls back to buffered reads when needed",
         [](common_params & params, const std::string & value) {
             if (value == "buffered") {
                 params.moe_paging.io_mode = LLAMA_MOE_IO_MODE_BUFFERED;

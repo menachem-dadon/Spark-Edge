@@ -14,6 +14,31 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <future>
+
+class checked_reader : public llama_moe::file_reader {
+public:
+    std::vector<uint8_t> bytes;
+    bool fail = false;
+    explicit checked_reader(size_t size) : bytes(size) {
+        for (size_t i = 0; i < size; ++i) { bytes[i] = static_cast<uint8_t>(i * 17 + i / 251); }
+    }
+    uint64_t size() const override { return bytes.size(); }
+    size_t alignment() const override { return 4096; }
+    llama_moe::io_result read_exact(uint64_t offset, void * out, size_t length, uint32_t) override {
+        llama_moe::io_result result;
+        if (fail || offset % 4096 || length % 4096 || reinterpret_cast<uintptr_t>(out) % 4096) {
+            result.error = "injected failure or unaligned direct read";
+            return result;
+        }
+        std::memcpy(out, bytes.data() + offset, length);
+        result.ok = true;
+        result.bytes = result.physical_bytes = length;
+        return result;
+    }
+};
 
 #define REQUIRE(expression) do { \
     if (!(expression)) { \
@@ -22,7 +47,58 @@
     } \
 } while (0)
 
+static int io_regression() {
+    const char * path = u8"test-moe-\u05de\u05d5\u05d3\u05dc.bin";
+    auto checked = std::make_shared<checked_reader>(9 * 1024 * 1024 + 173);
+    {
+        llama_file output(path, "wb");
+        output.write_raw(checked->bytes.data(), checked->bytes.size());
+    }
+    {
+        llama_file input(path, "rb");
+        auto buffered = llama_moe::make_file_reader(input.file_id(), input.size());
+        auto direct = llama_moe::make_file_reader(input.file_id(), input.size(), true);
+        auto simulated = llama_moe::make_aligned_reader(buffered, checked);
+        REQUIRE(simulated->direct_enabled());
+        std::vector<uint8_t> output(checked->bytes.size());
+        for (auto reader : {direct, simulated}) {
+            for (size_t offset : {size_t(0), size_t(3), size_t(4095), size_t(8193)}) {
+                const size_t count = output.size() - offset;
+                auto result = reader->read_exact(offset, output.data(), count, 30000);
+                REQUIRE(result.ok && result.bytes == count);
+                REQUIRE(!std::memcmp(output.data(), checked->bytes.data() + offset, count));
+                REQUIRE(result.fallback_reads > 0); // The unaligned shard tail.
+                if (reader->direct_enabled()) { REQUIRE(result.direct_bytes >= 8 * 1024 * 1024); }
+            }
+            REQUIRE(!reader->read_exact(UINT64_MAX, output.data(), 1, 1).ok);
+            REQUIRE(!reader->read_exact(reader->size(), output.data(), 1, 1).ok);
+        }
+        checked->fail = true;
+        auto fallback = simulated->read_exact(11, output.data(), 8192, 30000);
+        REQUIRE(fallback.ok && fallback.fallback_reads && !simulated->direct_enabled());
+        REQUIRE(!std::memcmp(output.data(), checked->bytes.data() + 11, 8192));
+        REQUIRE(!llama_moe::make_aligned_reader(buffered, checked)->direct_enabled());
+        std::printf("Direct I/O on this filesystem: %s\n", direct->direct_enabled() ? "validated" : "buffered fallback");
+    }
+    std::filesystem::remove(std::filesystem::u8path(path));
+    {
+        llama_moe::io_executor executor(1);
+        std::promise<void> started, release;
+        auto released = release.get_future().share();
+        auto blocker = executor.submit([&] { started.set_value(); released.wait(); return llama_moe::io_result{}; });
+        started.get_future().wait();
+        std::vector<int> order;
+        auto speculative = executor.submit([&] { order.push_back(2); return llama_moe::io_result{}; }, llama_moe::io_priority::prefetch);
+        auto demand = executor.submit([&] { order.push_back(1); return llama_moe::io_result{}; });
+        release.set_value();
+        blocker.get(); demand.get(); speculative.get();
+        REQUIRE((order == std::vector<int>{1, 2}));
+    }
+    return 0;
+}
+
 int main() {
+    REQUIRE(io_regression() == 0);
     REQUIRE(llama_moe::is_pageable_expert_weight("blk.0.ffn_up_exps.weight"));
     REQUIRE(llama_moe::is_pageable_expert_weight("blk.7.ffn_gate_up_exps.weight"));
     REQUIRE(llama_moe::is_pageable_expert_weight("blk.31.ffn_down_exps.weight"));

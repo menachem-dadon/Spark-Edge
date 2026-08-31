@@ -33,7 +33,7 @@ static std::string windows_error(DWORD code) {
 
 class windows_file_reader final : public file_reader {
 public:
-    windows_file_reader(int native_fd, uint64_t file_size) : file_size(file_size) {
+    windows_file_reader(int native_fd, uint64_t file_size, bool direct) : file_size(file_size) {
         const HANDLE source = reinterpret_cast<HANDLE>(_get_osfhandle(native_fd));
         if (source == INVALID_HANDLE_VALUE) {
             throw std::runtime_error("invalid GGUF file handle");
@@ -42,9 +42,14 @@ public:
             source,
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            FILE_FLAG_OVERLAPPED | FILE_FLAG_RANDOM_ACCESS);
+            FILE_FLAG_OVERLAPPED | FILE_FLAG_RANDOM_ACCESS | (direct ? FILE_FLAG_NO_BUFFERING : 0));
         if (handle == INVALID_HANDLE_VALUE) {
             throw std::runtime_error("ReOpenFile failed: " + windows_error(GetLastError()));
+        }
+        FILE_STORAGE_INFO storage{};
+        if (direct && GetFileInformationByHandleEx(handle, FileStorageInfo, &storage, sizeof(storage))) {
+            sector_size = std::max<DWORD>(4096, storage.PhysicalBytesPerSectorForPerformance);
+            sector_size = std::max<size_t>(sector_size, storage.LogicalBytesPerSector);
         }
     }
 
@@ -108,20 +113,23 @@ public:
 
         result.ok = true;
         result.bytes = completed;
+        result.physical_bytes = completed;
         result.latency_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
         return result;
     }
 
     uint64_t size() const override { return file_size; }
+    size_t alignment() const override { return sector_size; }
 
 private:
     HANDLE handle = INVALID_HANDLE_VALUE;
     uint64_t file_size = 0;
+    size_t sector_size = 4096;
 };
 
-std::shared_ptr<file_reader> make_file_reader(int native_fd, uint64_t file_size) {
-    return std::make_shared<windows_file_reader>(native_fd, file_size);
+std::shared_ptr<file_reader> make_native_file_reader(int native_fd, uint64_t file_size, bool direct) {
+    return std::make_shared<windows_file_reader>(native_fd, file_size, direct);
 }
 
 }

@@ -63,7 +63,7 @@ chat UI, manager, MTP and context settings.
 | --- | --- | --- | --- |
 | R1 | Finish the frozen v0.3.0 refresh; restore build, model/graph equivalence and existing UI/server behavior | CPU build, paging unit tests, finite full-logit fixture parity, dense/MoE smoke, UI check/build | Passed on Windows |
 | R2 | Finish owned integration modules, manifest, safe updater, drift checker, CI and rollback docs | Clean candidate worktree, integration checks, failure-path updater tests, build/regression gate | Windows build/HTTP and 6 updater safety tests passed; hosted CI not run |
-| E1 | Aligned Windows/Linux direct reads, byte validation, buffered fallback; demand-priority worker scheduling | Buffered/direct byte and logits parity, Unicode/shards/tail/error checks; paired local I/O observations | Pending |
+| E1 | Aligned Windows/Linux direct reads, byte validation, buffered fallback; demand-priority worker scheduling | Buffered/direct byte and logits parity, Unicode/shards/tail/error checks; paired local I/O observations | Passed on Windows; measurements in ENGINE_UPGRADES.md |
 | E2 | Hybrid global budget over per-layer pools; runtime resize, capacity/eviction telemetry, capability registry | Preserve pins and partial layers; resize only at quiescent boundaries; budget/error and full-logit parity | Pending |
 | E3 | Per-expert readiness and compute/I/O overlap in the same cache; temporal prefetch behind an option | Demand always wins over queued speculation; no early weight consumption; overlap/prefetch parity and paired A/B | Pending |
 | E4 | Dense/shared residency policy and generic bounded row streaming; Windows RAM sensors | Bounded residency, finite row-gather parity, Unicode/multi-shard reads; no huge-tensor materialization fallback | Pending |

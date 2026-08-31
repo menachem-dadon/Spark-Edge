@@ -95,9 +95,25 @@ static void fixture(const char * path, bool moe) {
         }
     }
     require(gguf_write_to_file(file.get(), path, false), "cannot write GGUF fixture");
+    if (moe) {
+        for (int shard = 0; shard < 2; ++shard) {
+            gguf_context_ptr split(gguf_init_empty());
+            gguf_set_kv(split.get(), file.get());
+            gguf_set_val_u16(split.get(), "split.no", static_cast<uint16_t>(shard));
+            gguf_set_val_u16(split.get(), "split.count", 2);
+            gguf_set_val_i32(split.get(), "split.tensors.count", static_cast<int32_t>(gguf_get_n_tensors(file.get())));
+            int ordinal = 0;
+            for (auto * t = ggml_get_first_tensor(ctx.get()); t; t = ggml_get_next_tensor(ctx.get(), t), ++ordinal) {
+                if (ordinal % 2 == shard) { gguf_add_tensor(split.get(), t); }
+            }
+            const std::string name = "test-sharded-0000" + std::to_string(shard + 1) + "-of-00002.gguf";
+            require(gguf_write_to_file(split.get(), name.c_str(), false), "cannot write GGUF shard");
+        }
+    }
 }
 
-static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode, int layers = 0) {
+static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode, int layers = 0,
+                                  llama_moe_io_mode io_mode = LLAMA_MOE_IO_MODE_BUFFERED, bool synthetic = true) {
     common_params params;
     params.model.path = path;
     params.n_ctx = 64;
@@ -109,9 +125,16 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     params.cpuparams_batch.n_threads = 2;
     params.moe_paging.mode = mode;
     params.moe_paging.n_slots = 4;
+    if (!synthetic) {
+        params.moe_paging.n_slots = 0;
+        params.moe_paging.cache_bytes = 1500ull * 1024 * 1024;
+    }
     params.moe_paging.n_layers = layers;
+    params.moe_paging.io_mode = io_mode;
+    params.moe_paging.io_threads = 4;
     params.warmup = false;
     params.fit_params = false;
+    if (!synthetic) { params.no_extra_bufts = true; }
     auto loaded = common_init_from_params(params);
     auto * ctx = loaded->context();
     auto * model = loaded->model();
@@ -119,8 +142,12 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     llama_moe_paging_capabilities cap{};
     require(llama_model_moe_paging_capabilities(model, &cap), "missing capabilities");
     const bool paging = params.moe_paging.mode == LLAMA_MOE_PAGING_MODE_EXPLICIT;
-    require(cap.indexed_tensor_count == (paging ? (layers == 1 ? 3u : 6u) : 0u), "wrong indexed tensor count");
-    if (paging) {
+    if (synthetic) {
+        require(cap.indexed_tensor_count == (paging ? (layers == 1 ? 3u : 6u) : 0u), "wrong indexed tensor count");
+    } else {
+        require((cap.indexed_tensor_count > 0) == paging, "wrong real-model paging activation");
+    }
+    if (paging && synthetic) {
         require(llama_n_ubatch(ctx) == 2, "microbatch was not bounded by cache slots");
         auto mismatch = llama_context_default_params();
         mismatch.n_ctx = 64;
@@ -139,6 +166,7 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
             logits.push_back(row[j]);
         }
         llama_token next = (llama_token) (std::max_element(row + 3, row + vocab) - row);
+        if (!synthetic) { next = 68 + step; } // Identical teacher-forced inputs across modes.
         require(llama_decode(ctx, llama_batch_get_one(&next, 1)) == 0, "generation decode failed");
     }
     llama_moe_paging_stats stats{};
@@ -146,8 +174,14 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
     if (paging) {
         require(stats.cache_hits && stats.cache_misses && stats.bytes_read && stats.read_count, "cache or I/O inactive");
         require(stats.evictions > 0, "fixture did not exercise cache eviction");
-        require(llama_context_moe_paging_set_expert_pinned(ctx, 0, 0, true), "pin failed");
-        require(llama_context_moe_paging_set_expert_pinned(ctx, 0, 0, false), "unpin failed");
+        bool pin_ok = false;
+        for (int layer = 0; layer < cap.layer_count && !pin_ok; ++layer) {
+            if (llama_context_moe_paging_set_expert_pinned(ctx, layer, 0, true)) {
+                require(llama_context_moe_paging_set_expert_pinned(ctx, layer, 0, false), "unpin failed");
+                pin_ok = true;
+            }
+        }
+        require(pin_ok, "pin failed on every routed layer");
         llama_context_moe_paging_reset_stats(ctx);
         require(llama_context_moe_paging_get_stats(ctx, &stats) && stats.bytes_read == 0, "stats reset failed");
     }
@@ -157,16 +191,26 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
 static void parity(const std::vector<float> & a, const std::vector<float> & b) {
     require(a.size() == b.size() && !a.empty(), "empty or inconsistent output");
     float max_error = 0;
+    size_t errors = 0;
     for (size_t i = 0; i < a.size(); ++i) {
         max_error = std::max(max_error, std::abs(a[i] - b[i]));
-        require(std::abs(a[i] - b[i]) <= 1e-4f + 1e-4f * std::abs(a[i]), "paged logits differ from resident baseline");
+        errors += std::abs(a[i] - b[i]) > 1e-4f + 1e-4f * std::abs(a[i]);
     }
     std::printf("logits parity: %zu values, max abs error %.8g\n", a.size(), max_error);
+    require(errors == 0, "paged logits differ from resident baseline");
 }
 
 int main(int argc, char ** argv) {
     try {
         llama_backend_init();
+        if (argc == 3 && std::string(argv[1]) == "--model") {
+            const auto baseline = evaluate(argv[2], LLAMA_MOE_PAGING_MODE_OFF, 0, LLAMA_MOE_IO_MODE_BUFFERED, false);
+            parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_BUFFERED, false));
+            parity(baseline, evaluate(argv[2], LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT, false));
+            llama_backend_free();
+            std::puts("SparkMoE real-model full-logit regression PASS");
+            return 0;
+        }
         fixture("test-moe-regression.gguf", true);
         fixture("test-dense-regression.gguf", false);
         if (argc == 2 && std::string(argv[1]) == "--fixtures-only") {
@@ -176,12 +220,16 @@ int main(int argc, char ** argv) {
         const auto resident = evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_OFF);
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT));
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 1));
+        parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT));
+        parity(resident, evaluate("test-sharded-00001-of-00002.gguf", LLAMA_MOE_PAGING_MODE_EXPLICIT, 0, LLAMA_MOE_IO_MODE_DIRECT));
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_OS));
         parity(resident, evaluate("test-moe-regression.gguf", LLAMA_MOE_PAGING_MODE_AUTO));
         parity(evaluate("test-dense-regression.gguf", LLAMA_MOE_PAGING_MODE_OFF),
                evaluate("test-dense-regression.gguf", LLAMA_MOE_PAGING_MODE_AUTO));
         std::remove("test-moe-regression.gguf");
         std::remove("test-dense-regression.gguf");
+        std::remove("test-sharded-00001-of-00002.gguf");
+        std::remove("test-sharded-00002-of-00002.gguf");
         llama_backend_free();
         std::puts("SparkMoE model/graph regression PASS");
         return 0;

@@ -853,6 +853,12 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                     break;
                 }
                 params.moe_paging.n_slots = std::stoi(argv[i]);
+            } else if (arg == "--moe-io-mode") {
+                if (++i >= argc) { invalid_param = true; break; }
+                const std::string value(argv[i]);
+                if (value == "direct") { params.moe_paging.io_mode = LLAMA_MOE_IO_MODE_DIRECT; }
+                else if (value == "buffered") { params.moe_paging.io_mode = LLAMA_MOE_IO_MODE_BUFFERED; }
+                else { invalid_param = true; break; }
             } else if (arg == "--moe-io-threads") {
                 if (++i >= argc) {
                     invalid_param = true;
@@ -1328,6 +1334,7 @@ struct cmd_params_instance {
                main_gpu == other.main_gpu && tensor_split == other.tensor_split &&
                load_mode == other.load_mode && devices == other.devices && no_host == other.no_host &&
                moe_paging.mode == other.moe_paging.mode &&
+               moe_paging.io_mode == other.moe_paging.io_mode &&
                moe_paging.cache_bytes == other.moe_paging.cache_bytes &&
                moe_paging.n_slots == other.moe_paging.n_slots &&
                moe_paging.io_threads == other.moe_paging.io_threads &&

@@ -24,9 +24,6 @@ void prepare_loader(llama_model_loader & loader, const llama_moe_paging_params &
     if (experts <= 0) {
         throw std::runtime_error("explicit MoE paging requires a model with routed experts");
     }
-    if (params.io_mode == LLAMA_MOE_IO_MODE_DIRECT) {
-        throw std::runtime_error("direct MoE paging I/O is not implemented; use buffered I/O");
-    }
     ggml_init_params metadata{};
     metadata.mem_size = ggml_tensor_overhead() * (loader.weights_map.size() + 32);
     metadata.no_alloc = true;
@@ -65,7 +62,7 @@ void finish_loader(llama_model_loader & loader, llama_model & model) {
     if (loader.paged_index.tensor_count() == 0) {
         throw std::runtime_error("no routed expert tensors were indexed for explicit paging");
     }
-    loader.paged_index.open_files(loader.files);
+    loader.paged_index.open_files(loader.files, loader.moe_paging.io_mode == LLAMA_MOE_IO_MODE_DIRECT);
     model.moe_index = std::move(loader.paged_index);
     model.moe_paged_ctx = std::move(loader.ctx_paged);
     for (auto * tensor = ggml_get_first_tensor(model.moe_paged_ctx.get()); tensor;
@@ -134,6 +131,9 @@ bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
         snapshot.evictions,
         snapshot.waits,
         snapshot.duplicate_requests,
+        snapshot.physical_bytes,
+        snapshot.direct_bytes,
+        snapshot.fallback_reads,
     };
     return true;
 }
@@ -161,4 +161,3 @@ bool llama_context_moe_paging_set_expert_pinned(
 bool llama_context::moe_paging_set_expert_pinned(int32_t layer, int32_t expert, bool pinned) {
     return moe_paging && moe_paging->set_expert_pinned(layer, expert, pinned);
 }
-
