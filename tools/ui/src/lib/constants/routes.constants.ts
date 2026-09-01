@@ -19,6 +19,8 @@ export const ROUTES = {
 	SETTINGS: '#/settings',
 	/** Exit destination for the settings view (fallback when no referrer). */
 	SETTINGS_EXIT: '#/',
+	/** SparkMoE local model and server controls. */
+	SPARKMOE: '#/sparkmoe',
 	/** Root — start of the app. */
 	START: '#/'
 } as const;

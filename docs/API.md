@@ -22,7 +22,7 @@ Pin requests can be registered before an expert is resident. When that expert is
 - `POST /sparkmoe/v1/paging/reset-stats`
 - `GET /sparkmoe/v1/config`
 
-These routes use the server's normal API-key middleware. Health and model-list routes retain upstream public-route behavior. Paging values come from the active llama context; when explicit paging is off, `enabled` is false and counters are zero.
+These routes use the server's normal API-key middleware. In Router mode add `?model=<id>` to GET requests and a `model` field to POST bodies. The Router forwards the request to that model process. Health and model-list routes retain upstream public-route behavior. Paging values come from the selected llama context; when explicit paging is off, `enabled` is false and counters are zero.
 
 The normal OpenAI-compatible `/v1/chat/completions` and `/v1/responses` endpoints are unchanged.
 
@@ -30,11 +30,16 @@ The normal OpenAI-compatible `/v1/chat/completions` and `/v1/responses` endpoint
 
 ## Local manager API
 
-The control center exposes a loopback-only API on `127.0.0.1:18080`:
+The hidden manager exposes a loopback-only API on `127.0.0.1:18080`:
 
-- `GET /api/status`, `/api/config`, `/api/recommendation`, `/api/logs`
-- `GET /api/models?directory=...`
-- `GET /api/paging`, `/api/server-config`, `/api/diagnostics`
-- `POST /api/browse-model-directory`, `/api/start`, `/api/stop`, `/api/restart`, `/api/paging/reset`
+- `GET /api/status`, `/api/config`, `/api/recommendation`, `/api/diagnostics`
+- `POST /api/config` to persist Router port, models directory, automatic loading, and `models-max`, then restart the Router
+- `GET`, `POST`, and `DELETE /api/model-profile?model=<id>` for persistent per-model process profiles
+- `POST /api/browse-model-directory`, `/api/start`, `/api/stop`, `/api/restart`
+- `GET /api/log-sessions`, `/api/logs`, and `/api/logs/download` for complete persistent session logs
 
-Startup and restart accept the complete manager configuration: model directory, model, port, paging budget/slots/workers, context, batch and microbatch, parallel slots, prompt-cache RAM, checkpoints, KV cache types, context shift, and MTP settings. The directory browser uses the native Windows folder picker; model discovery recursively returns up to 2,000 GGUF files. Requests with a browser `Origin` header are accepted only from the manager or configured loopback chat origin.
+The directory browser uses the native Windows folder picker. Requests with a browser `Origin` header are accepted only from the manager or the current/previous configured loopback Web UI port.
+
+## OpenAI-compatible thinking control
+
+The Router requires a `model` field and forwards generation fields unchanged. The saved profile controls process allocation; it does not lock request behavior. For supported thinking templates, a caller can disable thinking for one request with `reasoning_effort: "none"` and `chat_template_kwargs: {"enable_thinking": false}`. This does not reload the model.

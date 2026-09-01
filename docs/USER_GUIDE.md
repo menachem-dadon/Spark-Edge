@@ -1,22 +1,37 @@
 # User guide
 
-Use the launcher for the simplest local workflow. It listens only on `127.0.0.1:18080`, stores form preferences in browser local storage, scans the selected models folder for `.gguf` files, validates the chosen model, and starts the sibling `llama-server` without a command shell.
+Run `SparkMoE.exe` for the normal local workflow. On Windows it is a GUI subsystem process, so no command window remains open. It starts `llama-server` in Router mode, waits for the Web UI, and opens the browser directly. The management API remains loopback-only on `127.0.0.1:18080`.
 
-The RAM bar shows current system memory use and available memory. It is not a model loading estimate and does not prove that a particular model fits.
+Open **SparkMoE** in the llama.cpp sidebar. This page uses the same UI system as the original chat and contains all fork-specific controls. Its seven tabs are **Overview**, **Models**, **SparkMoE engine**, **Context & caches**, **MTP & reasoning**, **Metrics**, and **Logs & diagnostics**. The rest of Settings and the chat routes retain the llama.cpp structure and behavior.
 
-For a split model, select the first conventional shard; upstream discovers the remaining shards. Keep all shards together and do not rename only one file.
+Choose a models folder and apply the Router settings. The normal llama.cpp model picker can then load and unload those models. `models-max` controls simultaneous model processes: `1` is conservative for large models, higher values are useful for small models, and `0` is unlimited. When the limit is reached, the Router evicts the least recently used idle process.
 
-Keep `auto` mode for the normal workflow. It attempts bounded expert streaming when the selected GGUF has a compatible routed MoE layout, and retries with standard mmap loading when the model is dense or incompatible. Qwen3.5/Qwen3.6 MoE and Gemma 4 26B-A4B use the standard routed layout. Reduce context or microbatch size before reducing the expert cache below the model's required active-expert minimum.
+Each model has a persistent SparkMoE profile. It controls startup-time values such as paging mode, expert cache, context, batches, KV cache types, MTP, threads, and the default reasoning mode. Saving a loaded model's profile reloads that model only; other model processes remain available.
 
-The launcher selects conservative context, microbatch, expert cache, and SSD worker defaults from the machine's RAM and CPU count. These are starting values, not a promise that a particular model fits. A user can still select Standard (`os`), explicit expert streaming, or fully resident loading.
+Keep `auto` mode for the normal workflow. It attempts bounded expert streaming when the selected GGUF has a compatible routed MoE layout, and retries with standard mmap loading when the model is dense or incompatible. The hardware-derived defaults are starting values, not a promise that a particular model fits.
 
-Advanced loading settings expose expert slots, inference CPU threads, and CPU weight repacking. Leave threads at `0` and repacking on `Automatic` unless benchmarking or diagnosing a specific model. `Disabled / compatibility` maps to `--no-repack` and is an escape hatch for a CPU kernel or quantization problem; it is not the normal performance setting.
+The **Context & caches** tab owns context length, context shift, parallel slots, batches, prompt-cache RAM, checkpoints, and K/V precision. **MTP & reasoning** is separate: it owns the model's default reasoning behavior and optional MTP sidecar, draft, cache, thread, and sampling controls. Enable MTP only when the GGUF includes a compatible MTP head or when a matching sidecar GGUF is configured.
 
-Context length, full-context behavior, and MTP are changed under **Chat settings -> Context & MTP**. The common controls are shown directly; batching, KV precision, and other tuning fields stay in a collapsed advanced section. Applying them restarts the inference server and reloads the model. The chat page waits for the new server and reconnects automatically.
-
-Enable MTP only when the GGUF includes a compatible MTP head. Start with three draft tokens and measure throughput with the same prompt both on and off; MTP is not faster on every system.
+The **Logs & diagnostics** tab shows the current log tail, previous sessions, and the privacy-filtered diagnostic export. The full combined Router and child-model output is stored under the user's local SparkMoE data directory and can be downloaded without truncation from the UI. SparkMoE does not write prompts or generations into its own management records.
 
 The launcher does not download models. Upstream CLI/server Hugging Face options remain available, but large downloads should be deliberate and model licenses must be reviewed first.
+
+## External API behavior
+
+Use the normal llama.cpp OpenAI-compatible URL, normally `http://127.0.0.1:8080/v1/chat/completions`. Every routed request must name the model. With automatic loading enabled, an unloaded model starts with its saved SparkMoE profile before the request is forwarded. With automatic loading disabled, load it first from the Web UI or `POST /models/load`.
+
+Generation options do not come from the loading profile. The caller still controls messages, tools, sampling, output length, and thinking for each request. To disable thinking for one SmartiAI request, send both:
+
+```json
+{
+  "model": "your-model-id",
+  "messages": [{ "role": "user", "content": "Hello" }],
+  "reasoning_effort": "none",
+  "chat_template_kwargs": { "enable_thinking": false }
+}
+```
+
+The model profile's `reasoning` value is only the default when a request does not provide an explicit control. Request-level thinking changes do not reload the model or change context, paging, cache, MTP, or thread allocation.
 
 ## Advanced engine controls
 

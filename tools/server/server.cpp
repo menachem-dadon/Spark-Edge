@@ -219,6 +219,11 @@ int llama_server(common_params & params, int argc, char ** argv) {
         routes.post_lora_adapters          = models_routes->proxy_post;
         routes.get_slots                   = models_routes->proxy_get;
         routes.post_slots                  = models_routes->proxy_post;
+        routes.get_sparkmoe_status         = models_routes->proxy_get;
+        routes.get_sparkmoe_paging         = models_routes->proxy_get;
+        routes.post_sparkmoe_reset_stats   = models_routes->proxy_post;
+        routes.post_sparkmoe_cache         = models_routes->proxy_post;
+        routes.get_sparkmoe_config         = models_routes->proxy_get;
 
         // custom routes for router
         routes.get_props                   = models_routes->get_router_props;

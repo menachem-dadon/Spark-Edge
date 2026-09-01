@@ -29,13 +29,13 @@ Documentation replacements and branding account for much of this count.
 | Benchmark | `tools/llama-bench/llama-bench.cpp` | Paging options and observable cache/I/O metrics |
 | CMake/build | `CMakeLists.txt`, `src/CMakeLists.txt`, `ggml/src/CMakeLists.txt`, `tools/CMakeLists.txt`, `tools/server/CMakeLists.txt`, `tests/CMakeLists.txt` | SparkMoE targets and Windows build compatibility |
 | CPU compatibility | `ggml/src/ggml-cpu/arch/x86/repack.cpp` | Avoid passing AVX vectors across the MinGW helper ABI |
-| Chat UI | `tools/ui/.env.example`, `tools/ui/package.json`, `tools/ui/package-lock.json`, `tools/ui/pwa-assets.config.ts`, `tools/ui/pwa-assets-dark.config.ts`, `tools/ui/src/app.html`, `tools/ui/src/lib/components/app/misc/Logo.svelte`, `tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte`, `tools/ui/src/lib/components/app/settings/index.ts`, `tools/ui/src/lib/constants/app.ts`, `tools/ui/src/lib/constants/pwa.ts`, `tools/ui/src/lib/constants/routes.ts`, `tools/ui/src/lib/constants/settings-registry.ts`, `tools/ui/src/routes/search/+page.svelte`, `tools/ui/tests/e2e/pwa.e2e.ts` | Branding and existing Context & MTP settings page |
+| Chat UI | `tools/ui/.env.example`, `tools/ui/package.json`, `tools/ui/package-lock.json`, PWA/branding files, `tools/ui/src/lib/constants/routes.constants.ts`, `tools/ui/src/lib/constants/ui.constants.ts`, `tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte`, `tools/ui/src/routes/search/+page.svelte` | Existing branding plus the SparkMoE sidebar integration |
 | Other | `.gitignore`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md` | Fork documentation and generated-artifact hygiene |
 
 SparkMoE core is `src/moe-paging/`: the model index, file readers, bounded
 per-layer cache, paging manager and statistics. These algorithms are independent
-of the integration hooks. The launcher/dashboard (`tools/sparkmoe/`), I/O tool,
-branding, presets, packaging, scripts, paging tests and server settings tab are
+of the integration hooks. The hidden launcher/Router supervisor (`tools/sparkmoe/`), I/O tool,
+branding, presets, packaging, scripts, paging tests and dedicated SparkMoE Web page are
 also SparkMoE-owned. Preserve their existing behavior and licensing.
 
 ## Refresh strategy
@@ -90,7 +90,7 @@ separate follow-up after these checkpoints are stable.
   Dense/off, explicit, OS, auto, partial layers, pinning, eviction and unload
   are checked without downloading a model. All vocabulary logits are compared.
 - HTTP dense and MoE completions/chat, telemetry and reset: PASS, using generated
-  fixtures in a Windows Hebrew path. Manager dashboard/config smoke: PASS.
+  fixtures in a Windows Hebrew path. Legacy manager UI/config smoke: PASS.
 - Svelte check: zero errors/warnings. Production chat UI build: PASS, embedded
   in the rebuilt server. This does not establish browser interaction parity.
 - Existing local Ling-3.0-tiny Q4_K_M, CPU 4 threads, 1,500 MiB explicit cache,
@@ -101,7 +101,7 @@ separate follow-up after these checkpoints are stable.
 
 Resolved conflicts covered upstream load-mode APIs, common_json, graph/model
 loading, server routing, CMake and the reorganized UI settings/PWA files.
-MSVC validation additionally fixed dashboard string limits, Unicode resource
+MSVC validation additionally fixed legacy manager UI string limits, Unicode resource
 paths, private unit-test linkage and benchmark paging parameter initialization.
 
 The local SparkMoE tag `v0.3.0` names a different commit from upstream's tag of

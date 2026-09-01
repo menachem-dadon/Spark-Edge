@@ -23,7 +23,7 @@ The merge preserves both histories. Conflicts were resolved for the new upstream
 load-mode APIs, common_json, graph/model loading, server lifecycle and routes,
 CMake, and reorganized chat UI settings/PWA files. Additional Windows fixes cover
 Unicode resource paths and Visual Studio environment initialization, embedded
-dashboard byte arrays, private unit-test linkage, and benchmark default params.
+Web UI byte arrays, private unit-test linkage, and benchmark default params.
 
 SparkMoE remains one paging engine and product. BigMoeOnEdge was used as research
 and mechanism reference, with no source import, backend process or new dependency.

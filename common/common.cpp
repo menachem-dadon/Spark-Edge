@@ -996,7 +996,11 @@ bool fs_create_directory_with_parents(const std::string & path) {
 }
 
 bool fs_is_directory(const std::string & path) {
+#ifdef _WIN32
+    std::filesystem::path dir = std::filesystem::u8path(path);
+#else
     std::filesystem::path dir(path);
+#endif
     return std::filesystem::exists(dir) && std::filesystem::is_directory(dir);
 }
 
@@ -1130,7 +1134,11 @@ std::vector<common_file_info> fs_list(const std::string & path, bool include_dir
     std::vector<common_file_info> files;
     if (path.empty()) return files;
 
+#ifdef _WIN32
+    std::filesystem::path dir = std::filesystem::u8path(path);
+#else
     std::filesystem::path dir(path);
+#endif
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir)) {
         return files;
     }
@@ -1141,8 +1149,13 @@ std::vector<common_file_info> fs_list(const std::string & path, bool include_dir
             const auto & p = entry.path();
             if (std::filesystem::is_regular_file(p)) {
                 common_file_info info;
+#ifdef _WIN32
+                info.path   = p.u8string();
+                info.name   = p.filename().u8string();
+#else
                 info.path   = p.string();
                 info.name   = p.filename().string();
+#endif
                 info.is_dir = false;
                 try {
                     info.size = static_cast<size_t>(std::filesystem::file_size(p));
@@ -1152,8 +1165,13 @@ std::vector<common_file_info> fs_list(const std::string & path, bool include_dir
                 files.push_back(std::move(info));
             } else if (include_directories && std::filesystem::is_directory(p)) {
                 common_file_info info;
+#ifdef _WIN32
+                info.path   = p.u8string();
+                info.name   = p.filename().u8string();
+#else
                 info.path   = p.string();
                 info.name   = p.filename().string();
+#endif
                 info.size   = 0; // Directories have no size
                 info.is_dir = true;
                 files.push_back(std::move(info));

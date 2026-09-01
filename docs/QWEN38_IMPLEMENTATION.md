@@ -33,7 +33,7 @@ The helper does not download or modify a model. Pass the first split shard, the 
   -Server 'C:\path\to\bin\llama-server.exe'
 ```
 
-The conservative baseline is CPU-only, one parallel slot, a 3 GiB global expert cache, a 64 MiB PLE page cache, a 512 MiB MTP expert cache, context 4096, microbatch 2 and MTP width 1. Start with buffered I/O and no overlap or prefetch. This isolates correctness and actual memory use before tuning. The manager exposes the same PLE and MTP settings; set the sidecar path under `Settings -> Context & MTP`.
+The conservative baseline is CPU-only, one parallel slot, a 3 GiB global expert cache, a 64 MiB PLE page cache, a 512 MiB MTP expert cache, context 4096, microbatch 2 and MTP width 1. Start with buffered I/O and no overlap or prefetch. This isolates correctness and actual memory use before tuning. The manager exposes the same PLE and MTP settings; set the sidecar path under `SparkMoE -> MTP & reasoning`.
 
 ## Required full-model gates
 

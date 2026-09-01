@@ -27,7 +27,8 @@ The original SparkMoE components listed below are offered under the PolyForm Non
 - `scripts/benchmark-paging.py`
 - `tests/test-upstream-updater.py`
 - `config/upstream-integration.json`
-- `tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChatServerTab.svelte`
+- `tools/ui/src/lib/services/sparkmoe.service.ts`
+- `tools/ui/src/routes/sparkmoe/+page.svelte`
 - SparkMoE-specific documentation created in this fork, except text copied from upstream.
 
 The following remain MIT even when they contain SparkMoE integration hooks, because they are upstream-derived files and separating a patch-level license inside them would be ambiguous:

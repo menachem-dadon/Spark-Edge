@@ -18,9 +18,9 @@ Explicit mode recognizes standard routed gate, up, down, and fused gate-up `.wei
 
 The GGUF probably does not contain a compatible MTP head, or its MTP tensors do not match the target model. Disable MTP and confirm normal inference first. MTP is optional and can be slower even when it initializes correctly.
 
-## Chat Server settings cannot reach the manager
+## The SparkMoE page cannot reach the manager
 
-Start `SparkMoE.exe` and open the chat through its control center. The Server settings panel connects only to `127.0.0.1:18080` and only from the configured loopback chat origin. A server started directly from the CLI has no manager process to restart it.
+Start `SparkMoE.exe` rather than `llama-server.exe` directly. The SparkMoE page connects only to `127.0.0.1:18080` and only from the configured loopback Web UI origin. A server started directly from the CLI has no manager process, persistent profile store, or session-log API.
 
 ## Cache budget is too small
 
@@ -47,6 +47,10 @@ Verify all shards, file sizes, SSD health, and permissions. Network drives and r
 ## Launcher cannot find the server
 
 Keep `SparkMoE.exe` and `llama-server.exe` in the same folder. On MinGW packages, keep all bundled runtime DLLs beside the executables.
+
+## No CMD window appears
+
+This is expected. The Windows launcher is a GUI process and starts the Router and model children with no console window. Open **SparkMoE -> Logs & diagnostics** in the Web UI for the same complete output. Full session files are stored under `%LOCALAPPDATA%\SparkMoE\logs`.
 
 ## WebUI build fails in a Unicode path
 

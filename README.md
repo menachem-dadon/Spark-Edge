@@ -17,8 +17,8 @@ This is **v0.4.2-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows re
 - Supports built-in MTP draft contexts together with bounded expert paging.
 - Supports a compatible separate MTP GGUF and bounded PLE page cache for Qwen3.8-Flash-Next.
 - Uses hardware-aware safe defaults and an automatic loading mode that falls back to standard mmap for dense or incompatible models.
-- Keeps model selection, loading mode, expert paging, RAM status, and diagnostics in the control center; context size, batching, KV precision, context shift, and MTP live in the chat settings page.
-- Includes a local-only English/Hebrew control center, a folder-backed GGUF model picker, real system RAM usage, live server state, log tail, and SSD I/O benchmark.
+- Keeps all SparkMoE controls in a dedicated page inside the original llama.cpp Web UI: Router limits, model profiles, loading, expert paging, context, MTP, RAM, logs, and diagnostics.
+- Runs the launcher and every managed model process without a console window on Windows, while preserving complete per-session logs under the user's local application data.
 
 It does not promise that every model or quantization fits in 16 GB. Advanced hybrid/overlap/prefetch modes require CPU-only inference. Buffered per-layer paging remains the default; direct I/O and speculative prefetch are not always faster. Explicit mode validates routed expert tensor names, shapes, strides, shard bounds, and active-expert capacity before inference. See [engine measurements](docs/ENGINE_UPGRADES.md) and [refresh report](docs/REFRESH_REPORT.md).
 
@@ -41,11 +41,11 @@ Portable Windows package:
 
 1. Extract the ZIP to a writable folder.
 2. Run `SparkMoE.exe`.
-3. Choose a models folder, then select a `.gguf` from the discovered model list.
-4. Keep **Automatic** loading unless you are testing a specific mode. It uses expert streaming for a compatible routed MoE model and standard mmap for a dense or incompatible model.
-5. Start the model and open the chat UI. Context length, full-context behavior, and MTP are available under **Settings -> Context & MTP** and perform a controlled model restart.
+3. The llama.cpp Web UI opens directly. Open **SparkMoE** in its sidebar and choose the folder that contains your GGUF models.
+4. Select a model using the normal llama.cpp model picker or the SparkMoE model profile selector.
+5. Keep **Automatic** loading unless you are testing a specific mode. Context length, MTP, loading, cache, logs, and diagnostics are all under **SparkMoE**.
 
-Dense and other non-MoE GGUF models use the normal llama.cpp path and are fully supported by the launcher. Advanced loading settings expose CPU inference threads, expert slots, and an automatic/on/off CPU repack control without requiring ordinary users to change them.
+Dense and other non-MoE GGUF models use the normal llama.cpp path and are fully supported by the launcher. `models-max` is user configurable: use `1` for large models, a higher value for small models that fit together, or `0` for unlimited Router instances.
 
 Build from source on Windows:
 
@@ -79,12 +79,14 @@ $body = @{ model = "local"; messages = @(@{ role = "user"; content = "Hello" }) 
 Invoke-RestMethod http://127.0.0.1:8080/v1/chat/completions -Method Post -ContentType application/json -Body $body
 ```
 
+The Router loads the requested `model` with its saved SparkMoE process profile. Generation settings remain request-specific. A SmartiAI request can disable thinking without reloading the model by sending `reasoning_effort = "none"` and `chat_template_kwargs = @{ enable_thinking = $false }`.
+
 Paging modes:
 
 - `off`: normal resident loading.
 - `os`: normal `mmap` behavior and operating-system paging.
 - `explicit`: SparkMoE expert slot caches and file reads.
-- `auto`: advanced CLI mode that chooses explicit when a cache/slot limit is supplied, otherwise OS paging. The dashboard defaults to `os`, which works with every supported model.
+- `auto`: chooses explicit when a cache/slot limit is supplied, otherwise OS paging. It is the SparkMoE profile default.
 
 Run `sparkmoe-iobench.exe --format json` to measure the buffered file path. OS caching can affect the result.
 

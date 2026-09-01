@@ -33,8 +33,7 @@ export const SETTINGS_SECTIONS = {
 	GENERAL: { slug: 'general', title: 'General' },
 	IMPORT_EXPORT: { slug: 'import-export', title: 'Import/Export' },
 	SAMPLING_PENALTIES: { slug: 'sampling-penalties', title: 'Sampling & Penalties' },
-	TOOLS: { slug: 'tools', title: 'Tools' },
-	SERVER: { slug: 'server', title: 'Context & MTP' }
+	TOOLS: { slug: 'tools', title: 'Tools' }
 } as const;
 
 export const SETTINGS_SECTION_SLUGS = {
@@ -44,7 +43,6 @@ export const SETTINGS_SECTION_SLUGS = {
 	GENERAL: SETTINGS_SECTIONS.GENERAL.slug,
 	IMPORT_EXPORT: SETTINGS_SECTIONS.IMPORT_EXPORT.slug,
 	SAMPLING_PENALTIES: SETTINGS_SECTIONS.SAMPLING_PENALTIES.slug,
-	SERVER: SETTINGS_SECTIONS.SERVER.slug,
 	TOOLS: SETTINGS_SECTIONS.TOOLS.slug
 } as const;
 
@@ -55,7 +53,6 @@ export const SETTINGS_SECTION_TITLES = {
 	GENERAL: SETTINGS_SECTIONS.GENERAL.title,
 	IMPORT_EXPORT: SETTINGS_SECTIONS.IMPORT_EXPORT.title,
 	SAMPLING_PENALTIES: SETTINGS_SECTIONS.SAMPLING_PENALTIES.title,
-	SERVER: SETTINGS_SECTIONS.SERVER.title,
 	TOOLS: SETTINGS_SECTIONS.TOOLS.title
 } as const;
 
@@ -682,10 +679,7 @@ function toSettingsSection(section: SettingsSectionEntry): SettingsSection {
 }
 
 /** Sidebar sections in custom display order (the registry array order). */
-export const SETTINGS_CHAT_SECTIONS: SettingsSection[] = [
-    ...SETTINGS_REGISTRY.map(toSettingsSection),
-    { slug: SETTINGS_SECTION_SLUGS.SERVER, title: SETTINGS_SECTION_TITLES.SERVER, icon: SlidersVertical }
-];
+export const SETTINGS_CHAT_SECTIONS: SettingsSection[] = SETTINGS_REGISTRY.map(toSettingsSection);
 
 /** INPUT-type settings whose value is a number. */
 export const NUMERIC_FIELDS = getAllSettings()

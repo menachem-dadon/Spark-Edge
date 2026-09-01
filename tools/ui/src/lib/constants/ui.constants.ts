@@ -1,5 +1,5 @@
 import { ROUTES } from './routes.constants';
-import { Package, Search, Settings, SquarePen } from '@lucide/svelte';
+import { Package, Search, Settings, Sparkles, SquarePen } from '@lucide/svelte';
 import McpLogo from '$lib/components/app/mcp/McpLogo.svelte';
 import { SidebarAction, ToolSource } from '$lib/enums';
 import type { DesktopIconStripItem } from '$lib/types';
@@ -68,6 +68,12 @@ export const SIDEBAR_ACTIONS_ITEMS: DesktopIconStripItem[] = [
 		icon: McpLogo,
 		route: ROUTES.MCP_SERVERS,
 		tooltip: 'MCP Servers'
+	},
+	{
+		activeRouteId: '/sparkmoe',
+		icon: Sparkles,
+		route: ROUTES.SPARKMOE,
+		tooltip: 'SparkMoE'
 	},
 	{
 		activeUrlIncludes: '#/settings',

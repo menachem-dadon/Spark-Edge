@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -174,18 +175,21 @@ def run_qwen(binary, root, log_dir, width, controlled=False):
 
 
 def run_manager(binary_dir, root, log_dir):
-    base = "http://127.0.0.1:18080"
-    try:
-        with socket.create_connection(("127.0.0.1", 18080), timeout=.2):
-            raise RuntimeError("Manager port 18080 is occupied; refusing to modify an existing instance")
-    except (ConnectionRefusedError, TimeoutError, OSError):
-        pass
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        manager_port = sock.getsockname()[1]
+    if manager_port == port:
+        raise RuntimeError("temporary manager and router ports collided")
+    base = f"http://127.0.0.1:{manager_port}"
     suffix = ".exe" if os.name == "nt" else ""
     env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
     env["SPARKMOE_NO_BROWSER"] = "1"
+    env["SPARKMOE_DATA_DIR"] = str(root / "manager-state")
+    env["SPARKMOE_MANAGER_PORT"] = str(manager_port)
+    env["SPARKMOE_SERVER_PORT"] = str(port)
     with (log_dir / "manager.log").open("wb") as log:
         proc = subprocess.Popen([str(binary_dir / ("SparkMoE" + suffix))], cwd=binary_dir, env=env,
                                 stdout=log, stderr=log,
@@ -200,70 +204,108 @@ def run_manager(binary_dir, root, log_dir):
                     if proc.poll() is not None or time.monotonic() > deadline:
                         raise RuntimeError("manager did not start")
                     time.sleep(.1)
-            assert config["io_mode"] == "buffered" and config["cache_policy"] == "lru"
-            with urllib.request.urlopen(base, timeout=10) as response:
-                assert 'id="resize-cache"' in response.read().decode()
-            config.update(model=str(root / "test-sharded-00001-of-00002.gguf"), model_directory=str(root),
-                          mode="explicit", cache=1, slots=4, threads=2, inference_threads=2, port=port,
-                          ctx_size=256, batch_size=4, ubatch_size=4, parallel=1, cache_policy="hybrid",
-                          overlap="on", prefetch="temporal", io_mode="direct", dense_residency="resident")
-            request(base, "/api/start", config)
+            assert config["models_max"] == 1 and config["models_autoload"] and config["port"] == port
+            config.update(model_directory=str(root), models_max=2)
+            request(base, "/api/config", config)
             deadline = time.monotonic() + 45
-            while not request(base, "/api/status")["server_ready"]:
+            while True:
+                status = request(base, "/api/status")
+                if status["server_ready"]:
+                    break
                 if time.monotonic() > deadline:
-                    raise RuntimeError("manager-controlled server did not become ready")
+                    logs = request(base, "/api/logs?max_bytes=16384")
+                    raise RuntimeError(f"manager-controlled router did not become ready: {status}; logs: {logs}")
                 time.sleep(.2)
             backend = f"http://127.0.0.1:{port}"
-            result = request(backend, "/completion", {"prompt": "ABC", "n_predict": 4, "temperature": 0, "ignore_eos": True})
-            assert result["tokens_predicted"] == 4 and result["content"]
-            stats = request(base, "/api/paging")
-            assert stats["enabled"] and stats["process_rss_bytes"] > 0 and stats["generation_tok_s"] > 0
-            active = request(base, "/api/server-config")
-            assert active["overlap"] and active["cache_policy"] == "hybrid" and active["dense_load_mode"] == "none"
-            assert request(base, "/api/paging/cache", {"cache_mib": 2})["accepted"]
-            request(backend, "/completion", {"prompt": "ABCD", "n_predict": 2, "ignore_eos": True})
-            assert request(base, "/api/paging")["cache_limit_bytes"] == 2 * 1048576
-            diagnostic = request(base, "/api/diagnostics")
-            assert "model" not in diagnostic["configuration"] and diagnostic["sparkmoe_version"]
-            request(base, "/api/restart", {"dense_residency": "mmap", "overlap": "off"})
+            models = request(backend, "/models")["data"]
+            model_id = next(model["id"] for model in models if "test-sharded-00001" in model["id"])
+            profile_response = request(base, "/api/model-profile?" + urllib.parse.urlencode({"model": model_id}))
+            assert not profile_response["is_override"]
+            profile = profile_response["profile"]
+            profile.update(mode="explicit", cache=1, slots=4, io_threads=2, inference_threads=2,
+                           ctx_size=256, batch_size=4, ubatch_size=4, parallel=1, cache_policy="hybrid",
+                           overlap="on", prefetch="temporal", io_mode="direct", dense_residency="resident")
+            request(base, "/api/model-profile", {"model": model_id, "profile": profile})
+            try:
+                request(backend, "/models/load", {"model": model_id})
+            except RuntimeError as cause:
+                session = request(base, "/api/status")["log_session"]
+                download = base + "/api/logs/download?" + urllib.parse.urlencode({"session": session})
+                with urllib.request.urlopen(download, timeout=30) as response:
+                    logs = response.read().decode("utf-8", errors="backslashreplace")
+                raise RuntimeError(f"{cause}; manager logs: {logs}") from cause
             deadline = time.monotonic() + 45
-            while not request(base, "/api/status")["server_ready"]:
+            while next(model for model in request(backend, "/models")["data"] if model["id"] == model_id)["status"]["value"] != "loaded":
                 if time.monotonic() > deadline:
-                    raise RuntimeError("manager restart timed out")
+                    session = request(base, "/api/status")["log_session"]
+                    download = base + "/api/logs/download?" + urllib.parse.urlencode({"session": session})
+                    with urllib.request.urlopen(download, timeout=30) as response:
+                        logs = response.read().decode("utf-8", errors="backslashreplace")
+                    raise RuntimeError(f"router model did not become ready; manager logs: {logs}")
                 time.sleep(.2)
-            assert request(base, "/api/config")["model"] == config["model"]
-            assert not request(base, "/api/server-config")["overlap"]
-            request(base, "/api/stop", {})
-            assert not request(base, "/api/status")["running"]
+            result = request(backend, "/completion", {
+                "model": model_id, "prompt": "ABC", "n_predict": 4, "temperature": 0, "ignore_eos": True,
+            })
+            assert result["tokens_predicted"] == 4 and result["content"]
+            query = "?" + urllib.parse.urlencode({"model": model_id})
+            stats = request(backend, "/sparkmoe/v1/paging" + query)
+            assert stats["enabled"] and stats["process_rss_bytes"] > 0
+            active = request(backend, "/sparkmoe/v1/config" + query)
+            assert active["overlap"] and active["cache_policy"] == "hybrid" and active["dense_load_mode"] == "none"
+            assert request(backend, "/sparkmoe/v1/paging/cache", {"model": model_id, "cache_mib": 2})["accepted"]
+            request(backend, "/completion", {"model": model_id, "prompt": "ABCD", "n_predict": 2, "ignore_eos": True})
+            assert request(backend, "/sparkmoe/v1/paging" + query)["cache_limit_bytes"] == 2 * 1048576
+            chat = request(backend, "/v1/chat/completions", {
+                "model": model_id,
+                "messages": [{"role": "user", "content": "ABC"}],
+                "max_tokens": 4,
+                "reasoning_effort": "none",
+                "chat_template_kwargs": {"enable_thinking": False},
+            })
+            assert chat["choices"], "router did not forward request-level thinking controls"
+            diagnostic = request(base, "/api/diagnostics")
+            assert "model_directory" not in diagnostic["router"] and diagnostic["profile_count"] == 1
+            sessions = request(base, "/api/log-sessions")["sessions"]
+            current = next(session for session in sessions if session["current"])
+            log_data = request(base, "/api/logs?" + urllib.parse.urlencode({"session": current["name"]}))
+            assert log_data["content"] and log_data["total_size"] >= len(log_data["content"])
+
             subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
                            cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            config.update(model=str(root / "test-qwen38.gguf"), mtp_enabled=True,
-                          mtp_model=str(root / "test-qwen38-mtp.gguf"), mtp_cache_mib=1,
-                          ple_cache_mib=1, mtp_draft_tokens=2, mtp_backend_sampling=False,
-                          batch_size=16, ubatch_size=2, cpu_repack="off", overlap="off", prefetch="off")
-            invalid = {**config, "mtp_model": str(root / "missing.gguf")}
+            request(backend, "/models?" + urllib.parse.urlencode({"reload": 1}))
+            models = request(backend, "/models")["data"]
+            qwen_id = next(model["id"] for model in models if model["id"] == "test-qwen38")
+            qwen_profile = request(base, "/api/model-profile?" + urllib.parse.urlencode({"model": qwen_id}))["profile"]
+            qwen_profile.update(mode="explicit", cache=1, slots=4, io_threads=2, inference_threads=2,
+                                ctx_size=256, batch_size=16, ubatch_size=2, parallel=1,
+                                mtp_enabled=True, mtp_model=str(root / "test-qwen38-mtp.gguf"),
+                                mtp_cache_mib=1, ple_cache_mib=1, mtp_draft_tokens=2,
+                                mtp_backend_sampling=False, cpu_repack="off", overlap="off", prefetch="off")
+            invalid = {**qwen_profile, "mtp_model": str(root / "missing.gguf")}
             try:
-                request(base, "/api/start", invalid)
+                request(base, "/api/model-profile", {"model": qwen_id, "profile": invalid})
                 raise AssertionError("manager accepted a missing MTP sidecar")
             except RuntimeError as error:
                 assert "MTP sidecar" in str(error), error
-            request(base, "/api/start", config)
+            request(base, "/api/model-profile", {"model": qwen_id, "profile": qwen_profile})
+            request(backend, "/models/load", {"model": qwen_id})
             deadline = time.monotonic() + 45
-            while not request(base, "/api/status")["server_ready"]:
+            while next(model for model in request(backend, "/models")["data"] if model["id"] == qwen_id)["status"]["value"] != "loaded":
                 if time.monotonic() > deadline:
-                    raise RuntimeError("manager Qwen MTP startup timed out")
+                    raise RuntimeError("router Qwen MTP startup timed out")
                 time.sleep(.2)
-            result = request(backend, "/completion", {"prompt": "ABC", "n_predict": 16,
+            result = request(backend, "/completion", {"model": qwen_id, "prompt": "ABC", "n_predict": 16,
                              "temperature": 0, "ignore_eos": True})
             assert result["tokens_predicted"] == 16 and result["timings"]["draft_n"] > 0, result
-            active = request(base, "/api/server-config")
+            active = request(backend, "/sparkmoe/v1/config?" + urllib.parse.urlencode({"model": qwen_id}))
             assert active["mtp_separate_model"] and active["mtp_cache_bytes"] == 1048576
             assert active["ple_cache_bytes"] == 1048576
-            diagnostic = request(base, "/api/diagnostics")
-            assert "mtp_model" not in diagnostic["configuration"] and "mtp_model" not in diagnostic["manager"]["config"]
             request(base, "/api/stop", {})
-            print("PASS Desktop manager: default/config/start/generation/telemetry/resize/restart/stop/diagnostics, no browser")
-            print("PASS Desktop Qwen MTP: sidecar validation, launch, budgets, drafting and diagnostic path redaction")
+            assert not request(base, "/api/status")["running"]
+            assert (root / "manager-state" / "config.json").is_file()
+            assert list((root / "manager-state" / "logs").glob("session-*.log"))
+            print("PASS Desktop manager: hidden router, persistent config/profiles, routed generation, telemetry, logs and stop")
+            print("PASS Desktop Qwen MTP: routed sidecar validation, launch, budgets and drafting")
         finally:
             try:
                 request(base, "/api/stop", {})

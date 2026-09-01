@@ -98,7 +98,6 @@ Get-ChildItem -LiteralPath $uiModules -File -Recurse | Where-Object {
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $stage 'README.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'README_HE.md') -Destination (Join-Path $stage 'README_HE.txt')
 Copy-Item -Force -LiteralPath (Join-Path $repo 'VERSION') -Destination $stage
-Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/sparkmoe/dashboard.html') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'docs/USER_GUIDE.md'), (Join-Path $repo 'docs/TROUBLESHOOTING.md'), (Join-Path $repo 'docs/PROJECT_MAP.md'), (Join-Path $repo 'docs/SUPPORTED_MODELS.md') -Destination (Join-Path $stage 'docs')
 foreach ($document in @('ENGINE_UPGRADES.md', 'UPSTREAM_INTEGRATION.md', 'UPSTREAM_PATCH_INVENTORY.md', 'UPDATING_LLAMA_CPP.md', 'REFRESH_REPORT.md', 'LATENCY_INVESTIGATION.md', 'NEXT_SESSION.md', 'QWEN38_IMPLEMENTATION.md')) {
     $source = Join-Path $repo "docs/$document"

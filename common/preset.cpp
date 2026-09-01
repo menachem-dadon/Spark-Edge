@@ -170,13 +170,9 @@ void common_preset::apply_to_params(common_params & params, const std::set<std::
 static std::map<std::string, std::map<std::string, std::string>> parse_ini_from_file(const std::string & path) {
     std::map<std::string, std::map<std::string, std::string>> parsed;
 
-    if (!std::filesystem::exists(path)) {
-        throw std::runtime_error("preset file does not exist: " + path);
-    }
-
-    std::ifstream file(path);
+    std::ifstream file = fs_open_ifstream(path, std::ios::in);
     if (!file.good()) {
-        throw std::runtime_error("failed to open server preset file: " + path);
+        throw std::runtime_error("preset file does not exist or cannot be opened: " + path);
     }
 
     std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -385,7 +381,7 @@ static bool is_draft_file(const std::string & fname) {
 }
 
 common_presets common_preset_context::load_from_models_dir(const std::string & models_dir) const {
-    if (!std::filesystem::exists(models_dir) || !std::filesystem::is_directory(models_dir)) {
+    if (!fs_is_directory(models_dir)) {
         throw std::runtime_error(string_format("error: '%s' does not exist or is not a directory\n", models_dir.c_str()));
     }
 

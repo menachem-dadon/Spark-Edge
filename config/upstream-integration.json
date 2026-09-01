@@ -11,6 +11,7 @@
     "common/common.cpp",
     "common/common.h",
     "common/log.cpp",
+    "common/preset.cpp",
     "common/speculative.cpp",
     "conversion/__init__.py",
     "conversion/base.py",
@@ -54,6 +55,7 @@
     "tools/server/CMakeLists.txt",
     "tools/server/server-context.cpp",
     "tools/server/server-context.h",
+    "tools/server/server-models.cpp",
     "tools/server/server.cpp",
     "tools/ui/.env.example",
     "tools/ui/package-lock.json",
@@ -61,12 +63,15 @@
     "tools/ui/pwa-assets-dark.config.ts",
     "tools/ui/pwa-assets.config.ts",
     "tools/ui/src/app.html",
+    "tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte",
     "tools/ui/src/lib/components/app/misc/Logo.svelte",
     "tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte",
     "tools/ui/src/lib/components/app/settings/index.ts",
     "tools/ui/src/lib/constants/app.constants.ts",
     "tools/ui/src/lib/constants/pwa.constants.ts",
+    "tools/ui/src/lib/constants/routes.constants.ts",
     "tools/ui/src/lib/constants/settings.constants.ts",
+    "tools/ui/src/lib/constants/ui.constants.ts",
     "tools/ui/src/routes/search/+page.svelte",
     "tools/ui/tests/e2e/pwa.e2e.ts"
   ],
@@ -174,17 +179,34 @@
     {
       "id": "desktop-ui",
       "files": {
-        "common/log.cpp": [
-          "ggml_fopen(path, \"w\")"
+        "common/preset.cpp": [
+          "fs_open_ifstream(path"
         ],
-        "tools/ui/src/lib/constants/settings.constants.ts": [
-          "Context & MTP"
+        "tools/server/server-models.cpp": [
+          "server_exec_path.u8string()"
         ],
-        "tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte": [
-          "SettingsChatServerTab"
+        "tools/sparkmoe/sparkmoe.cpp": [
+          "CREATE_NO_WINDOW",
+          "--models-preset",
+          "/api/model-profile"
         ],
-        "tools/sparkmoe/dashboard.html": [
-          "SparkMoE Control Center"
+        "tools/ui/src/lib/constants/ui.constants.ts": [
+          "tooltip: 'SparkMoE'"
+        ],
+        "tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte": [
+          "ROUTES.SPARKMOE"
+        ],
+        "tools/ui/src/lib/constants/routes.constants.ts": [
+          "SPARKMOE: '#/sparkmoe'"
+        ],
+        "tools/ui/src/lib/services/sparkmoe.service.ts": [
+          "class SparkMoeService"
+        ],
+        "tools/ui/src/routes/sparkmoe/+page.svelte": [
+          "Models",
+          "Context & caches",
+          "MTP & reasoning",
+          "Logs & diagnostics"
         ]
       }
     },

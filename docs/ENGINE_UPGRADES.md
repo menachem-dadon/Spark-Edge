@@ -206,8 +206,8 @@ average, not instantaneous speed. Windows private bytes are commit; Linux's
 available counterpart is anonymous RSS and must not be compared as identical.
 
 Windows build, native tests, six HTTP configurations and manager-controlled
-start/generate/resize/restart/stop/diagnostics passed. Dashboard JavaScript syntax
-was checked; a full visual/browser interaction regression was not performed.
+start/generate/resize/restart/stop/diagnostics passed. Legacy manager UI JavaScript
+syntax was checked; a full visual/browser interaction regression was not performed.
 
 Paired dense residency observations on Ling at 512 MiB expert cache:
 

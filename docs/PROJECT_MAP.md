@@ -26,9 +26,10 @@ SparkMoE הוא fork מלא של llama.cpp ולא תוכנה קטנה שמותק
 
 ```mermaid
 flowchart LR
-    A["SparkMoE.exe<br/>ממשק הניהול"] --> B["llama-server.exe<br/>שרת ההסקה של llama.cpp"]
-    C["ממשק הצ'אט בדפדפן"] --> B
-    A --> D["הגדרות MTP, הקשר ו-MoE"]
+    A["SparkMoE.exe<br/>מנהל רקע ללא CMD"] --> B["llama-server.exe<br/>Router של llama.cpp"]
+    C["ממשק llama.cpp בדפדפן<br/>כולל קטגוריית SparkMoE"] --> B
+    C --> A
+    A --> D["פרופילי מודל, לוגים והגדרות Router"]
     D --> B
     B --> E["libllama + GGML<br/>ליבת llama.cpp"]
     E --> F["משקלים רגילים בזיכרון"]
@@ -39,10 +40,10 @@ flowchart LR
 בעת הפעלה רגילה:
 
 1. המשתמש מפעיל `SparkMoE.exe`.
-2. מנהל SparkMoE מציג dashboard מקומי ב-`127.0.0.1:18080`.
-3. המשתמש בוחר מודל והגדרות.
-4. המנהל מפעיל את `llama-server.exe` שנמצא לידו.
-5. `llama-server` טוען את המודל באמצעות ליבת llama.cpp.
+2. מנהל SparkMoE מפעיל Router של `llama-server.exe` ללא חלון שורת פקודה.
+3. הדפדפן נפתח ישירות לממשק ה-WEB המובנה של llama.cpp.
+4. המשתמש מנהל את כל תכונות SparkMoE בקטגוריה ייעודית בממשק הזה.
+5. ה-Router טוען תהליך נפרד לכל מודל נדרש לפי הפרופיל השמור שלו ומגבלת `models-max`.
 6. כאשר מופעל MoE paging, המשקלים הרגילים נטענים בדרך הרגילה, אבל משקלי המומחים המנותבים נקראים מה-GGUF לתוך מטמון מוגבל.
 7. ממשק הצ'אט המובנה מדבר ישירות עם `llama-server` דרך API תואם OpenAI.
 
@@ -52,7 +53,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | ליבת llama.cpp | טעינת GGUF, מודלים, CPU/GPU, sampling, שרת, צ'אט וכלי פיתוח | upstream llama.cpp | MIT |
 | נקודות החיבור | פרמטרים וקריאות שמחברות את MoE paging לתוך model, context, graph ו-server | שינויים בקבצי upstream | MIT, כדי לא לערבב רישיונות בתוך אותו קובץ |
-| רכיבי SparkMoE העצמאיים | אלגוריתם paging, מנהל, dashboard, כלי I/O, presets, packaging ומסמכים | הקוד המקורי של הפרויקט | PolyForm Noncommercial 1.0.0 |
+| רכיבי SparkMoE העצמאיים | אלגוריתם paging, מנהל רקע, מסך WEB, כלי I/O, presets, packaging ומסמכים | הקוד המקורי של הפרויקט | PolyForm Noncommercial 1.0.0 |
 
 המיפוי המשפטי המחייב נמצא ב-`LICENSING.md`. קובץ `LICENSE` נשאר רישיון MIT של llama.cpp. קובץ `LICENSE-SPARKMOE-NONCOMMERCIAL.md` חל רק על הרכיבים שמפורטים בו וב-`LICENSING.md`.
 
@@ -79,7 +80,7 @@ src/moe-paging/
 
 אם רוצים להבין את הרעיון בלי לקרוא C++, התחילו ב-`docs/MOE_PAGING.md` וב-`docs/ARCHITECTURE.md`. אין צורך לפתוח את קובצי המימוש אלא לצורך פיתוח האלגוריתם.
 
-### 2. מנהל התוכנה וה-dashboard
+### 2. מנהל הרקע
 
 ```text
 tools/sparkmoe/
@@ -87,31 +88,30 @@ tools/sparkmoe/
 
 | קובץ | תפקיד |
 | --- | --- |
-| `sparkmoe.cpp` | יישום `SparkMoE.exe`: בדיקת הגדרות, הפעלה ועצירה של השרת, סטטוס, לוגים, המלצת חומרה ו-API מקומי. |
-| `dashboard.html` | ממשק השליטה שרואים בדפדפן. כולל MTP, אורך הקשר, זיכרון, MoE paging, מדדים ואבחון. |
-| `CMakeLists.txt` | הוראות הבנייה של `SparkMoE.exe`, העתקת dashboard ונכסי המיתוג. |
+| `sparkmoe.cpp` | יישום `SparkMoE.exe`: Router נסתר, הגדרות מתמידות, פרופילים לפי מודל, לכידת לוג מלאה ו-API מקומי. |
+| `CMakeLists.txt` | בונה את `SparkMoE.exe` כיישום GUI ב-Windows ומטמיע בו את אייקון התוכנה. |
 | `sparkmoe.rc.in` | קישור `assets/branding/SparkMoE.ico` לתוך קובץ ה-EXE ב-Windows. |
 
-המנהל אינו מבצע inference בעצמו. הוא מפעיל את `llama-server` ומנהל אותו.
+המנהל אינו מבצע inference ואינו מציג HTML משלו. הוא מפעיל את `llama-server` במצב Router, פותח את הדפדפן, וכותב `config.json`, `model-profiles.ini` ולוגים תחת תיקיית נתוני המשתמש.
 
 ### 3. הגדרות SparkMoE בתוך ממשק הצ'אט של llama.cpp
 
-המסך החדש נמצא כאן:
+המסך וה-service החדשים נמצאים כאן:
 
 ```text
-tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChatServerTab.svelte
+tools/ui/src/routes/sparkmoe/+page.svelte
+tools/ui/src/lib/services/sparkmoe.service.ts
 ```
 
 הקבצים הבאים הם נקודות חיבור קטנות בתוך ממשק upstream:
 
 ```text
-tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte
-tools/ui/src/lib/components/app/settings/index.ts
-tools/ui/src/lib/constants/routes.ts
-tools/ui/src/lib/constants/settings-registry.ts
+tools/ui/src/lib/constants/routes.constants.ts
+tools/ui/src/lib/constants/ui.constants.ts
+tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte
 ```
 
-ה-tab מדבר עם מנהל SparkMoE ב-`127.0.0.1:18080`. יתר ממשק הצ'אט הוא ממשק llama.cpp upstream.
+הקטגוריה מדברת עם מנהל SparkMoE ב-`127.0.0.1:18080` עבור תצורה ולוגים, ועם ה-Router הרגיל עבור מודלים ומדדי runtime. הגדרות llama.cpp הרגילות נשארות במבנה upstream.
 
 ### 4. כלי בדיקת ביצועי הכונן
 
@@ -155,7 +155,7 @@ assets/branding/SparkMoE.png
 assets/branding/SparkMoE.ico
 ```
 
-- ה-SVG מוצג בכותרת ה-dashboard ומשמש favicon.
+- ה-PNG מוצג בממשק הצ'אט ומשמש מקור לנכסי PWA ו-favicon.
 - ה-ICO מוטמע ב-`SparkMoE.exe` ומשמש גם את מתקין Inno Setup, קיצורי הדרך ו-Add or Remove Programs.
 - אפשר להחליף את שני הקבצים בלי לשנות קוד. יש לשמור על השמות המדויקים ולבנות מחדש.
 - הוראות גדלים ופורמטים נמצאות ב-`assets/branding/README.md`.
@@ -202,7 +202,7 @@ tests/test-moe-paging.cpp
 ## מסלול קריאה מומלץ למתחילים
 
 1. `README_HE.md`: מה התוכנה עושה ואיך מפעילים אותה.
-2. `docs/USER_GUIDE.md`: שימוש ב-dashboard.
+2. `docs/USER_GUIDE.md`: שימוש בקטגוריית SparkMoE שבממשק ה-WEB.
 3. המסמך הזה: איפה נמצא כל רכיב.
 4. `docs/MOE_PAGING.md`: איך מנגנון המומחים עובד במילים פשוטות.
 5. `docs/SUPPORTED_MODELS.md`: מה נתמך ומה תלוי ב-layout של GGUF.
@@ -236,13 +236,13 @@ tools/ui/dist/
 
 ## מה נמצא בחבילת Windows
 
-- `SparkMoE.exe`: מנהל התוכנה.
+- `SparkMoE.exe`: מנהל רקע ללא חלון CMD.
 - `llama-server.exe`: שרת inference של llama.cpp עם תוספות SparkMoE.
 - `llama-cli.exe`: שימוש בשורת פקודה.
 - `llama-bench.exe`: benchmark למודל.
 - `sparkmoe-iobench.exe`: בדיקת כונן.
 - DLLs של llama/GGML וה-runtime הנדרש לבנייה (MSVC בבנייה המקומית הנוכחית).
-- `dashboard.html` ונכסי המיתוג.
+- ממשק SparkMoE המוטמע ב-`llama-server.exe` ונכסי המיתוג.
 - presets, מסמכי שימוש, רישיונות ו-third-party notices.
 
 ## בדיקת פרסום קצרה
