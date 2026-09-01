@@ -56,7 +56,36 @@ ggml_tensor * create_paged_tensor(llama_model_loader & loader, const ggml_tensor
     return tensor;
 }
 
+ggml_tensor * create_ple_tensor(llama_model_loader & loader, const ggml_tensor * metadata) {
+    if (!ggml_is_contiguous(metadata) || metadata->ne[2] != 1 || metadata->ne[3] != 1 || loader.files.empty()) {
+        throw std::runtime_error("PLE streaming requires a contiguous GGUF tensor on disk");
+    }
+    const auto & weight = loader.require_weight(metadata->name);
+    auto & file = loader.files.at(weight.idx);
+    loader.paging_io = std::make_shared<io_executor>(loader.moe_paging.io_threads > 0 ? loader.moe_paging.io_threads : 1);
+    auto reader = make_file_reader(file->file_id(), file->size(), loader.moe_paging.io_mode == LLAMA_MOE_IO_MODE_DIRECT);
+    std::vector<row_span> spans{{0, uint64_t(metadata->ne[1]), weight.offs, metadata->nb[1], reader}};
+    const uint64_t budget = loader.moe_paging.ple_cache_bytes ? loader.moe_paging.ple_cache_bytes : 64ull * 1024 * 1024;
+    const size_t page_bytes = std::max<size_t>(4096, reader->alignment());
+    loader.ple_rows = std::make_shared<row_stream>(std::move(spans), metadata->nb[1], budget, 16, loader.paging_io,
+            loader.moe_paging.io_timeout_ms ? loader.moe_paging.io_timeout_ms : 30000, page_bytes);
+    loader.ctx_rows.reset(ggml_init({ggml_tensor_overhead(), nullptr, true}));
+    if (!loader.ctx_rows) { throw std::runtime_error("failed to allocate PLE metadata"); }
+    auto * tensor = ggml_dup_tensor(loader.ctx_rows.get(), metadata);
+    ggml_set_name(tensor, metadata->name);
+    ++loader.n_created;
+    LLAMA_LOG_INFO("PLE: streaming %zu bytes from shard %u, offset %zu; cache %llu bytes\n", ggml_nbytes(metadata),
+            unsigned(weight.idx), weight.offs, (unsigned long long) loader.ple_rows->snapshot().allocated_bytes);
+    return tensor;
+}
+
 void finish_loader(llama_model_loader & loader, llama_model & model) {
+    model.row_stream_ctx = std::move(loader.ctx_rows);
+    model.ple_rows = loader.ple_rows;
+    model.paging_io = loader.paging_io;
+    if (model.ple_rows) {
+        model.tensors_by_name.emplace_back("per_layer_token_embd.weight", model.per_layer_tok_embd);
+    }
     if (!mode_uses_explicit_paging(loader.moe_paging.mode)) {
         return;
     }
@@ -89,7 +118,7 @@ std::unique_ptr<paging_manager> init_context(ggml_backend_t cpu, const llama_mod
     if (params.n_rs_seq > UINT32_MAX - 2) { throw std::runtime_error("invalid speculative rollback size"); }
     const uint32_t minimum_ubatch = params.n_rs_seq ? params.n_rs_seq + 2 : 1;
     auto manager = std::make_unique<paging_manager>(cpu, params.moe_paging, model.moe_index,
-                                                   model.hparams.n_expert_used, minimum_ubatch);
+                                                   model.hparams.n_expert_used, minimum_ubatch, model.paging_io);
     const uint32_t safe_ubatch = manager->max_safe_ubatch();
     if (params.n_ubatch > safe_ubatch) {
         LLAMA_LOG_WARN("MoE paging: reducing n_ubatch from %u to %u to fit active experts in the slot cache\n",
@@ -135,10 +164,11 @@ bool llama_context_moe_paging_get_stats(
 }
 
 bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
-    if (!stats || !moe_paging) {
+    if (!stats || (!moe_paging && !model.ple_rows)) {
         return false;
     }
-    const auto snapshot = moe_paging->snapshot();
+    const auto snapshot = moe_paging ? moe_paging->snapshot() : llama_moe::stats_snapshot{};
+    const auto ple = model.ple_rows ? model.ple_rows->snapshot() : llama_moe::row_stream_stats{};
     *stats = {
         snapshot.cache_hits,
         snapshot.cache_misses,
@@ -167,6 +197,11 @@ bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
         snapshot.prefetch_wasted,
         snapshot.prefetch_promoted,
         snapshot.prefetch_skipped,
+        ple.allocated_bytes,
+        ple.cache_hits,
+        ple.rows_read,
+        ple.bytes_read,
+        ple.evictions,
     };
     return true;
 }
@@ -180,6 +215,9 @@ void llama_context_moe_paging_reset_stats(struct llama_context * ctx) {
 void llama_context::moe_paging_reset_stats() {
     if (moe_paging) {
         moe_paging->reset_stats();
+    }
+    if (model.ple_rows) {
+        model.ple_rows->reset_stats();
     }
 }
 

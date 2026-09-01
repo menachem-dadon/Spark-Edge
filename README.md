@@ -4,7 +4,7 @@
 
 SparkMoE is an independent, CPU-first fork of `llama.cpp` that can keep standard routed MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
 
-This is **v0.4.1-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows regression suite includes synthetic full-logit equivalence, real two-shard GGUF, HTTP/Desktop controls and exact Ling-3.0-tiny Q4_K_M logits with matching CPU kernels and microbatch. Qwen3.6 and Gemma 4 have separate smoke-test evidence; see [supported models](docs/SUPPORTED_MODELS.md). This remains an alpha rather than a performance or memory-fit guarantee.
+This is **v0.4.2-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows regression suite includes synthetic full-logit equivalence, real two-shard GGUF, HTTP/Desktop controls and exact Ling-3.0-tiny Q4_K_M logits with matching CPU kernels and microbatch. Qwen3.8-Flash-Next now has a bounded PLE adapter, a separate native MTP sidecar path and tiny-fixture parity tests; full-model memory and speed validation is still pending. See [supported models](docs/SUPPORTED_MODELS.md). This remains an alpha rather than a performance or memory-fit guarantee.
 
 ## What it does
 
@@ -15,6 +15,7 @@ This is **v0.4.1-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows re
 - Offers validated Windows/Linux direct I/O with buffered fallback, shared demand-priority workers, per-expert compute/I/O overlap and temporal prefetch.
 - Exposes real cache/I/O statistics through C, `llama-server`, and `llama-bench`.
 - Supports built-in MTP draft contexts together with bounded expert paging.
+- Supports a compatible separate MTP GGUF and bounded PLE page cache for Qwen3.8-Flash-Next.
 - Uses hardware-aware safe defaults and an automatic loading mode that falls back to standard mmap for dense or incompatible models.
 - Keeps model selection, loading mode, expert paging, RAM status, and diagnostics in the control center; context size, batching, KV precision, context shift, and MTP live in the chat settings page.
 - Includes a local-only English/Hebrew control center, a folder-backed GGUF model picker, real system RAM usage, live server state, log tail, and SSD I/O benchmark.
@@ -32,7 +33,7 @@ It does not promise that every model or quantization fits in 16 GB. Advanced hyb
 
 Permanent Windows installation:
 
-1. Use `sparkmoe-0.4.1-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
+1. Use `sparkmoe-0.4.2-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
 2. Run the installer. It installs for the current user, creates an uninstall entry, and can create desktop and Start menu shortcuts.
 3. Run `SparkMoE` from the Start menu.
 
@@ -63,11 +64,13 @@ CLI:
 llama-cli.exe -m C:\models\qwen.gguf --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 -p "Hello"
 ```
 
-Server with context and built-in MTP:
+Server with context and MTP:
 
 ```powershell
 llama-server.exe -m C:\models\qwen.gguf --host 127.0.0.1 --port 8080 --parallel 1 --ctx-size 16384 --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 --spec-type draft-mtp --spec-draft-n-max 3
 ```
+
+Qwen3.8-Flash-Next uses `--model-draft` for its separate compatible MTP sidecar. See [the Qwen3.8 implementation and validation guide](docs/QWEN38_IMPLEMENTATION.md).
 
 OpenAI-compatible request:
 

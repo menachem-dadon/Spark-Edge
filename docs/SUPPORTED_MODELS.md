@@ -6,6 +6,7 @@ SparkMoE separates base llama.cpp model support from explicit SSD expert paging 
 
 | Model family | Base inference | Explicit expert paging | Built-in MTP | Current validation |
 | --- | --- | --- | --- | --- |
+| Qwen3.8-Flash-Next (`qwen4exp`) | Selective pinned upstream backport | Supported with bounded PLE page gathering and global hybrid expert budget | Supported through a compatible separate one-head MTP GGUF | Tiny IQ4_NL/Q5_0 full-logit parity, direct/buffered PLE, full state replay, accepted/rejected drafts, EOS recovery and manager launch pass on Windows CPU. Published full-size Q4 memory, output and 4 tok/s gates are pending. |
 | Qwen3.5/Qwen3.6 MoE | Upstream implementation | Supported | Supported when the GGUF contains MTP tensors | Refreshed Windows Qwen3.6 35B-A3B IQ4_NL HTTP generation and MTP passed, identical 12-token greedy output; 7/12 draft tokens accepted. Full-logit/quantization matrix pending. |
 | Ling-3.0-tiny / bailingmoe3 | Upstream implementation | Validated Q4_K_M on Windows CPU | Not tested | Exact 1,886,208-value full-logit parity with matching kernels and microbatch: resident/fixed/direct/hybrid/overlap/temporal, eviction/resize and dense residency policies. |
 | Gemma 4 26B-A4B | Upstream implementation | Supported through standard routed tensor layout detection | Supported when a compatible MTP head is present | Gemma 4 26B-A4B Q4_0 load, prompt, generation, and process-survival regression with explicit paging, CPU repack, and multiple threads. Resident-versus-paged logit parity pending. |
@@ -30,8 +31,8 @@ The evidence registry is `src/moe-paging/moe-capabilities.cpp`. Linux and GPU
 validation must not be inferred from Windows CPU results. Gemma evidence above
 predates this refresh and was not repeated in the final matrix.
 
-Generic bounded row streaming is infrastructure only. No SparkMoE-specific
-Qwen3.8/Flash-Next/PLE adapter is part of this release.
+Qwen3.8-Flash-Next has a model-specific PLE adapter and MTP sidecar path. See
+`docs/QWEN38_IMPLEMENTATION.md` for the exact boundary and pending full-model gates.
 
 ## Adding a validated family
 

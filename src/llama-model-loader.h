@@ -7,6 +7,7 @@
 #include "llama-hparams.h"
 #include "llama-mmap.h"
 #include "moe-paging/moe-model-index.h"
+#include "moe-paging/moe-row-stream.h"
 
 #include "ggml-cpp.h"
 
@@ -92,6 +93,9 @@ struct llama_model_loader {
     llama_moe_paging_params moe_paging{};
     ggml_context_ptr ctx_paged;
     llama_moe::model_index paged_index;
+    ggml_context_ptr ctx_rows;
+    std::shared_ptr<llama_moe::row_stream> ple_rows;
+    std::shared_ptr<llama_moe::io_executor> paging_io;
 
     std::map<std::string, llama_tensor_weight, weight_name_comparer> weights_map;
     std::unordered_map<std::string, llama_model_kv_override> kv_overrides;

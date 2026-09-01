@@ -2401,13 +2401,39 @@ common_speculative_init_result::common_speculative_init_result(
         model_path = params.speculative.draft.mparams.path;
         LOG_INF("%s: loading draft model '%s'\n", __func__, model_path.c_str());
 
-        llama_model * model_dft = llama_model_load_from_file(params.model.path.c_str(), mparams);
+        if (spec_mtp) {
+            mparams.moe_paging.n_layers = 0;
+            if (mparams.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID || mparams.moe_paging.overlap ||
+                    mparams.moe_paging.temporal_prefetch) {
+                mparams.n_gpu_layers = 0;
+            }
+        }
+
+        llama_model * model_dft = llama_model_load_from_file(model_path.c_str(), mparams);
         if (model_dft == NULL) {
             LOG_ERR("%s: failed to load draft model, '%s'\n", __func__, model_path.c_str());
             return;
         }
 
         pimpl->model.reset(model_dft);
+        char architecture[32] = {};
+        llama_model_meta_val_str(model_dft, "general.architecture", architecture, sizeof(architecture));
+        if (spec_mtp && std::strcmp(architecture, "qwen4exp") == 0) {
+            char target_architecture[32] = {};
+            llama_model_meta_val_str(model_tgt, "general.architecture", target_architecture, sizeof(target_architecture));
+            if (std::strcmp(architecture, target_architecture) != 0 ||
+                    llama_model_n_embd_out(model_tgt) != llama_model_n_embd_out(model_dft) ||
+                    llama_model_n_layer_nextn(model_dft) != 1 ||
+                    llama_vocab_n_tokens(llama_model_get_vocab(model_tgt)) != llama_vocab_n_tokens(llama_model_get_vocab(model_dft)) ||
+                    !common_speculative_are_compatible(model_tgt, model_dft)) {
+                LOG_ERR("%s: incompatible Qwen MTP sidecar architecture, hidden width, head count or vocabulary\n", __func__);
+                return;
+            }
+            cparams.ctx_other = nullptr;
+            cparams.moe_paging.cache_bytes = params.moe_draft_cache_bytes;
+            cparams.moe_paging.n_slots = 0;
+            cparams.moe_paging.n_layers = 0;
+        }
 
         llama_context * ctx_dft = llama_init_from_model(model_dft, cparams);
         if (ctx_dft == nullptr) {

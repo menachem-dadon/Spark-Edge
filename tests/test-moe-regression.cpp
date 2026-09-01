@@ -3,9 +3,11 @@
 
 #include "llama.h"
 #include "llama-cpp.h"
+#include "llama-ext.h"
 #include "ggml-cpp.h"
 #include "gguf.h"
 #include "common.h"
+#include "speculative.h"
 
 #include <algorithm>
 #include <cmath>
@@ -112,6 +114,94 @@ static void fixture(const char * path, bool moe) {
     }
 }
 
+static void qwen_fixture(const char * path, bool draft, ggml_type ple_type = GGML_TYPE_IQ4_NL, bool accepting = false) {
+    gguf_context_ptr tokenizer(gguf_init_from_file("test-dense-regression.gguf", {true, nullptr}));
+    gguf_context_ptr file(gguf_init_empty());
+    gguf_set_kv(file.get(), tokenizer.get());
+    gguf_set_val_str(file.get(), "general.architecture", "qwen4exp");
+    ggml_context_ptr ctx(ggml_init({16 * 1024 * 1024, nullptr, false}));
+    auto key = [&](const char * name, uint32_t value) { gguf_set_val_u32(file.get(), (std::string("qwen4exp.") + name).c_str(), value); };
+    key("context_length", 256); key("embedding_length", 128); key("feed_forward_length", 64);
+    key("block_count", draft ? 3 : 2); key("attention.head_count", 4); key("attention.head_count_kv", 2);
+    key("expert_count", 8); key("expert_used_count", 2);
+    key("expert_feed_forward_length", 64); key("expert_shared_feed_forward_length", 64);
+    key("ssm.conv_kernel", 4); key("ssm.inner_size", 256); key("ssm.state_size", 128);
+    key("ssm.time_step_rank", 2); key("ssm.group_count", 2);
+    key("hyper_connection.count", 4); key("hyper_connection.low_rank", 8);
+    key("attention.indexer.head_count", 1); key("attention.indexer.key_length", 32); key("attention.indexer.top_k", 4);
+    key("full_attention_interval", 2);
+    gguf_set_val_f32(file.get(), "qwen4exp.attention.layer_norm_rms_epsilon", 1e-5f);
+    const uint32_t sections[] = {8, 8, 8, 8}, ratios[] = {2, 2, 2}, ple_layers[] = {0};
+    gguf_set_arr_data(file.get(), "qwen4exp.rope.dimension_sections", GGUF_TYPE_UINT32, sections, 4);
+    gguf_set_arr_data(file.get(), "qwen4exp.attention.compress_ratios", GGUF_TYPE_UINT32, ratios, draft ? 3 : 2);
+    if (draft) { key("nextn_predict_layers", 1); }
+    else {
+        gguf_set_arr_data(file.get(), "qwen4exp.ple.layers", GGUF_TYPE_UINT32, ple_layers, 1);
+        key("ple.ngram_size", 3); key("ple.heads_per_ngram", 2); key("ple.conv_kernel", 3);
+        key("ple.eos_token_id", 2); key("embedding_length_per_layer_input", 32);
+        const uint64_t multipliers[] = {300000000001ull, 700000000003ull, 1100000000009ull};
+        const uint64_t offsets[] = {0, 61, 122, 183}, sizes[] = {61, 61, 61, 61};
+        gguf_set_arr_data(file.get(), "qwen4exp.ple.layer_multipliers", GGUF_TYPE_UINT64, multipliers, 3);
+        gguf_set_arr_data(file.get(), "qwen4exp.ple.head_offsets", GGUF_TYPE_UINT64, offsets, 4);
+        gguf_set_arr_data(file.get(), "qwen4exp.ple.head_vocab_sizes", GGUF_TYPE_UINT64, sizes, 4);
+    }
+    uint32_t rng = 42;
+    auto tensor = [&](const std::string & name, std::initializer_list<int64_t> dims, ggml_type type = GGML_TYPE_F32) {
+        const std::vector<int64_t> shape(dims);
+        auto * t = ggml_new_tensor(ctx.get(), type, int(shape.size()), shape.data());
+        ggml_set_name(t, name.c_str());
+        std::vector<float> values(ggml_nelements(t));
+        for (size_t i = 0; i < values.size(); ++i) {
+            rng = rng * 1664525u + 1013904223u;
+            values[i] = name.find("norm") != std::string::npos ? 1.0f : (int32_t(rng >> 16) - 32768) / 655360.0f;
+            if (name.find("ssm_a") != std::string::npos && name.find("weight") == std::string::npos) { values[i] = -0.5f; }
+            if (name == "output.weight" && (i / 128 < 35 || i / 128 > 129)) { values[i] = 0; }
+            if (accepting) {
+                if (name == "token_embd.weight") { values[i] = 0.1f; }
+                if (name.find("nextn.eh_proj.weight") != std::string::npos) { values[i] = i % 256 < 128 ? 1.0f : 0.0f; }
+                if (name == "output.weight") { values[i] = i / 128 == 68 ? 1.0f : 0.0f; }
+            }
+        }
+        ggml_quantize_chunk(type, values.data(), t->data, 0, values.size() / t->ne[0], t->ne[0], nullptr);
+        gguf_add_tensor(file.get(), t);
+    };
+    tensor("token_embd.weight", {128, 259}); tensor("output.weight", {128, 259});
+    tensor("output_hc_norm.weight", {512}); tensor("output_hc_down.weight", {512, 8}); tensor("output_hc_up.weight", {8, 512});
+    if (!draft) { tensor("per_layer_token_embd.weight", {32, 256}, ple_type); }
+    for (int il = draft ? 2 : 0; il < (draft ? 3 : 2); ++il) {
+        const auto p = "blk." + std::to_string(il) + ".";
+        for (const auto * part : {"hc_attn", "hc_ffn"}) {
+            tensor(p + part + "_norm.weight", {512}); tensor(p + part + "_down.weight", {512, 8});
+            tensor(p + part + "_up.weight", {8, 512}); tensor(p + part + "_inject.weight", {512, 4});
+        }
+        if (il != 0) {
+            tensor(p + "attn_q.weight", {128, 256}); tensor(p + "attn_k.weight", {128, 64});
+            tensor(p + "attn_v.weight", {128, 64}); tensor(p + "attn_output.weight", {128, 128});
+            tensor(p + "attn_q_norm.weight", {32}); tensor(p + "attn_k_norm.weight", {32});
+            tensor(p + "indexer.q_proj.weight", {128, 32}); tensor(p + "indexer.k_proj.weight", {128, 32});
+            tensor(p + "indexer.q_norm.weight", {32}); tensor(p + "indexer.k_norm.weight", {32});
+        } else {
+            tensor(p + "attn_qkv.weight", {128, 768}); tensor(p + "attn_gate.weight", {128, 256});
+            tensor(p + "ssm_conv1d.weight", {4, 768}); tensor(p + "ssm_dt.bias", {2}); tensor(p + "ssm_a", {2});
+            tensor(p + "ssm_beta.weight", {128, 2}); tensor(p + "ssm_alpha.weight", {128, 2});
+            tensor(p + "ssm_norm.weight", {128}); tensor(p + "ssm_out.weight", {256, 128});
+            tensor(p + "ple_key.weight", {128, 512}); tensor(p + "ple_value.weight", {128, 128});
+            for (const auto * role : {"ple_norm_key", "ple_norm_query", "ple_norm_conv"}) { tensor(p + role + ".weight", {512}); }
+            tensor(p + "ple_conv1d.weight", {3, 512});
+        }
+        tensor(p + "ffn_gate_inp.weight", {128, 8});
+        tensor(p + "ffn_gate_exps.weight", {128, 64, 8}, GGML_TYPE_Q4_0);
+        tensor(p + "ffn_up_exps.weight", {128, 64, 8}, GGML_TYPE_Q4_0);
+        tensor(p + "ffn_down_exps.weight", {64, 128, 8}, GGML_TYPE_Q4_0);
+        tensor(p + "ffn_gate_inp_shexp.weight", {128});
+        tensor(p + "ffn_gate_shexp.weight", {128, 64}); tensor(p + "ffn_up_shexp.weight", {128, 64}); tensor(p + "ffn_down_shexp.weight", {64, 128});
+        if (draft) {
+            tensor(p + "nextn.eh_proj.weight", {256, 128}); tensor(p + "nextn.enorm.weight", {128}); tensor(p + "nextn.hnorm.weight", {512});
+        }
+    }
+    require(gguf_write_to_file(file.get(), path, false), "cannot write Qwen fixture");
+}
+
 static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode, int layers = 0,
                                   llama_moe_io_mode io_mode = LLAMA_MOE_IO_MODE_BUFFERED, bool synthetic = true,
                                   bool hybrid = false, bool overlap = false, bool prefetch = false, uint32_t real_ubatch = 1,
@@ -155,7 +245,7 @@ static std::vector<float> evaluate(const char * path, llama_moe_paging_mode mode
         require((cap.indexed_tensor_count > 0) == paging, "wrong real-model paging activation");
     }
     if (paging && synthetic) {
-        require(llama_n_ubatch(ctx) == (hybrid && layers != 1 ? 3u : 2u), "microbatch was not bounded by cache slots");
+        require(llama_n_ubatch(ctx) == (hybrid && layers != 1 ? 4u : 2u), "microbatch was not bounded by cache slots");
         auto mismatch = llama_context_default_params();
         mismatch.n_ctx = 64;
         llama_context_ptr invalid(llama_init_from_model(model, mismatch));
@@ -223,6 +313,71 @@ static void parity(const std::vector<float> & a, const std::vector<float> & b, b
     if (strict) { require(errors == 0, "paged logits differ from resident baseline"); }
 }
 
+static std::vector<float> qwen_evaluate(const char * path, bool paging, bool mtp, bool direct = false, std::vector<float> * draft_rows = nullptr) {
+    common_params params;
+    params.model.path = path;
+    params.n_ctx = 256; params.n_batch = 16; params.n_ubatch = 2; params.n_parallel = 1;
+    params.n_gpu_layers = 0; params.cpuparams.n_threads = 2; params.cpuparams_batch.n_threads = 2;
+    params.fit_params = false; params.warmup = false; params.no_extra_bufts = true;
+    params.load_mode = LLAMA_LOAD_MODE_NONE;
+    params.moe_paging.mode = paging ? LLAMA_MOE_PAGING_MODE_EXPLICIT : LLAMA_MOE_PAGING_MODE_OFF;
+    params.moe_paging.io_mode = direct ? LLAMA_MOE_IO_MODE_DIRECT : LLAMA_MOE_IO_MODE_BUFFERED;
+    params.moe_paging.n_slots = 4;
+    params.speculative.types = mtp ? std::vector<common_speculative_type>{COMMON_SPECULATIVE_TYPE_DRAFT_MTP} : std::vector<common_speculative_type>{};
+    params.speculative.draft.mparams.path = "test-qwen38-mtp.gguf";
+    auto loaded = common_init_from_params(params);
+    auto * ctx = loaded->context();
+    require(ctx, "Qwen context load failed");
+    llama_set_embeddings_nextn(ctx, true, false);
+    std::vector<llama_token> prompt{1, 68, 2, 69};
+    require(llama_decode(ctx, llama_batch_get_one(prompt.data(), int(prompt.size()))) == 0, "Qwen prefill failed");
+    const auto * hidden = llama_get_embeddings_nextn(ctx);
+    require(hidden, "missing Qwen wide hidden rows");
+    std::vector<float> saved_hidden(hidden, hidden + prompt.size() * 512);
+    for (const auto value : saved_hidden) { require(std::isfinite(value), "invalid hidden row"); }
+    std::vector<float> result;
+    for (llama_token token : {70, 71, 2, 72, 73}) {
+        const auto flags = LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY;
+        std::vector<uint8_t> state(llama_state_seq_get_size_ext(ctx, 0, flags));
+        require(llama_state_seq_get_data_ext(ctx, state.data(), state.size(), 0, flags) == state.size(), "checkpoint save failed");
+        require(llama_decode(ctx, llama_batch_get_one(&token, 1)) == 0, "Qwen continuation failed");
+        const auto * row = llama_get_logits_ith(ctx, -1);
+        std::vector<float> expected(row, row + 259);
+        require(llama_state_seq_set_data_ext(ctx, state.data(), state.size(), 0, flags) == state.size(), "checkpoint restore failed");
+        require(llama_decode(ctx, llama_batch_get_one(&token, 1)) == 0, "Qwen replay failed");
+        row = llama_get_logits_ith(ctx, -1);
+        parity(expected, std::vector<float>(row, row + 259));
+        result.insert(result.end(), row, row + 259);
+    }
+    llama_moe_paging_stats ple_stats{};
+    require(llama_context_moe_paging_get_stats(ctx, &ple_stats), "PLE telemetry is unavailable");
+    require(ple_stats.ple_cache_bytes && ple_stats.ple_pages_read && ple_stats.ple_bytes_read, "PLE telemetry is inactive");
+    if (mtp) {
+        auto params_dft = common_base_params_to_speculative(params);
+        params_dft.n_outputs_max = 4;
+        params_dft.n_outputs_max_per_seq = 4;
+        common_speculative_init_result draft(params_dft, loaded->model(), ctx);
+        require(draft.context(), "Qwen MTP sidecar load failed");
+        llama_set_embeddings_nextn(draft.context(), true, true);
+        auto batch = llama_batch_init(4, 512, 1);
+        batch.token = static_cast<llama_token *>(std::malloc(4 * sizeof(llama_token)));
+        require(batch.token, "MTP token allocation failed");
+        batch.n_tokens = 4;
+        std::copy(saved_hidden.begin(), saved_hidden.end(), batch.embd);
+        for (int i = 0; i < 4; ++i) {
+            batch.token[i] = 70 + i; batch.pos[i] = i; batch.n_seq_id[i] = 1; batch.seq_id[i][0] = 0; batch.logits[i] = 1;
+        }
+        const int code = llama_decode(draft.context(), batch);
+        llama_batch_free(batch);
+        require(code == 0, "Qwen MTP forward failed");
+        const auto * logits = llama_get_logits(draft.context());
+        require(logits && llama_get_embeddings_nextn(draft.context()), "MTP outputs missing");
+        for (int i = 0; i < 4 * 259; ++i) { require(std::isfinite(logits[i]), "invalid MTP logits"); }
+        if (draft_rows) { draft_rows->assign(logits, logits + 4 * 259); }
+    }
+    return result;
+}
+
 int main(int argc, char ** argv) {
     try {
         llama_backend_init();
@@ -257,6 +412,27 @@ int main(int argc, char ** argv) {
         }
         fixture("test-moe-regression.gguf", true);
         fixture("test-dense-regression.gguf", false);
+        if (argc == 2 && std::string(argv[1]) == "--qwen") {
+            qwen_fixture("test-qwen38.gguf", false);
+            qwen_fixture("test-qwen38-mtp.gguf", true);
+            qwen_fixture("test-qwen38-q5.gguf", false, GGML_TYPE_Q5_0);
+            const auto baseline = qwen_evaluate("test-qwen38.gguf", false, false);
+            std::vector<float> draft_resident, draft_paged;
+            parity(baseline, qwen_evaluate("test-qwen38.gguf", false, true, false, &draft_resident));
+            parity(baseline, qwen_evaluate("test-qwen38.gguf", true, false));
+            parity(baseline, qwen_evaluate("test-qwen38.gguf", true, true, true, &draft_paged));
+            parity(draft_resident, draft_paged);
+            parity(qwen_evaluate("test-qwen38-q5.gguf", false, false), qwen_evaluate("test-qwen38-q5.gguf", true, true, true));
+            std::puts("SparkMoE Qwen PLE, paging, checkpoint and MTP regression PASS");
+            return 0;
+        }
+        if (argc == 2 && std::string(argv[1]) == "--qwen-fixtures-only") {
+            qwen_fixture("test-qwen38.gguf", false);
+            qwen_fixture("test-qwen38-mtp.gguf", true);
+            qwen_fixture("test-qwen38-q5.gguf", false, GGML_TYPE_Q5_0);
+            qwen_fixture("test-qwen38-mtp-accept.gguf", true, GGML_TYPE_IQ4_NL, true);
+            return 0;
+        }
         if (argc == 2 && std::string(argv[1]) == "--fixtures-only") {
             llama_backend_free();
             return 0;

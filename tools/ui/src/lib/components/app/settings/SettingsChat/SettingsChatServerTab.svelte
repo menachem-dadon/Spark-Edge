@@ -21,6 +21,7 @@
 		model: string;
 		mode: string;
 		cache: number;
+		ple_cache_mib: number;
 		slots: number;
 		threads: number;
 		inference_threads: number;
@@ -36,6 +37,8 @@
 		cache_type_v: string;
 		context_shift: boolean;
 		mtp_enabled: boolean;
+		mtp_model: string;
+		mtp_cache_mib: number;
 		mtp_draft_tokens: number;
 		mtp_min_tokens: number;
 		mtp_p_min: number;
@@ -57,6 +60,7 @@
 		model: '',
 		mode: 'auto',
 		cache: 2048,
+		ple_cache_mib: 64,
 		slots: 0,
 		threads: 4,
 		inference_threads: 0,
@@ -72,6 +76,8 @@
 		cache_type_v: 'f16',
 		context_shift: true,
 		mtp_enabled: false,
+		mtp_model: '',
+		mtp_cache_mib: 512,
 		mtp_draft_tokens: 3,
 		mtp_min_tokens: 0,
 		mtp_p_min: 0,
@@ -271,7 +277,7 @@
 			<div>
 				<h4 class="font-semibold">Multi-Token Prediction (MTP)</h4>
 				<p class="mt-1 text-sm text-muted-foreground">
-					MTP can accelerate generation when the selected GGUF includes a compatible prediction head.
+					MTP can accelerate generation with a compatible prediction head in the model or a separate GGUF.
 				</p>
 			</div>
 		</div>
@@ -287,10 +293,15 @@
 		</label>
 
 		{#if config.mtp_enabled}
+			<label class="mt-4 grid gap-2 text-sm">
+				<span class="font-medium">MTP sidecar GGUF path (optional)</span>
+				<input type="text" dir="ltr" class="min-w-0 rounded-lg border border-input bg-background px-3 py-2.5" bind:value={config.mtp_model} />
+				<span class="text-xs text-muted-foreground">Qwen3.8-Flash-Next needs a compatible MTP sidecar. Leave empty to use a head included in the target model.</span>
+			</label>
 			<label class="mt-4 grid max-w-sm gap-2 text-sm">
 				<span class="font-medium">Draft tokens per step</span>
 				<select class="rounded-lg border border-input bg-background px-3 py-2.5" bind:value={config.mtp_draft_tokens}>
-					{#each [2, 3, 4, 5, 6, 8] as tokens}
+					{#each [1, 2, 3, 4, 5, 6, 8] as tokens}
 						<option value={tokens}>{tokens}{tokens === 3 ? ' - recommended starting point' : ''}</option>
 					{/each}
 				</select>
@@ -304,6 +315,7 @@
 			The defaults below are appropriate for most users. Change them only when benchmarking a known model.
 		</p>
 		<div class="mt-4 grid gap-4 sm:grid-cols-2">
+			<label class="grid gap-2 text-sm"><span>PLE page cache (MiB)</span><input type="number" min="1" max="4096" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.ple_cache_mib} /><span class="text-xs text-muted-foreground">Only used by models with streamed PLE tables.</span></label>
 			<label class="grid gap-2 text-sm"><span>Inference CPU threads</span><input type="number" min="0" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.inference_threads} /><span class="text-xs text-muted-foreground">0 lets llama.cpp choose for this CPU.</span></label>
 			<label class="grid gap-2 text-sm"><span>CPU weight repacking</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cpu_repack}><option value="auto">Automatic - platform default</option><option value="on">Enabled</option><option value="off">Disabled - compatibility</option></select><span class="text-xs text-muted-foreground">Disable only when diagnosing a CPU kernel or quantization issue.</span></label>
 			<label class="grid gap-2 text-sm"><span>Parallel chat slots</span><input type="number" min="1" max="32" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.parallel} /></label>
@@ -314,6 +326,7 @@
 			<label class="grid gap-2 text-sm"><span>K cache precision</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache_type_k}>{#each ['f16','bf16','q8_0','q5_1','q5_0','q4_1','q4_0','iq4_nl'] as type}<option value={type}>{type}</option>{/each}</select></label>
 			<label class="grid gap-2 text-sm"><span>V cache precision</span><select class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.cache_type_v}>{#each ['f16','bf16','q8_0','q5_1','q5_0','q4_1','q4_0','iq4_nl'] as type}<option value={type}>{type}</option>{/each}</select></label>
 			{#if config.mtp_enabled}
+				<label class="grid gap-2 text-sm"><span>Qwen MTP expert cache (MiB)</span><input type="number" min="1" max="65536" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_cache_mib} /></label>
 				<label class="grid gap-2 text-sm"><span>Minimum draft tokens</span><input type="number" min="0" max="64" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_min_tokens} /></label>
 				<label class="grid gap-2 text-sm"><span>Minimum draft probability</span><input type="number" min="0" max="1" step="0.01" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_p_min} /></label>
 				<label class="grid gap-2 text-sm"><span>MTP CPU threads (0 = automatic)</span><input type="number" min="0" max="128" class="rounded-md border border-input bg-background px-3 py-2" bind:value={config.mtp_threads} /></label>

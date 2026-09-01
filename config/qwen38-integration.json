@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "base": "c1d0e7a004015f23bc0233470b747b596f29b264",
+  "architecture": "6c84c7d5d8833c6e0df69628f75a0f599797934e",
+  "graph_splits": "6fe74980162af0ed5e559870d5deccafaa034e7c",
+  "mtp_model_source": "175b66c51f08583caba7eb8ef68c6b6ed83f73ce",
+  "mtp_source_pr": 28104,
+  "upstream_full_refresh": false,
+  "full_model_validation": false
+}

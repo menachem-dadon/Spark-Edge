@@ -24,7 +24,8 @@ public:
         const llama_moe_paging_params & params,
         const model_index & index,
         int64_t minimum_slots,
-        uint32_t minimum_ubatch = 1);
+        uint32_t minimum_ubatch = 1,
+        std::shared_ptr<io_executor> shared_executor = nullptr);
     ~paging_manager();
 
     ggml_tensor * bind_pool(int32_t layer, const ggml_tensor * original);

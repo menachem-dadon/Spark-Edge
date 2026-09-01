@@ -113,6 +113,22 @@ std::vector<common_arg> sparkmoe_options() {
             else { throw std::invalid_argument("invalid dense/shared residency policy"); }
         }
     ).set_env("LLAMA_ARG_MOE_DENSE_RESIDENCY"));
+    add_opt(common_arg(
+        {"--moe-ple-cache-mib"}, "MiB",
+        "bounded PLE page cache, separate from expert cache (default: 64 MiB)",
+        [](common_params & params, int value) {
+            if (value < 1 || value > 4096) { throw std::invalid_argument("PLE cache must be 1..4096 MiB"); }
+            params.moe_paging.ple_cache_bytes = uint64_t(value) * 1024 * 1024;
+        }
+    ).set_env("LLAMA_ARG_MOE_PLE_CACHE_MIB"));
+    add_opt(common_arg(
+        {"--moe-draft-cache-mib"}, "MiB",
+        "expert cache for a separate Qwen Flash-Next MTP head (default: 256 MiB)",
+        [](common_params & params, int value) {
+            if (value < 1 || value > 65536) { throw std::invalid_argument("invalid draft cache budget"); }
+            params.moe_draft_cache_bytes = uint64_t(value) * 1024 * 1024;
+        }
+    ).set_env("LLAMA_ARG_MOE_DRAFT_CACHE_MIB"));
     return options;
 }
 

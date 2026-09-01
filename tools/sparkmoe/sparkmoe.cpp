@@ -52,6 +52,7 @@ struct server_config {
     std::string model;
     std::string mode = "auto";
     int cache = 2048;
+    int ple_cache_mib = 64;
     int slots = 0;
     int threads = 4;
     std::string io_mode = "buffered";
@@ -73,6 +74,8 @@ struct server_config {
     std::string cache_type_v = "f16";
     bool context_shift = true;
     bool mtp_enabled = false;
+    std::string mtp_model;
+    int mtp_cache_mib = 512;
     int mtp_draft_tokens = 3;
     int mtp_min_tokens = 0;
     double mtp_p_min = 0.0;
@@ -101,6 +104,7 @@ json config_json(const server_config & config, bool include_model = true) {
         {"model_directory", config.model_directory},
         {"mode", config.mode},
         {"cache", config.cache},
+        {"ple_cache_mib", config.ple_cache_mib},
         {"slots", config.slots},
         {"threads", config.threads},
         {"io_mode", config.io_mode},
@@ -122,6 +126,7 @@ json config_json(const server_config & config, bool include_model = true) {
         {"cache_type_v", config.cache_type_v},
         {"context_shift", config.context_shift},
         {"mtp_enabled", config.mtp_enabled},
+        {"mtp_cache_mib", config.mtp_cache_mib},
         {"mtp_draft_tokens", config.mtp_draft_tokens},
         {"mtp_min_tokens", config.mtp_min_tokens},
         {"mtp_p_min", config.mtp_p_min},
@@ -130,6 +135,7 @@ json config_json(const server_config & config, bool include_model = true) {
     };
     if (include_model) {
         result["model"] = config.model;
+        result["mtp_model"] = config.mtp_model;
     }
     return result;
 }
@@ -140,6 +146,7 @@ server_config config_from_json(const json & input, const server_config & base) {
     config.model = input.value("model", config.model);
     config.mode = input.value("mode", config.mode);
     config.cache = input.value("cache", config.cache);
+    config.ple_cache_mib = input.value("ple_cache_mib", config.ple_cache_mib);
     config.slots = input.value("slots", config.slots);
     config.threads = input.value("threads", config.threads);
     config.io_mode = input.value("io_mode", config.io_mode);
@@ -161,6 +168,8 @@ server_config config_from_json(const json & input, const server_config & base) {
     config.cache_type_v = input.value("cache_type_v", config.cache_type_v);
     config.context_shift = input.value("context_shift", config.context_shift);
     config.mtp_enabled = input.value("mtp_enabled", config.mtp_enabled);
+    config.mtp_model = input.value("mtp_model", config.mtp_model);
+    config.mtp_cache_mib = input.value("mtp_cache_mib", config.mtp_cache_mib);
     config.mtp_draft_tokens = input.value("mtp_draft_tokens", config.mtp_draft_tokens);
     config.mtp_min_tokens = input.value("mtp_min_tokens", config.mtp_min_tokens);
     config.mtp_p_min = input.value("mtp_p_min", config.mtp_p_min);
@@ -175,6 +184,12 @@ void validate_config(const server_config & config) {
     };
     if (!model_path_is_valid(config.model)) {
         throw std::runtime_error("model must be a readable local .gguf file");
+    }
+    if (config.mtp_enabled && !config.mtp_model.empty() && !model_path_is_valid(config.mtp_model)) {
+        throw std::runtime_error("MTP sidecar must be a readable local .gguf file");
+    }
+    if (config.ple_cache_mib < 1 || config.ple_cache_mib > 4096 || config.mtp_cache_mib < 1 || config.mtp_cache_mib > 65536) {
+        throw std::runtime_error("invalid PLE or MTP cache budget");
     }
     if (config.mode != "explicit" && config.mode != "auto" && config.mode != "os" && config.mode != "off") {
         throw std::runtime_error("invalid paging mode");
@@ -518,6 +533,7 @@ void start_process(process_state & state, const json & input) {
         config.context_shift ? "--context-shift" : "--no-context-shift",
         "--moe-paging", config.mode,
         "--moe-io-threads", std::to_string(config.threads),
+        "--moe-ple-cache-mib", std::to_string(config.ple_cache_mib),
         "--moe-io-mode", config.io_mode,
         "--moe-cache-policy", config.cache_policy,
         "--moe-overlap", config.overlap,
@@ -549,8 +565,12 @@ void start_process(process_state & state, const json & input) {
         args.push_back("--no-repack");
     }
     if (config.mtp_enabled) {
+        if (!config.mtp_model.empty()) {
+            args.insert(args.end(), {"--model-draft", config.mtp_model});
+        }
         args.insert(args.end(), {
             "--spec-type", "draft-mtp",
+            "--moe-draft-cache-mib", std::to_string(config.mtp_cache_mib),
             "--spec-draft-n-max", std::to_string(config.mtp_draft_tokens),
             "--spec-draft-n-min", std::to_string(config.mtp_min_tokens),
             "--spec-draft-p-min", std::to_string(config.mtp_p_min),
@@ -977,10 +997,12 @@ int main() {
         if (!authorize(request, response)) return;
         json manager_status = status_json(state);
         manager_status["config"].erase("model");
+        manager_status["config"].erase("mtp_model");
         manager_status["config"].erase("model_directory");
         manager_status.erase("last_error");
         json safe_config = current_config_json(state);
         safe_config.erase("model");
+        safe_config.erase("mtp_model");
         safe_config.erase("model_directory");
         json diagnostic = {
             {"sparkmoe_version", SPARKMOE_VERSION},

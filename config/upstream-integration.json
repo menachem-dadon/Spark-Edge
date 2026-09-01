@@ -11,23 +11,44 @@
     "common/common.cpp",
     "common/common.h",
     "common/log.cpp",
+    "common/speculative.cpp",
+    "conversion/__init__.py",
+    "conversion/base.py",
     "ggml/include/ggml-cpu.h",
     "ggml/src/CMakeLists.txt",
     "ggml/src/ggml-cpu/arch/x86/repack.cpp",
     "ggml/src/ggml-cpu/ggml-cpu.c",
     "ggml/src/ggml-cpu/ggml-cpu.cpp",
+    "gguf-py/gguf/constants.py",
+    "gguf-py/gguf/gguf_writer.py",
+    "gguf-py/gguf/lazy.py",
+    "gguf-py/gguf/tensor_mapping.py",
     "include/llama.h",
     "src/CMakeLists.txt",
+    "src/llama-arch.cpp",
+    "src/llama-arch.h",
     "src/llama-context.cpp",
     "src/llama-context.h",
     "src/llama-cparams.h",
     "src/llama-graph.cpp",
     "src/llama-graph.h",
+    "src/llama-hparams.cpp",
+    "src/llama-hparams.h",
+    "src/llama-kv-cache.cpp",
+    "src/llama-kv-cache.h",
+    "src/llama-kv-cells.h",
+    "src/llama-memory-recurrent.cpp",
+    "src/llama-memory-recurrent.h",
     "src/llama-model-loader.cpp",
     "src/llama-model-loader.h",
+    "src/llama-model-saver.cpp",
+    "src/llama-model-saver.h",
     "src/llama-model.cpp",
     "src/llama-model.h",
+    "src/llama-quant.cpp",
+    "src/models/models.h",
     "tests/CMakeLists.txt",
+    "tests/test-llama-archs.cpp",
     "tools/CMakeLists.txt",
     "tools/llama-bench/llama-bench.cpp",
     "tools/server/CMakeLists.txt",
@@ -191,6 +212,27 @@
         "src/moe-paging/moe-readiness.cpp": [
           "register_readiness",
           "wait_tensor"
+        ]
+      }
+    },
+    {
+      "id": "qwen38-ple-mtp",
+      "files": {
+        "src/models/qwen4exp.cpp": [
+          "graph_mtp::graph_mtp",
+          "copy_rows_f32",
+          "h_nextn"
+        ],
+        "src/moe-paging/moe-integration.cpp": [
+          "create_ple_tensor",
+          "model.ple_rows"
+        ],
+        "src/llama-memory-hybrid-idx.cpp": [
+          "flags &= ~LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY"
+        ],
+        "common/sparkmoe.cpp": [
+          "--moe-ple-cache-mib",
+          "--moe-draft-cache-mib"
         ]
       }
     }

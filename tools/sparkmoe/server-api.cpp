@@ -67,6 +67,11 @@ json sparkmoe_paging_stats_json(const llama_context * ctx) {
         {"prefetch_wasted", stats.prefetch_wasted},
         {"prefetch_promoted", stats.prefetch_promoted},
         {"prefetch_skipped", stats.prefetch_skipped},
+        {"ple_cache_bytes", stats.ple_cache_bytes},
+        {"ple_cache_hits", stats.ple_cache_hits},
+        {"ple_pages_read", stats.ple_pages_read},
+        {"ple_bytes_read", stats.ple_bytes_read},
+        {"ple_evictions", stats.ple_evictions},
     };
 }
 
@@ -88,6 +93,7 @@ json sparkmoe_config_json(const common_params & params, const llama_context * co
             {"dense_load_mode", llama_load_mode_name(params.load_mode)},
             {"io_mode", sparkmoe_io_mode_name(params.moe_paging.io_mode)},
             {"cache_bytes", params.moe_paging.cache_bytes},
+            {"ple_cache_bytes", params.moe_paging.ple_cache_bytes ? params.moe_paging.ple_cache_bytes : 64ull * 1024 * 1024},
             {"cache_policy", params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID ? "hybrid" : "lru"},
             {"slots_per_layer", params.moe_paging.n_slots},
             {"io_threads", params.moe_paging.io_threads},
@@ -105,6 +111,8 @@ json sparkmoe_config_json(const common_params & params, const llama_context * co
             {"cache_type_k", ggml_type_name(params.cache_type_k)},
             {"cache_type_v", ggml_type_name(params.cache_type_v)},
             {"mtp_enabled", mtp_enabled},
+            {"mtp_separate_model", !params.speculative.draft.mparams.path.empty()},
+            {"mtp_cache_bytes", params.moe_draft_cache_bytes},
             {"mtp_draft_tokens", params.speculative.draft.n_max},
             {"mtp_min_tokens", params.speculative.draft.n_min},
             {"mtp_p_min", params.speculative.draft.p_min},

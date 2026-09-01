@@ -471,6 +471,7 @@ struct common_params {
         0,
         30000,
     };
+    uint64_t moe_draft_cache_bytes = 512ull * 1024 * 1024;
 
     int32_t n_gpu_layers       = -1;    // number of layers to store in VRAM, -1 is auto, <= -2 is all
     int32_t main_gpu           = 0;     // the GPU that is used for scratch and small tensors

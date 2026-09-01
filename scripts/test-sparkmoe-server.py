@@ -103,6 +103,76 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
                 proc.wait()
 
 
+def run_qwen(binary, root, log_dir, width, controlled=False):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    args = [str(binary), "-m", str(root / "test-qwen38.gguf"), "--host", "127.0.0.1", "--port", str(port),
+            "-c", "256", "-b", "16", "-ub", "2", "-t", "2", "-ngl", "0", "--parallel", "1",
+            "--fit", "off", "--no-warmup", "--no-repack", "--chat-template", "chatml",
+            "--moe-paging", "explicit", "--moe-slots", "4", "--moe-ple-cache-mib", "1"]
+    if width:
+        head = "test-qwen38-mtp-accept.gguf" if controlled else "test-qwen38-mtp.gguf"
+        args += ["--spec-type", "draft-mtp", "--model-draft", str(root / head),
+                 "--spec-draft-n-max", str(width), "--spec-draft-p-min", "0", "--moe-draft-cache-mib", "1"]
+    env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
+    with (log_dir / f"qwen-mtp-{width}{'-controlled' if controlled else ''}.log").open("wb") as log:
+        proc = subprocess.Popen(args, stdout=log, stderr=log, env=env,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        try:
+            deadline = time.monotonic() + 45
+            while True:
+                if proc.poll() is not None:
+                    raise RuntimeError(f"Qwen server exited: draft width {width}")
+                try:
+                    if request(base, "/health")["status"] == "ok":
+                        break
+                except (OSError, RuntimeError):
+                    pass
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Qwen startup timed out")
+                time.sleep(.1)
+            if controlled:
+                for text in ("A" * 16, "AAB" * 5 + "A"):
+                    result = request(base, "/completion", {"prompt": "ABC", "n_predict": 16,
+                                     "temperature": 0, "seed": 42, "cache_prompt": False,
+                                     "grammar": f'root ::= "{text}"'})
+                    assert result["content"] == text, result
+                    timings = result["timings"]
+                    assert timings["draft_n_accepted"] > 0, "MTP acceptance path was not used"
+                    if "B" in text:
+                        assert timings["draft_n_accepted"] < timings["draft_n"], "MTP partial rejection path was not used"
+                print(f"PASS Qwen HTTP MTP width {width}: controlled acceptance and partial rejection")
+                return
+            outputs = []
+            for prompt in ("ABC", "ABCDE", "ABC"):
+                body = {"prompt": prompt, "n_predict": 16, "temperature": 0, "seed": 42,
+                        "ignore_eos": True, "cache_prompt": False}
+                result = request(base, "/completion", body)
+                assert result["tokens_predicted"] == 16, result
+                if width:
+                    assert result["timings"]["draft_n"] > 0, "MTP never drafted"
+                outputs.append(result["content"])
+            stopped = request(base, "/completion", {**body, "ignore_eos": False, "logit_bias": [[2, 1000]]})
+            assert stopped["stop_type"] == "eos", stopped
+            resumed = request(base, "/completion", body)
+            assert resumed["content"] == outputs[-1], "EOG changed the next request"
+            stats = request(base, "/sparkmoe/v1/paging")
+            assert stats["ple_cache_bytes"] > 0 and stats["ple_pages_read"] > 0 and stats["ple_bytes_read"] > 0
+            reset = request(base, "/sparkmoe/v1/paging/reset-stats", {})["paging"]
+            assert reset["ple_pages_read"] == 0 and reset["ple_bytes_read"] == 0 and reset["ple_cache_bytes"] > 0
+            print(f"PASS Qwen HTTP MTP width {width}: repeated requests, forced EOG, resume")
+            return outputs
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+
 def run_manager(binary_dir, root, log_dir):
     base = "http://127.0.0.1:18080"
     try:
@@ -165,7 +235,35 @@ def run_manager(binary_dir, root, log_dir):
             assert not request(base, "/api/server-config")["overlap"]
             request(base, "/api/stop", {})
             assert not request(base, "/api/status")["running"]
+            subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
+                           cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            config.update(model=str(root / "test-qwen38.gguf"), mtp_enabled=True,
+                          mtp_model=str(root / "test-qwen38-mtp.gguf"), mtp_cache_mib=1,
+                          ple_cache_mib=1, mtp_draft_tokens=2, mtp_backend_sampling=False,
+                          batch_size=16, ubatch_size=2, cpu_repack="off", overlap="off", prefetch="off")
+            invalid = {**config, "mtp_model": str(root / "missing.gguf")}
+            try:
+                request(base, "/api/start", invalid)
+                raise AssertionError("manager accepted a missing MTP sidecar")
+            except RuntimeError as error:
+                assert "MTP sidecar" in str(error), error
+            request(base, "/api/start", config)
+            deadline = time.monotonic() + 45
+            while not request(base, "/api/status")["server_ready"]:
+                if time.monotonic() > deadline:
+                    raise RuntimeError("manager Qwen MTP startup timed out")
+                time.sleep(.2)
+            result = request(backend, "/completion", {"prompt": "ABC", "n_predict": 16,
+                             "temperature": 0, "ignore_eos": True})
+            assert result["tokens_predicted"] == 16 and result["timings"]["draft_n"] > 0, result
+            active = request(base, "/api/server-config")
+            assert active["mtp_separate_model"] and active["mtp_cache_bytes"] == 1048576
+            assert active["ple_cache_bytes"] == 1048576
+            diagnostic = request(base, "/api/diagnostics")
+            assert "mtp_model" not in diagnostic["configuration"] and "mtp_model" not in diagnostic["manager"]["config"]
+            request(base, "/api/stop", {})
             print("PASS Desktop manager: default/config/start/generation/telemetry/resize/restart/stop/diagnostics, no browser")
+            print("PASS Desktop Qwen MTP: sidecar validation, launch, budgets, drafting and diagnostic path redaction")
         finally:
             try:
                 request(base, "/api/stop", {})
@@ -180,6 +278,7 @@ def main():
     parser.add_argument("--bin-dir", type=Path, required=True)
     parser.add_argument("--log-dir", type=Path, required=True)
     parser.add_argument("--skip-manager", action="store_true", help="Do not use port 18080 or touch an existing Desktop instance")
+    parser.add_argument("--qwen", action="store_true", help="Run the Qwen PLE/MTP HTTP regression")
     args = parser.parse_args()
     binary_dir = args.bin_dir.resolve()
     args.log_dir.mkdir(parents=True, exist_ok=True)
@@ -188,6 +287,14 @@ def main():
         root = Path(folder)
         subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--fixtures-only"],
                        cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if args.qwen:
+            subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
+                           cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            reference = run_qwen(binary_dir / ("llama-server" + suffix), root, args.log_dir, 0)
+            for width in (1, 2, 3):
+                assert run_qwen(binary_dir / ("llama-server" + suffix), root, args.log_dir, width) == reference, "MTP changed greedy output"
+                run_qwen(binary_dir / ("llama-server" + suffix), root, args.log_dir, width, controlled=True)
+            return
         run_case(binary_dir / ("llama-server" + suffix), root / "test-dense-regression.gguf", "off", args.log_dir)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf", "explicit", args.log_dir)
         run_case(binary_dir / ("llama-server" + suffix), root / "test-sharded-00001-of-00002.gguf", "explicit", args.log_dir, "direct")

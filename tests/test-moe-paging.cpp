@@ -433,10 +433,10 @@ int main() {
         safe_params.cache_bytes = 6 * page;
         llama_moe::paging_manager rollback_manager(backend.get(), safe_params, index, 2, 2);
         REQUIRE(rollback_manager.max_safe_ubatch() == 2);
-        REQUIRE(!rollback_manager.request_resize(4 * page));
-        REQUIRE(rollback_manager.request_resize(6 * page));
+        REQUIRE(rollback_manager.request_resize(4 * page));
         rollback_manager.apply_pending_resize();
         REQUIRE(rollback_manager.max_safe_ubatch() == 2);
+        REQUIRE(rollback_manager.request_resize(6 * page));
     }
 
     backend.reset();

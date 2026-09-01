@@ -296,6 +296,7 @@ target_include_directories(test-moe-paging PRIVATE ${PROJECT_SOURCE_DIR}/src)
 llama_test(test-moe-paging LABEL "moe-paging")
 
 llama_build_and_test(test-moe-regression.cpp LABEL "moe-paging")
+target_include_directories(test-moe-regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
 set_tests_properties(test-moe-regression PROPERTIES TIMEOUT 120)
 
 if (NOT LLAMA_SANITIZE_ADDRESS AND NOT GGML_SCHED_NO_REALLOC)

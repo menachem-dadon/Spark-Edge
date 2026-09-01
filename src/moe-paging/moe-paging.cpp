@@ -22,9 +22,10 @@ paging_manager::paging_manager(
         const llama_moe_paging_params & params,
         const model_index & index,
         int64_t minimum_slots,
-        uint32_t minimum_ubatch) :
+        uint32_t minimum_ubatch,
+        std::shared_ptr<io_executor> shared_executor) :
     backend(backend), params(params), index(index), minimum_slots(minimum_slots),
-    executor(std::make_shared<io_executor>(params.io_threads > 0 ? params.io_threads : 1)) {
+    executor(shared_executor ? std::move(shared_executor) : std::make_shared<io_executor>(params.io_threads > 0 ? params.io_threads : 1)) {
     if (!backend || !mode_uses_explicit_paging(params.mode)) {
         throw std::runtime_error("explicit MoE paging requires a CPU backend");
     }
@@ -42,7 +43,7 @@ paging_manager::paging_manager(
         for (size_t layer = 0; layer < index.layer_count(); ++layer) {
             if (!index.has_layer(static_cast<int32_t>(layer))) { continue; }
             const uint64_t bytes = index.committed_bytes_per_expert(static_cast<int32_t>(layer));
-            minimum_budget += bytes * minimum_slots;
+            minimum_budget = std::max(minimum_budget, bytes * minimum_slots);
             configured += bytes * std::min<int64_t>(index.expert_count(static_cast<int32_t>(layer)),
                 std::max<int64_t>(minimum_slots, params.n_slots));
         }
@@ -54,8 +55,8 @@ paging_manager::paging_manager(
             if (required > uint64_t(index.expert_count(static_cast<int32_t>(layer)))) {
                 throw std::runtime_error("speculative rollback microbatch exceeds available expert slots");
             }
-            minimum_resize_budget = std::max(minimum_resize_budget, minimum_budget +
-                (required - minimum_slots) * index.committed_bytes_per_expert(static_cast<int32_t>(layer)));
+            minimum_resize_budget = std::max(minimum_resize_budget,
+                required * index.committed_bytes_per_expert(static_cast<int32_t>(layer)));
         }
     }
 }

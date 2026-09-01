@@ -100,7 +100,7 @@ Copy-Item -Force -LiteralPath (Join-Path $repo 'README_HE.md') -Destination (Joi
 Copy-Item -Force -LiteralPath (Join-Path $repo 'VERSION') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'tools/sparkmoe/dashboard.html') -Destination $stage
 Copy-Item -Force -LiteralPath (Join-Path $repo 'docs/USER_GUIDE.md'), (Join-Path $repo 'docs/TROUBLESHOOTING.md'), (Join-Path $repo 'docs/PROJECT_MAP.md'), (Join-Path $repo 'docs/SUPPORTED_MODELS.md') -Destination (Join-Path $stage 'docs')
-foreach ($document in @('ENGINE_UPGRADES.md', 'UPSTREAM_INTEGRATION.md', 'UPSTREAM_PATCH_INVENTORY.md', 'UPDATING_LLAMA_CPP.md', 'REFRESH_REPORT.md', 'LATENCY_INVESTIGATION.md', 'NEXT_SESSION.md')) {
+foreach ($document in @('ENGINE_UPGRADES.md', 'UPSTREAM_INTEGRATION.md', 'UPSTREAM_PATCH_INVENTORY.md', 'UPDATING_LLAMA_CPP.md', 'REFRESH_REPORT.md', 'LATENCY_INVESTIGATION.md', 'NEXT_SESSION.md', 'QWEN38_IMPLEMENTATION.md')) {
     $source = Join-Path $repo "docs/$document"
     if (Test-Path $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $stage 'docs') }
 }
@@ -112,6 +112,7 @@ $binaryCommit = if (Test-Path -LiteralPath $buildInfo) {
     version = $version
     variant = $Variant
     source_revision = (& git -C $repo rev-parse HEAD)
+    source_tree_dirty = [bool](& git -C $repo status --porcelain)
     binary_build_commit = $binaryCommit
     ui_package_lock_sha256 = (Get-FileHash -LiteralPath (Join-Path (Split-Path -Parent $uiModules) 'package-lock.json') -Algorithm SHA256).Hash.ToLower()
     upstream_revision = (Get-Content (Join-Path $repo 'UPSTREAM_BASE.txt') -Raw).Trim()

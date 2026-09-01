@@ -23,7 +23,7 @@ std::pair<layer_cache *, int32_t> cache_budget::oldest(layer_cache * recipient) 
     uint64_t age = UINT64_MAX;
     for (auto * cache : layers) {
         cache->refresh_completed();
-        if (cache != recipient && cache->resident_count() <= static_cast<uint64_t>(floor)) { continue; }
+        if (cache == recipient && cache->resident_count() <= static_cast<uint64_t>(floor)) { continue; }
         for (const auto & entry : cache->entries) {
             if (!entry.committed || entry.pinned || entry.active_refs || entry.state == entry_state::loading) { continue; }
             if (entry.last_use < age) { result = {cache, entry.slot_id}; age = entry.last_use; }
@@ -46,7 +46,7 @@ void cache_budget::make_room(layer_cache * recipient, uint64_t bytes) {
 
 bool cache_budget::reclaim_pending(layer_cache * recipient) {
     for (auto * cache : layers) {
-        if (cache != recipient && cache->resident_count() <= static_cast<uint64_t>(floor)) { continue; }
+        if (cache == recipient && cache->resident_count() <= static_cast<uint64_t>(floor)) { continue; }
         for (auto & entry : cache->entries) {
             if (entry.prefetched && !entry.active_refs && !entry.pinned) { cache->evict(entry.slot_id); return true; }
         }
@@ -69,8 +69,6 @@ bool cache_budget::resize(uint64_t bytes) {
             count += entry.committed && !entry.pinned && !entry.active_refs &&
                 (entry.state != entry_state::loading || entry.prefetched);
         }
-        const auto resident = cache->resident_count();
-        count = std::min(count, resident > static_cast<uint64_t>(floor) ? resident - floor : 0);
         reclaimable += count * cache->expert_bytes;
     }
     if (committed > bytes && committed - bytes > reclaimable) { return false; }

@@ -332,6 +332,7 @@ extern "C" {
         enum llama_moe_cache_policy cache_policy;
         bool overlap;
         bool temporal_prefetch;
+        uint64_t ple_cache_bytes; // 0 selects the bounded 64 MiB default
     };
 
     struct llama_moe_paging_stats {
@@ -362,6 +363,11 @@ extern "C" {
         uint64_t prefetch_wasted;
         uint64_t prefetch_promoted;
         uint64_t prefetch_skipped;
+        uint64_t ple_cache_bytes;
+        uint64_t ple_cache_hits;
+        uint64_t ple_pages_read;
+        uint64_t ple_bytes_read;
+        uint64_t ple_evictions;
     };
 
     struct llama_moe_paging_capabilities {
