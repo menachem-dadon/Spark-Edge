@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -90,7 +91,7 @@ struct model_profile {
     std::string cache_type_k = "f16";
     std::string cache_type_v = "f16";
     bool context_shift = true;
-    std::string reasoning = "auto";
+    std::string reasoning = "default";
     bool mtp_enabled = false;
     std::string mtp_model;
     int mtp_cache_mib = 512;
@@ -352,6 +353,8 @@ model_profile profile_from_json(const json & input, const model_profile & base) 
     profile.cache_type_v = input.value("cache_type_v", profile.cache_type_v);
     profile.context_shift = input.value("context_shift", profile.context_shift);
     profile.reasoning = input.value("reasoning", profile.reasoning);
+    if (profile.reasoning == "auto") profile.reasoning = "default";
+    if (profile.reasoning == "on") profile.reasoning = "max";
     profile.mtp_enabled = input.value("mtp_enabled", profile.mtp_enabled);
     profile.mtp_model = input.value("mtp_model", profile.mtp_model);
     profile.mtp_cache_mib = input.value("mtp_cache_mib", profile.mtp_cache_mib);
@@ -434,8 +437,9 @@ void validate_profile(const model_profile & profile) {
     if (cache_types.count(profile.cache_type_k) == 0 || cache_types.count(profile.cache_type_v) == 0) {
         throw std::runtime_error("unsupported KV cache type");
     }
-    if (profile.reasoning != "auto" && profile.reasoning != "on" && profile.reasoning != "off") {
-        throw std::runtime_error("reasoning must be auto, on, or off");
+    if (profile.reasoning != "default" && profile.reasoning != "off" && profile.reasoning != "low" &&
+            profile.reasoning != "medium" && profile.reasoning != "high" && profile.reasoning != "max") {
+        throw std::runtime_error("invalid reasoning effort");
     }
     if (!local_gguf_is_valid(profile.mtp_model)) {
         throw std::runtime_error("MTP sidecar must be a readable local .gguf file");
@@ -472,7 +476,18 @@ void write_profile(std::ostream & output, const model_profile & profile) {
     output << "cache-type-k = " << profile.cache_type_k << '\n';
     output << "cache-type-v = " << profile.cache_type_v << '\n';
     output << "context-shift = " << (profile.context_shift ? "true" : "false") << '\n';
-    output << "reasoning = " << profile.reasoning << '\n';
+    if (profile.reasoning == "default") {
+        output << "reasoning = auto\n";
+    } else if (profile.reasoning == "off") {
+        output << "reasoning = off\n";
+    } else {
+        output << "reasoning = on\n";
+        output << "reasoning-effort = " << profile.reasoning << '\n';
+        if (profile.reasoning == "low") output << "reasoning-budget = 512\n";
+        if (profile.reasoning == "medium") output << "reasoning-budget = 2048\n";
+        if (profile.reasoning == "high") output << "reasoning-budget = 8192\n";
+        if (profile.reasoning == "max") output << "reasoning-budget = -1\n";
+    }
     output << "moe-paging = " << profile.mode << '\n';
     if (profile.cache > 0) {
         output << "moe-cache-mib = " << profile.cache << '\n';
@@ -913,7 +928,7 @@ json status_json(app_state & state) {
     };
 }
 
-json browse_models_directory() {
+json browse_models_directory(const std::string & initial_directory) {
 #if defined(_WIN32)
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     const bool uninitialize = SUCCEEDED(initialized);
@@ -927,7 +942,19 @@ json browse_models_directory() {
     if (SUCCEEDED(result)) result = dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM |
         FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR | FOS_DONTADDTORECENT);
     if (SUCCEEDED(result)) result = dialog->SetTitle(L"Choose the folder that contains your GGUF models");
-    if (SUCCEEDED(result)) result = dialog->Show(nullptr);
+    if (SUCCEEDED(result)) result = dialog->SetOkButtonLabel(L"Select folder");
+    if (SUCCEEDED(result) && !initial_directory.empty()) {
+        IShellItem * initial_item = nullptr;
+        const HRESULT folder_result = SHCreateItemFromParsingName(
+            utf8_to_wide(initial_directory).c_str(), nullptr, IID_PPV_ARGS(&initial_item));
+        if (SUCCEEDED(folder_result)) {
+            dialog->SetFolder(initial_item);
+            initial_item->Release();
+        }
+    }
+    HWND owner = GetForegroundWindow();
+    if (owner && !IsWindowVisible(owner)) owner = nullptr;
+    if (SUCCEEDED(result)) result = dialog->Show(owner);
     if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
         if (dialog) dialog->Release();
         if (uninitialize) CoUninitialize();
@@ -1047,7 +1074,7 @@ void open_browser_when_ready(app_state & state) {
             std::lock_guard<std::mutex> lock(state.mutex);
             port = state.router.port;
             if (!process_running_locked(state)) {
-                break;
+                return;
             }
             if (router_ready_locked(state)) {
                 open_browser(port);
@@ -1058,6 +1085,312 @@ void open_browser_when_ready(app_state & state) {
     }
     open_browser(port);
 }
+
+#if defined(_WIN32)
+constexpr int sparkmoe_icon_resource = 101;
+constexpr UINT tray_callback_message = WM_APP + 1;
+constexpr UINT tray_timer_id = 1;
+constexpr UINT tray_command_open = 1001;
+constexpr UINT tray_command_start = 1002;
+constexpr UINT tray_command_stop = 1003;
+constexpr UINT tray_command_exit = 1004;
+
+class notification_area {
+public:
+    notification_area(app_state & state, httplib::Server & server) : state_(state), server_(server) {
+    }
+
+    ~notification_area() {
+        stop();
+    }
+
+    bool start() {
+        thread_ = std::thread([this]() { run(); });
+        std::unique_lock<std::mutex> lock(lifecycle_mutex_);
+        lifecycle_condition_.wait(lock, [this]() { return initialized_; });
+        const bool ready = ready_;
+        lock.unlock();
+        if (!ready && thread_.joinable()) {
+            thread_.join();
+        }
+        return ready;
+    }
+
+    void stop() {
+        HWND window = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+            window = window_;
+        }
+        if (window) {
+            PostMessageW(window, WM_CLOSE, 0, 0);
+        }
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+private:
+    static constexpr const wchar_t * window_class_name = L"SparkMoE.NotificationArea";
+
+    struct snapshot {
+        bool running;
+        int port;
+    };
+
+    snapshot current_snapshot() {
+        std::lock_guard<std::mutex> lock(state_.mutex);
+        return {process_running_locked(state_), state_.router.port};
+    }
+
+    std::wstring tooltip_text(const snapshot & value) const {
+        if (!value.running) {
+            return L"SparkMoE - Router stopped";
+        }
+        return L"SparkMoE - Router running on port " + std::to_wstring(value.port);
+    }
+
+    bool add_icon(HWND window) {
+        icon_data_ = {};
+        icon_data_.cbSize = sizeof(icon_data_);
+        icon_data_.hWnd = window;
+        icon_data_.uID = 1;
+        icon_data_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
+        icon_data_.uCallbackMessage = tray_callback_message;
+        icon_data_.hIcon = static_cast<HICON>(LoadImageW(
+            GetModuleHandleW(nullptr), MAKEINTRESOURCEW(sparkmoe_icon_resource), IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
+        if (!icon_data_.hIcon) {
+            icon_data_.hIcon = LoadIconW(nullptr, MAKEINTRESOURCEW(32512));
+        }
+        const std::wstring tooltip = tooltip_text(current_snapshot());
+        lstrcpynW(icon_data_.szTip, tooltip.c_str(), ARRAYSIZE(icon_data_.szTip));
+        if (!Shell_NotifyIconW(NIM_ADD, &icon_data_)) {
+            return false;
+        }
+        icon_data_.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, &icon_data_);
+        icon_added_ = true;
+        return true;
+    }
+
+    void remove_icon() {
+        if (icon_added_) {
+            Shell_NotifyIconW(NIM_DELETE, &icon_data_);
+            icon_added_ = false;
+        }
+    }
+
+    void update_tooltip() {
+        if (!icon_added_) {
+            return;
+        }
+        const std::wstring tooltip = tooltip_text(current_snapshot());
+        icon_data_.uFlags = NIF_TIP | NIF_SHOWTIP;
+        lstrcpynW(icon_data_.szTip, tooltip.c_str(), ARRAYSIZE(icon_data_.szTip));
+        Shell_NotifyIconW(NIM_MODIFY, &icon_data_);
+    }
+
+    void show_error(const std::string & message) {
+        {
+            std::lock_guard<std::mutex> lock(state_.mutex);
+            state_.last_error = message;
+        }
+        append_log(state_, message);
+        MessageBoxW(window_, utf8_to_wide(message).c_str(), L"SparkMoE", MB_OK | MB_ICONERROR | MB_TASKMODAL);
+    }
+
+    void open_ui() {
+        const snapshot value = current_snapshot();
+        open_browser(value.port);
+    }
+
+    void start_router() {
+        try {
+            {
+                std::lock_guard<std::mutex> lock(state_.mutex);
+                start_router_locked(state_);
+            }
+            append_log(state_, "Router started from the notification area");
+        } catch (const std::exception & error) {
+            show_error(std::string("Router start failed: ") + error.what());
+        }
+        update_tooltip();
+    }
+
+    void stop_router() {
+        {
+            std::lock_guard<std::mutex> lock(state_.mutex);
+            stop_router_locked(state_);
+        }
+        append_log(state_, "Router stopped from the notification area");
+        update_tooltip();
+    }
+
+    void exit_application() {
+        append_log(state_, "SparkMoE exit requested from the notification area");
+        {
+            std::lock_guard<std::mutex> lock(state_.mutex);
+            stop_router_locked(state_);
+        }
+        server_.stop();
+        DestroyWindow(window_);
+    }
+
+    void show_menu() {
+        const snapshot value = current_snapshot();
+        HMENU menu = CreatePopupMenu();
+        if (!menu) {
+            return;
+        }
+        AppendMenuW(menu, MF_STRING | MF_DEFAULT, tray_command_open, L"Open SparkMoE");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        const std::wstring status = value.running ?
+            L"Router: Running on port " + std::to_wstring(value.port) : L"Router: Stopped";
+        AppendMenuW(menu, MF_STRING | MF_DISABLED | MF_GRAYED, 0, status.c_str());
+        AppendMenuW(menu, MF_STRING | (value.running ? MF_GRAYED : 0), tray_command_start, L"Start Router");
+        AppendMenuW(menu, MF_STRING | (value.running ? 0 : MF_GRAYED), tray_command_stop, L"Stop Router");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, tray_command_exit, L"Exit SparkMoE");
+
+        POINT point{};
+        GetCursorPos(&point);
+        SetForegroundWindow(window_);
+        const UINT command = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+            point.x, point.y, 0, window_, nullptr);
+        DestroyMenu(menu);
+        PostMessageW(window_, WM_NULL, 0, 0);
+        if (command) {
+            handle_command(command);
+        }
+    }
+
+    void handle_command(UINT command) {
+        switch (command) {
+            case tray_command_open:
+                open_ui();
+                break;
+            case tray_command_start:
+                start_router();
+                break;
+            case tray_command_stop:
+                stop_router();
+                break;
+            case tray_command_exit:
+                exit_application();
+                break;
+        }
+    }
+
+    LRESULT window_message(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+        if (message == taskbar_created_message_) {
+            icon_added_ = false;
+            add_icon(window);
+            return 0;
+        }
+        switch (message) {
+            case tray_callback_message: {
+                const UINT event = LOWORD(lparam);
+                if (event == WM_CONTEXTMENU || event == WM_RBUTTONUP) {
+                    show_menu();
+                } else if (event == NIN_SELECT || event == NIN_KEYSELECT || event == WM_LBUTTONDBLCLK) {
+                    open_ui();
+                }
+                return 0;
+            }
+            case WM_COMMAND:
+                handle_command(LOWORD(wparam));
+                return 0;
+            case WM_TIMER:
+                if (wparam == tray_timer_id) {
+                    update_tooltip();
+                }
+                return 0;
+            case WM_QUERYENDSESSION:
+                return TRUE;
+            case WM_ENDSESSION:
+                if (wparam) {
+                    server_.stop();
+                }
+                return 0;
+            case WM_CLOSE:
+                DestroyWindow(window);
+                return 0;
+            case WM_DESTROY:
+                KillTimer(window, tray_timer_id);
+                remove_icon();
+                {
+                    std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+                    window_ = nullptr;
+                }
+                PostQuitMessage(0);
+                return 0;
+        }
+        return DefWindowProcW(window, message, wparam, lparam);
+    }
+
+    static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+        notification_area * self = reinterpret_cast<notification_area *>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        if (message == WM_NCCREATE) {
+            const auto * create = reinterpret_cast<const CREATESTRUCTW *>(lparam);
+            self = static_cast<notification_area *>(create->lpCreateParams);
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+        }
+        return self ? self->window_message(window, message, wparam, lparam) :
+            DefWindowProcW(window, message, wparam, lparam);
+    }
+
+    void run() {
+        const HINSTANCE instance = GetModuleHandleW(nullptr);
+        taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
+        WNDCLASSEXW window_class{};
+        window_class.cbSize = sizeof(window_class);
+        window_class.lpfnWndProc = window_proc;
+        window_class.hInstance = instance;
+        window_class.lpszClassName = window_class_name;
+        const ATOM registered = RegisterClassExW(&window_class);
+        const bool class_ready = registered != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+        HWND window = class_ready ? CreateWindowExW(WS_EX_TOOLWINDOW, window_class_name, L"SparkMoE",
+            WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, instance, this) : nullptr;
+        const bool ready = window && add_icon(window);
+        if (ready) {
+            SetTimer(window, tray_timer_id, 2000, nullptr);
+        }
+        {
+            std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+            window_ = window;
+            ready_ = ready;
+            initialized_ = true;
+        }
+        lifecycle_condition_.notify_one();
+
+        if (ready) {
+            MSG message{};
+            while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+        } else if (window) {
+            DestroyWindow(window);
+        }
+        if (registered) {
+            UnregisterClassW(window_class_name, instance);
+        }
+    }
+
+    app_state & state_;
+    httplib::Server & server_;
+    std::thread thread_;
+    std::mutex lifecycle_mutex_;
+    std::condition_variable lifecycle_condition_;
+    HWND window_ = nullptr;
+    NOTIFYICONDATAW icon_data_{};
+    UINT taskbar_created_message_ = 0;
+    bool initialized_ = false;
+    bool ready_ = false;
+    bool icon_added_ = false;
+};
+#endif
 
 std::string request_origin(const httplib::Request & request) {
     return request.has_header("Origin") ? request.get_header_value("Origin") : std::string();
@@ -1212,7 +1545,12 @@ int run_manager() {
     server.Post("/api/browse-model-directory", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            json_response(response, browse_models_directory());
+            std::string initial_directory;
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                initial_directory = state.router.model_directory;
+            }
+            json_response(response, browse_models_directory(initial_directory));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 500);
         }
@@ -1304,6 +1642,12 @@ int run_manager() {
         stop_router_locked(state);
         json_response(response, {{"ok", true}});
     });
+    server.Post("/api/shutdown", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        append_log(state, "SparkMoE shutdown requested");
+        json_response(response, {{"ok", true}});
+        server.stop();
+    });
     server.Post("/api/open", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         int port = 8080;
@@ -1381,9 +1725,19 @@ int run_manager() {
         }
     });
 
+#if defined(_WIN32)
+    notification_area tray(state, server);
+    const bool tray_enabled = std::getenv("SPARKMOE_NO_TRAY") == nullptr;
+    if (tray_enabled) {
+        append_log(state, tray.start() ? "Notification area icon ready" : "Notification area icon unavailable");
+    }
+#endif
     std::thread browser_thread([&state]() { open_browser_when_ready(state); });
     const bool ok = server.listen("127.0.0.1", manager_port());
     if (browser_thread.joinable()) browser_thread.join();
+#if defined(_WIN32)
+    if (tray_enabled) tray.stop();
+#endif
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         stop_router_locked(state);

@@ -8,6 +8,7 @@
 #include "download.h"
 #include "http.h"
 #include "log.h"
+#include "preset.h"
 
 #include "json.h"
 
@@ -15,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <thread>
 #include <string>
@@ -468,6 +470,53 @@ static void test_task_assembly() {
     g_repos.clear();
 }
 
+static void test_local_models_directory() {
+    printf("test-model-resolution: recursive local models directory\n");
+
+    const auto root = cache_dir / "local-models";
+    const auto vision = root / "grouped" / "vision";
+    const auto small_dir = root / "nested" / "small";
+    const auto multiple = root / "nested" / "multiple";
+    const auto sidecars = root / "sidecars-only";
+    std::filesystem::create_directories(vision);
+    std::filesystem::create_directories(small_dir);
+    std::filesystem::create_directories(multiple);
+    std::filesystem::create_directories(sidecars);
+
+    const auto write_empty = [](const std::filesystem::path & path) {
+        std::ofstream(path, std::ios::binary).put('\0');
+    };
+    write_empty(root / "root-model.gguf");
+    write_empty(vision / "vision-model-00001-of-00002.gguf");
+    write_empty(vision / "vision-model-00002-of-00002.gguf");
+    write_empty(vision / "mmproj-vision-model.GGUF");
+    write_empty(vision / "MTP-vision-model.gguf");
+    write_empty(small_dir / "tiny.GGUF");
+    write_empty(multiple / "first.gguf");
+    write_empty(multiple / "second.gguf");
+    write_empty(sidecars / "mmproj-unused.gguf");
+
+    const common_preset_context context(LLAMA_EXAMPLE_SERVER);
+    const auto presets = context.load_from_models_dir(root.string());
+    REQUIRE(presets.size() == 5);
+    REQUIRE(presets.count("root-model") == 1);
+    REQUIRE(presets.count("grouped/vision") == 1);
+    REQUIRE(presets.count("nested/small") == 1);
+    REQUIRE(presets.count("nested/multiple/first") == 1);
+    REQUIRE(presets.count("nested/multiple/second") == 1);
+
+    std::string value;
+    const auto & vision_preset = presets.at("grouped/vision");
+    REQUIRE(vision_preset.get_option("LLAMA_ARG_MODEL", value));
+    REQUIRE_EQ(value, (vision / "vision-model-00001-of-00002.gguf").string());
+    REQUIRE(vision_preset.get_option("LLAMA_ARG_MMPROJ", value));
+    REQUIRE_EQ(value, (vision / "mmproj-vision-model.GGUF").string());
+    REQUIRE(vision_preset.get_option("LLAMA_ARG_SPEC_DRAFT_MODEL", value));
+    REQUIRE_EQ(value, (vision / "MTP-vision-model.gguf").string());
+
+    std::filesystem::remove_all(root);
+}
+
 int main(void) {
     // unbuffered, so a crash cannot swallow the reports already printed
     setvbuf(stdout, nullptr, _IONBF, 0);
@@ -496,6 +545,7 @@ int main(void) {
 
     test_plan_resolution();
     test_task_assembly();
+    test_local_models_directory();
 
     server.stop();
     server_thread.join();

@@ -36,6 +36,7 @@ Permanent Windows installation:
 1. Use `sparkmoe-0.4.2-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
 2. Run the installer. It installs for the current user, creates an uninstall entry, and can create desktop and Start menu shortcuts.
 3. Run `SparkMoE` from the Start menu.
+4. While SparkMoE is running, its notification-area icon provides Open, Router status, Start, Stop, and Exit actions without a command window.
 
 Portable Windows package:
 
@@ -44,6 +45,7 @@ Portable Windows package:
 3. The llama.cpp Web UI opens directly. Open **SparkMoE** in its sidebar and choose the folder that contains your GGUF models.
 4. Select a model using the normal llama.cpp model picker or the SparkMoE model profile selector.
 5. Keep **Automatic** loading unless you are testing a specific mode. Context length, MTP, loading, cache, logs, and diagnostics are all under **SparkMoE**.
+6. Use the SparkMoE icon in the Windows notification area to reopen the UI, inspect Router state, start or stop the Router, or exit the complete application.
 
 Dense and other non-MoE GGUF models use the normal llama.cpp path and are fully supported by the launcher. `models-max` is user configurable: use `1` for large models, a higher value for small models that fit together, or `0` for unlimited Router instances.
 
@@ -101,6 +103,7 @@ Run `sparkmoe-iobench.exe --format json` to measure the buffered file path. OS c
 - [Supported models](docs/SUPPORTED_MODELS.md)
 - [API](docs/API.md)
 - [Windows build](docs/BUILD_WINDOWS.md)
+- [Future WebView2 desktop integration plan](docs/WEBVIEW2_DESKTOP_INTEGRATION_PLAN.md)
 - [Linux build](docs/BUILD_LINUX.md)
 - [Benchmarking](docs/BENCHMARKING.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

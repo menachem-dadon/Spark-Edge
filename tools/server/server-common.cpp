@@ -1351,9 +1351,10 @@ json oaicompat_chat_params_parse(
 
     // Reasoning budget: pass parameters through to sampling layer
     {
+        const bool has_reasoning_budget = body.contains("reasoning_budget_tokens") || body.contains("thinking_budget_tokens");
         int reasoning_budget = json_value(body, "reasoning_budget_tokens",
                                json_value(body, "thinking_budget_tokens", -1));
-        if (reasoning_budget == -1) {
+        if (!has_reasoning_budget) {
             reasoning_budget = opt.reasoning_budget;
         }
 

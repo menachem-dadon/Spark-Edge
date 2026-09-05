@@ -280,6 +280,10 @@ export interface ApiChatCompletionRequest {
 	tools?: ApiChatCompletionTool[];
 	// Reasoning parameters
 	reasoning_format?: string;
+	reasoning_effort?: string;
+	thinking_budget_tokens?: number;
+	chat_template_kwargs?: Record<string, unknown>;
+	reasoning_control?: boolean;
 	// Generation parameters
 	temperature?: number;
 	max_tokens?: number;

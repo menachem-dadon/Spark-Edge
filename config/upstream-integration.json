@@ -49,10 +49,14 @@
     "src/llama-quant.cpp",
     "src/models/models.h",
     "tests/CMakeLists.txt",
+    "tests/test-chat.cpp",
     "tests/test-llama-archs.cpp",
+    "tests/test-model-resolution.cpp",
     "tools/CMakeLists.txt",
     "tools/llama-bench/llama-bench.cpp",
     "tools/server/CMakeLists.txt",
+    "tools/server/README.md",
+    "tools/server/server-common.cpp",
     "tools/server/server-context.cpp",
     "tools/server/server-context.h",
     "tools/server/server-models.cpp",
@@ -72,6 +76,8 @@
     "tools/ui/src/lib/constants/routes.constants.ts",
     "tools/ui/src/lib/constants/settings.constants.ts",
     "tools/ui/src/lib/constants/ui.constants.ts",
+    "tools/ui/src/lib/services/chat.service.ts",
+    "tools/ui/src/lib/types/api.d.ts",
     "tools/ui/src/routes/search/+page.svelte",
     "tools/ui/tests/e2e/pwa.e2e.ts"
   ],
@@ -154,6 +160,12 @@
         "tools/server/server-context.cpp": [
           "init_sparkmoe_routes("
         ],
+        "tools/server/server-common.cpp": [
+          "has_reasoning_budget"
+        ],
+        "tests/test-chat.cpp": [
+          "Expected explicit unlimited reasoning budget"
+        ],
         "tools/sparkmoe/server-api.cpp": [
           "common_json"
         ]
@@ -180,7 +192,16 @@
       "id": "desktop-ui",
       "files": {
         "common/preset.cpp": [
-          "fs_open_ifstream(path"
+          "fs_open_ifstream(path",
+          "recursive_directory_iterator",
+          "LLAMA_ARG_MMPROJ",
+          "LLAMA_ARG_SPEC_DRAFT_MODEL"
+        ],
+        "tests/test-model-resolution.cpp": [
+          "test_local_models_directory"
+        ],
+        "tools/server/README.md": [
+          "The directory is scanned recursively"
         ],
         "tools/server/server-models.cpp": [
           "server_exec_path.u8string()"
@@ -201,6 +222,12 @@
         ],
         "tools/ui/src/lib/services/sparkmoe.service.ts": [
           "class SparkMoeService"
+        ],
+        "tools/ui/src/lib/services/chat.service.ts": [
+          "requestBody.reasoning_effort = reasoningEffort"
+        ],
+        "tools/ui/src/lib/types/api.d.ts": [
+          "thinking_budget_tokens?: number"
         ],
         "tools/ui/src/routes/sparkmoe/+page.svelte": [
           "Models",

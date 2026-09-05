@@ -1671,7 +1671,7 @@ Alternatively, you can point the router to a local directory containing your GGU
 llama-server --models-dir ./models_directory
 ```
 
-If the model contains multiple GGUF (for multimodal or multi-shard), files should be put into a subdirectory. The directory structure should look like this:
+The directory is scanned recursively. If a model contains multiple GGUF files (for multimodal, draft, or multi-shard loading), keep its companion files together in one subdirectory. The directory structure can contain any number of grouping levels and should look like this:
 
 ```sh
 models_directory

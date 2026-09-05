@@ -56,7 +56,7 @@ export interface SparkMoeModelProfile {
 	parallel: number;
 	ple_cache_mib: number;
 	prefetch: 'off' | 'temporal';
-	reasoning: 'auto' | 'on' | 'off';
+	reasoning: 'default' | 'off' | 'low' | 'medium' | 'high' | 'max';
 	slots: number;
 	ubatch_size: number;
 }
@@ -153,8 +153,37 @@ export class SparkMoeService {
 		});
 	}
 
+	static async prometheusMetrics(model: string): Promise<Record<string, number>> {
+		const response = await fetch(base + '/metrics?model=' + encodeURIComponent(model), {
+			headers: getAuthHeaders()
+		});
+
+		if (!response.ok) {
+			throw new Error(response.statusText || 'llama.cpp router metrics are unavailable');
+		}
+
+		const metrics: Record<string, number> = {};
+
+		for (const line of (await response.text()).split('\n')) {
+			if (!line || line.startsWith('#')) continue;
+
+			const match = line.match(/^([^\s{]+)(?:\{[^}]*\})?\s+([^\s]+)$/);
+			const value = match ? Number(match[2]) : Number.NaN;
+
+			if (match && Number.isFinite(value)) {
+				metrics[match[1]] = (metrics[match[1]] || 0) + value;
+			}
+		}
+
+		return metrics;
+	}
+
 	static async recommendation(): Promise<Record<string, number | string>> {
 		return managerFetch('/api/recommendation');
+	}
+
+	static async reloadModels(): Promise<void> {
+		await routerFetch('/models?reload=1', { headers: getAuthHeaders() });
 	}
 
 	static async resetMetrics(model: string): Promise<Record<string, unknown>> {
@@ -214,6 +243,10 @@ export class SparkMoeService {
 			headers: { 'content-type': 'application/json' },
 			method: 'POST'
 		});
+	}
+
+	static async shutdown(): Promise<void> {
+		await managerFetch('/api/shutdown', { method: 'POST' });
 	}
 
 	static async start(): Promise<void> {

@@ -4,6 +4,7 @@
 #include "log.h"
 #include "download.h"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -359,9 +360,16 @@ common_presets common_preset_context::load_from_cache() const {
 
 struct local_model {
     std::string name;
+    std::string fallback_name;
     std::string path;
     std::string path_mmproj;
     std::string path_draft;
+};
+
+struct local_model_directory {
+    std::vector<std::pair<std::string, std::filesystem::path>> models;
+    std::filesystem::path path_mmproj;
+    std::filesystem::path path_draft;
 };
 
 // TODO @ngxson: handle "eagle3-" when it's supported by common_speculative_types_from_gguf()
@@ -380,63 +388,97 @@ static bool is_draft_file(const std::string & fname) {
     return false;
 }
 
+static std::string path_to_utf8(const std::filesystem::path & path, bool generic = false) {
+#ifdef _WIN32
+    return generic ? path.generic_u8string() : path.u8string();
+#else
+    return generic ? path.generic_string() : path.string();
+#endif
+}
+
+static std::string lowercase_ascii(std::string value) {
+    for (char & c : value) {
+        c = (char) std::tolower((unsigned char) c);
+    }
+    return value;
+}
+
+static bool split_model_file(const std::string & name, std::string & stem, int & shard) {
+    static const std::regex split_pattern(R"(^(.*)-([0-9]{5})-of-([0-9]{5})\.gguf$)", std::regex::icase);
+    std::smatch match;
+    if (!std::regex_match(name, match, split_pattern)) {
+        return false;
+    }
+    stem = match[1].str();
+    shard = std::stoi(match[2].str());
+    return true;
+}
+
 common_presets common_preset_context::load_from_models_dir(const std::string & models_dir) const {
     if (!fs_is_directory(models_dir)) {
         throw std::runtime_error(string_format("error: '%s' does not exist or is not a directory\n", models_dir.c_str()));
     }
 
-    std::vector<local_model> models;
-    auto scan_subdir = [&models](const std::string & subdir_path, const std::string & name) {
-        auto files = fs_list(subdir_path, false);
-        common_file_info model_file;
-        common_file_info first_shard_file;
-        common_file_info mmproj_file;
-        common_file_info draft_file;
-        for (const auto & file : files) {
-            if (string_ends_with(file.name, ".gguf")) {
-                if (is_mmproj_file(file.name)) {
-                    mmproj_file = file;
-                } else if (is_draft_file(file.name)) {
-                    if (draft_file.path.empty()) {
-                        draft_file = file; // first sidecar found wins
-                    }
-                } else if (file.name.find("-00001-of-") != std::string::npos) {
-                    first_shard_file = file;
-                } else {
-                    model_file = file;
+    const std::filesystem::path root = std::filesystem::u8path(models_dir);
+    std::vector<std::filesystem::path> files;
+    std::error_code error;
+    std::filesystem::recursive_directory_iterator iterator(
+        root, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::recursive_directory_iterator end;
+    while (iterator != end) {
+        if (!error) {
+            std::error_code entry_error;
+            if (iterator->is_regular_file(entry_error) && !entry_error) {
+                const std::string name = path_to_utf8(iterator->path().filename());
+                if (string_ends_with(lowercase_ascii(name), ".gguf")) {
+                    files.push_back(iterator->path());
                 }
             }
         }
-        // single file model
-        local_model model{
-            /* name        */ name,
-            /* path        */ first_shard_file.path.empty() ? model_file.path : first_shard_file.path,
-            /* path_mmproj */ mmproj_file.path, // can be empty
-            /* path_draft  */ draft_file.path   // can be empty
-        };
-        if (!model.path.empty()) {
-            models.push_back(model);
-        }
-    };
+        error.clear();
+        iterator.increment(error);
+    }
+    std::sort(files.begin(), files.end(), [](const auto & left, const auto & right) {
+        return path_to_utf8(left, true) < path_to_utf8(right, true);
+    });
 
-    auto files = fs_list(models_dir, true);
-    for (const auto & file : files) {
-        if (file.is_dir) {
-            scan_subdir(file.path, file.name);
-        } else if (string_ends_with(file.name, ".gguf")) {
-            if (is_mmproj_file(file.name) || is_draft_file(file.name)) {
-                continue; // companion file, cannot be loaded as a model on its own
-            }
-            // single file model
-            std::string name = file.name;
-            string_replace_all(name, ".gguf", "");
-            local_model model{
-                /* name        */ name,
-                /* path        */ file.path,
-                /* path_mmproj */ "",
-                /* path_draft  */ ""
-            };
-            models.push_back(model);
+    std::map<std::filesystem::path, local_model_directory> directories;
+    for (const auto & path : files) {
+        auto & directory = directories[path.parent_path()];
+        const std::string name = path_to_utf8(path.filename());
+        const std::string lower_name = lowercase_ascii(name);
+        if (is_mmproj_file(lower_name)) {
+            if (directory.path_mmproj.empty()) directory.path_mmproj = path;
+            continue;
+        }
+        if (is_draft_file(lower_name)) {
+            if (directory.path_draft.empty()) directory.path_draft = path;
+            continue;
+        }
+
+        std::string stem;
+        int shard = 0;
+        if (split_model_file(name, stem, shard)) {
+            if (shard != 1) continue;
+        } else {
+            stem = name.substr(0, name.size() - 5);
+        }
+        directory.models.emplace_back(stem, path);
+    }
+
+    std::vector<local_model> models;
+    for (const auto & [directory_path, directory] : directories) {
+        const auto relative_directory = directory_path.lexically_relative(root);
+        const bool is_root = relative_directory.empty() || relative_directory == ".";
+        for (const auto & [stem, path] : directory.models) {
+            const std::string fallback_name = path_to_utf8((is_root ? std::filesystem::path() : relative_directory) / stem, true);
+            models.push_back({
+                /* name          */ !is_root && directory.models.size() == 1 ? path_to_utf8(relative_directory, true) : fallback_name,
+                /* fallback_name */ fallback_name,
+                /* path          */ path_to_utf8(path),
+                /* path_mmproj   */ path_to_utf8(directory.path_mmproj),
+                /* path_draft    */ path_to_utf8(directory.path_draft),
+            });
         }
     }
 
@@ -445,6 +487,13 @@ common_presets common_preset_context::load_from_models_dir(const std::string & m
     for (const auto & model : models) {
         common_preset preset;
         preset.name = model.name;
+        if (out.find(preset.name) != out.end()) {
+            preset.name = model.fallback_name;
+        }
+        const std::string base_name = preset.name;
+        for (int suffix = 2; out.find(preset.name) != out.end(); ++suffix) {
+            preset.name = base_name + "-" + std::to_string(suffix);
+        }
         preset.set_option(*this, "LLAMA_ARG_MODEL", model.path);
         if (!model.path_mmproj.empty()) {
             preset.set_option(*this, "LLAMA_ARG_MMPROJ", model.path_mmproj);

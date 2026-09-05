@@ -4,15 +4,17 @@ Run `SparkMoE.exe` for the normal local workflow. On Windows it is a GUI subsyst
 
 Open **SparkMoE** in the llama.cpp sidebar. This page uses the same UI system as the original chat and contains all fork-specific controls. Its seven tabs are **Overview**, **Models**, **SparkMoE engine**, **Context & caches**, **MTP & reasoning**, **Metrics**, and **Logs & diagnostics**. The rest of Settings and the chat routes retain the llama.cpp structure and behavior.
 
-Choose a models folder and apply the Router settings. The normal llama.cpp model picker can then load and unload those models. `models-max` controls simultaneous model processes: `1` is conservative for large models, higher values are useful for small models, and `0` is unlimited. When the limit is reached, the Router evicts the least recently used idle process.
+Choose a models folder and apply the Router settings. The selected path remains an unsaved draft until **Apply server settings** is pressed; background status refreshes do not replace that draft. **Rescan saved folder** refreshes the model list without restarting the Router. The scan is recursive. A split GGUF appears once through its `00001` shard, and a vision `mmproj` or MTP/draft sidecar in the same directory is attached to its model instead of appearing as a separate model. The normal llama.cpp model picker can then load and unload those models. `models-max` controls simultaneous model processes: `1` is conservative for large models, higher values are useful for small models, and `0` is unlimited. When the limit is reached, the Router evicts the least recently used idle process.
 
 Each model has a persistent SparkMoE profile. It controls startup-time values such as paging mode, expert cache, context, batches, KV cache types, MTP, threads, and the default reasoning mode. Saving a loaded model's profile reloads that model only; other model processes remain available.
 
 Keep `auto` mode for the normal workflow. It attempts bounded expert streaming when the selected GGUF has a compatible routed MoE layout, and retries with standard mmap loading when the model is dense or incompatible. The hardware-derived defaults are starting values, not a promise that a particular model fits.
 
-The **Context & caches** tab owns context length, context shift, parallel slots, batches, prompt-cache RAM, checkpoints, and K/V precision. **MTP & reasoning** is separate: it owns the model's default reasoning behavior and optional MTP sidecar, draft, cache, thread, and sampling controls. Enable MTP only when the GGUF includes a compatible MTP head or when a matching sidecar GGUF is configured.
+The **Context & caches** tab owns context length, context shift, parallel slots, batches, prompt-cache RAM, checkpoints, and K/V precision. **MTP & reasoning** is separate: it owns the model's default reasoning effort (`Default`, `Off`, `Low`, `Medium`, `High`, or `Max`) and optional MTP sidecar, draft, cache, thread, and sampling controls. Enable MTP only when the GGUF includes a compatible MTP head or when a matching sidecar GGUF is configured.
 
 The **Logs & diagnostics** tab shows the current log tail, previous sessions, and the privacy-filtered diagnostic export. The full combined Router and child-model output is stored under the user's local SparkMoE data directory and can be downloaded without truncation from the UI. SparkMoE does not write prompts or generations into its own management records.
+
+**Stop** stops the Router and loaded models but keeps the hidden manager available so the server can be started again. **Exit SparkMoE** stops the Router, every model process, and the manager itself. On Windows, the SparkMoE notification-area icon remains visible while the manager is running. Select it to reopen the UI, or use its menu to inspect Router state, start or stop the Router, and exit the complete application. The tooltip reports whether the Router is running and its port. If the browser was closed while SparkMoE is still running, use the notification-area icon or launch the same Start-menu shortcut again; the single-instance launcher reopens the existing Web UI instead of starting another manager.
 
 The launcher does not download models. Upstream CLI/server Hugging Face options remain available, but large downloads should be deliberate and model licenses must be reviewed first.
 
@@ -31,7 +33,7 @@ Generation options do not come from the loading profile. The caller still contro
 }
 ```
 
-The model profile's `reasoning` value is only the default when a request does not provide an explicit control. Request-level thinking changes do not reload the model or change context, paging, cache, MTP, or thread allocation.
+The model profile's reasoning level is only the server default. In the built-in chat, **Default** uses that profile; **Off**, **Low**, **Medium**, **High**, or **Max** sends a request-level override for that conversation. API callers can use `reasoning_effort` and `thinking_budget_tokens` in the same way. Request-level thinking changes do not reload the model or change context, paging, cache, MTP, or thread allocation.
 
 ## Advanced engine controls
 

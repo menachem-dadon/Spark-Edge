@@ -7023,6 +7023,14 @@ static void test_reasoning_budget_tokens_per_request() {
     if (got != 0) {
         throw std::runtime_error(std::string("Expected reasoning_budget_tokens=0, got ") + std::to_string(got));
     }
+
+    opt.reasoning_budget = 512;
+    body["reasoning_budget_tokens"] = -1;
+    llama_params = oaicompat_chat_params_parse(body, opt, out_files);
+    got = llama_params["reasoning_budget_tokens"].get<int>();
+    if (got != -1) {
+        throw std::runtime_error(std::string("Expected explicit unlimited reasoning budget, got ") + std::to_string(got));
+    }
 }
 
 static void test_reasoning_budget_message_per_request() {

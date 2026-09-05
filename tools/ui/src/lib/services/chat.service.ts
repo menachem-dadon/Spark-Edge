@@ -29,6 +29,7 @@ import {
 	AttachmentType,
 	ContentPartType,
 	MessageRole,
+	ReasoningEffort,
 	ReasoningFormat,
 	StreamConnectionState
 } from '$lib/enums';
@@ -1145,7 +1146,11 @@ export class ChatService {
 			};
 		}
 
-		if (reasoningBudgetTokens >= 0) {
+		if (enableThinking && reasoningEffort) {
+			requestBody.reasoning_effort = reasoningEffort;
+		}
+
+		if (reasoningBudgetTokens >= 0 || reasoningEffort === ReasoningEffort.MAX) {
 			requestBody.thinking_budget_tokens = reasoningBudgetTokens;
 		}
 

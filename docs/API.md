@@ -35,10 +35,10 @@ The hidden manager exposes a loopback-only API on `127.0.0.1:18080`:
 - `GET /api/status`, `/api/config`, `/api/recommendation`, `/api/diagnostics`
 - `POST /api/config` to persist Router port, models directory, automatic loading, and `models-max`, then restart the Router
 - `GET`, `POST`, and `DELETE /api/model-profile?model=<id>` for persistent per-model process profiles
-- `POST /api/browse-model-directory`, `/api/start`, `/api/stop`, `/api/restart`
+- `POST /api/browse-model-directory`, `/api/start`, `/api/stop`, `/api/restart`, `/api/shutdown`
 - `GET /api/log-sessions`, `/api/logs`, and `/api/logs/download` for complete persistent session logs
 
-The directory browser uses the native Windows folder picker. Requests with a browser `Origin` header are accepted only from the manager or the current/previous configured loopback Web UI port.
+The directory browser uses the native Windows folder picker, opens at the saved models directory, and uses the foreground browser as its owner so it stays in front. `/api/stop` keeps the manager alive; `/api/shutdown` exits the complete application after its response is sent. Requests with a browser `Origin` header are accepted only from the manager or the current/previous configured loopback Web UI port.
 
 ## OpenAI-compatible thinking control
 

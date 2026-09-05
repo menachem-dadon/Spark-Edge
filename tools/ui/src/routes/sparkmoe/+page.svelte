@@ -11,16 +11,21 @@
 		Database,
 		Download,
 		FolderOpen,
+		Info,
 		LoaderCircle,
 		Play,
+		Power,
 		RefreshCw,
 		RotateCcw,
 		Server,
 		Sparkles,
 		TerminalSquare
 	} from '@lucide/svelte';
+	import { DialogConfirmation } from '$lib/components/app';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { REASONING_EFFORT_LEVELS, REASONING_EFFORT_TOKENS } from '$lib/constants';
 	import { ServerModelStatus } from '$lib/enums';
 	import {
 		type SparkMoeLogSession,
@@ -33,10 +38,10 @@
 	import { onMount } from 'svelte';
 
 	type SparkMoeTab = 'overview' | 'models' | 'engine' | 'context' | 'mtp' | 'metrics' | 'logs';
+	type MetricItem = { label: string; value: string };
 
 	const CONTEXT_PRESETS = [4096, 8192, 16384, 32768, 65536];
 	const CACHE_TYPES = ['f16', 'bf16', 'q8_0', 'q5_1', 'q5_0', 'q4_1', 'q4_0', 'iq4_nl'];
-	const disableThinkingKwargs = '{"enable_thinking": false}';
 
 	const defaultRouterConfig: SparkMoeRouterConfig = {
 		model_directory: '',
@@ -74,7 +79,7 @@
 		parallel: 1,
 		ple_cache_mib: 64,
 		prefetch: 'off',
-		reasoning: 'auto',
+		reasoning: 'default',
 		slots: 0,
 		ubatch_size: 128
 	};
@@ -82,6 +87,7 @@
 	let activeTab = $state<SparkMoeTab>('overview');
 	let managerStatus = $state<SparkMoeManagerStatus | null>(null);
 	let routerConfig = $state<SparkMoeRouterConfig>({ ...defaultRouterConfig });
+	let savedRouterConfig = $state<SparkMoeRouterConfig>({ ...defaultRouterConfig });
 	let profile = $state<SparkMoeModelProfile>({ ...defaultProfile });
 	let profileIsOverride = $state(false);
 	let selectedModel = $state('');
@@ -97,6 +103,7 @@
 	let selectedLogSession = $state('');
 	let logContent = $state('');
 	let logDirectory = $state('');
+	let exitDialogOpen = $state(false);
 
 	let selectedModelEntry = $derived(
 		modelsStore.routerModels.find((model) => model.id === selectedModel)
@@ -112,18 +119,63 @@
 		selectedModelStatus === ServerModelStatus.LOADING ||
 			modelsStore.status.isOperationInProgress(selectedModel)
 	);
-	let apiExample = $derived(
-		JSON.stringify(
-			{
-				chat_template_kwargs: { enable_thinking: false },
-				messages: [{ content: 'Hello', role: 'user' }],
-				model: selectedModel || 'your-model-id',
-				reasoning_effort: 'none'
-			},
-			null,
-			2
-		)
+	let routerConfigDirty = $derived(
+		routerConfig.model_directory !== savedRouterConfig.model_directory ||
+			routerConfig.models_autoload !== savedRouterConfig.models_autoload ||
+			routerConfig.models_max !== savedRouterConfig.models_max ||
+			routerConfig.port !== savedRouterConfig.port
 	);
+	let cacheMetrics = $derived<MetricItem[]>([
+		{
+			label: 'Cumulative generation rate',
+			value: metricNumber('generation_tokens_per_second').toFixed(2) + ' tok/s'
+		},
+		{ label: 'Cache hit rate', value: (metricNumber('cache_hit_rate') * 100).toFixed(1) + '%' },
+		{ label: 'Cache hits', value: metricNumber('cache_hits').toLocaleString() },
+		{ label: 'Cache misses', value: metricNumber('cache_misses').toLocaleString() },
+		{ label: 'Evictions', value: metricNumber('evictions').toLocaleString() },
+		{ label: 'Cache waits', value: metricNumber('waits').toLocaleString() },
+		{ label: 'Duplicate requests', value: metricNumber('duplicate_requests').toLocaleString() },
+		{ label: 'Resident experts', value: metricNumber('resident_experts').toLocaleString() },
+		{ label: 'Pinned experts', value: metricNumber('pinned_experts').toLocaleString() }
+	]);
+	let memoryMetrics = $derived<MetricItem[]>([
+		{ label: 'Process RAM', value: formatBytes(metricNumber('process_rss_bytes')) },
+		{ label: 'Peak process RAM', value: formatBytes(metricNumber('process_peak_rss_bytes')) },
+		{ label: 'Private process memory', value: formatBytes(metricNumber('process_private_bytes')) },
+		{ label: 'Cache committed', value: formatBytes(metricNumber('cache_committed_bytes')) },
+		{ label: 'Cache limit', value: formatBytes(metricNumber('cache_limit_bytes')) },
+		{ label: 'Logical SSD read', value: formatBytes(metricNumber('bytes_read')) },
+		{ label: 'Physical SSD read', value: formatBytes(metricNumber('physical_bytes')) },
+		{ label: 'Direct SSD read', value: formatBytes(metricNumber('direct_bytes')) },
+		{ label: 'Read operations', value: metricNumber('read_count').toLocaleString() },
+		{ label: 'Average read', value: formatMilliseconds(metricNumber('average_read_latency_us')) },
+		{ label: 'Buffered fallbacks', value: metricNumber('fallback_reads').toLocaleString() }
+	]);
+	let pipelineMetrics = $derived<MetricItem[]>([
+		{ label: 'I/O queue wait', value: formatMilliseconds(metricNumber('io_queue_us')) },
+		{ label: 'Remap wait', value: formatMilliseconds(metricNumber('remap_wait_us')) },
+		{ label: 'Compute I/O wait', value: formatMilliseconds(metricNumber('compute_wait_us')) },
+		{ label: 'Async experts', value: metricNumber('async_experts').toLocaleString() },
+		{
+			label: 'Compute with I/O pending',
+			value: metricNumber('compute_with_io_pending').toLocaleString()
+		},
+		{ label: 'Resize pending', value: formatBytes(metricNumber('resize_pending_bytes')) },
+		{ label: 'Resize failures', value: metricNumber('resize_failures').toLocaleString() }
+	]);
+	let prefetchMetrics = $derived<MetricItem[]>([
+		{ label: 'Prefetch reads', value: metricNumber('prefetch_reads').toLocaleString() },
+		{ label: 'Prefetch hits', value: metricNumber('prefetch_hits').toLocaleString() },
+		{ label: 'Prefetch wasted', value: metricNumber('prefetch_wasted').toLocaleString() },
+		{ label: 'Prefetch promoted', value: metricNumber('prefetch_promoted').toLocaleString() },
+		{ label: 'Prefetch skipped', value: metricNumber('prefetch_skipped').toLocaleString() },
+		{ label: 'PLE cache', value: formatBytes(metricNumber('ple_cache_bytes')) },
+		{ label: 'PLE cache hits', value: metricNumber('ple_cache_hits').toLocaleString() },
+		{ label: 'PLE pages read', value: metricNumber('ple_pages_read').toLocaleString() },
+		{ label: 'PLE bytes read', value: formatBytes(metricNumber('ple_bytes_read')) },
+		{ label: 'PLE evictions', value: metricNumber('ple_evictions').toLocaleString() }
+	]);
 
 	function describeManagerStatus() {
 		if (!managerStatus) return 'Manager unavailable';
@@ -152,16 +204,39 @@
 		return typeof value === 'number' ? value : 0;
 	}
 
+	function routerConfigsEqual(left: SparkMoeRouterConfig, right: SparkMoeRouterConfig) {
+		return (
+			left.model_directory === right.model_directory &&
+			left.models_autoload === right.models_autoload &&
+			left.models_max === right.models_max &&
+			left.port === right.port
+		);
+	}
+
+	function formatMilliseconds(value: number) {
+		return (value / 1000).toFixed(2) + ' ms';
+	}
+
 	async function refreshManager() {
 		try {
-			const [status, config, recommendation] = await Promise.all([
+			const savedConfigAtStart = { ...savedRouterConfig };
+			const [status, recommendation] = await Promise.all([
 				SparkMoeService.status(),
-				SparkMoeService.routerConfig(),
 				SparkMoeService.recommendation()
 			]);
+			const savedConfigChanged = !routerConfigsEqual(savedRouterConfig, savedConfigAtStart);
 
 			managerStatus = status;
-			routerConfig = { ...defaultRouterConfig, ...config };
+
+			if (!savedConfigChanged) {
+				const preserveDraft = routerConfigDirty;
+				const nextConfig = { ...defaultRouterConfig, ...status.config };
+
+				savedRouterConfig = nextConfig;
+
+				if (!preserveDraft) routerConfig = { ...nextConfig };
+			}
+
 			hardware = recommendation;
 			connected = true;
 		} catch (cause) {
@@ -198,10 +273,27 @@
 		}
 
 		try {
-			[metrics, runtimeConfig] = await Promise.all([
+			const [pagingMetrics, nextRuntimeConfig] = await Promise.all([
 				SparkMoeService.paging(selectedModel),
 				SparkMoeService.runtimeConfig(selectedModel)
 			]);
+
+			let generationTokensPerSecond = 0;
+
+			try {
+				const prometheus = await SparkMoeService.prometheusMetrics(selectedModel);
+				const seconds = prometheus['llamacpp:tokens_predicted_seconds_total'] || 0;
+
+				if (seconds > 0) {
+					generationTokensPerSecond =
+						(prometheus['llamacpp:tokens_predicted_total'] || 0) / seconds;
+				}
+			} catch {
+				generationTokensPerSecond = 0;
+			}
+
+			metrics = { ...pagingMetrics, generation_tokens_per_second: generationTokensPerSecond };
+			runtimeConfig = nextRuntimeConfig;
 		} catch {
 			metrics = null;
 			runtimeConfig = null;
@@ -269,8 +361,22 @@
 
 			if (!result.cancelled && result.directory) {
 				routerConfig.model_directory = result.directory;
-				notice = 'Folder selected. Apply server settings to rescan its models.';
+				notice = 'Folder selected but not saved yet. Apply server settings to use it.';
 			}
+		});
+	}
+
+	function discardRouterChanges() {
+		routerConfig = { ...savedRouterConfig };
+		error = '';
+		notice = 'Unsaved server settings were discarded.';
+	}
+
+	async function rescanModels() {
+		await runAction('models-rescan', async () => {
+			await SparkMoeService.reloadModels();
+			await refreshModels();
+			notice = 'The saved models folder was rescanned.';
 		});
 	}
 
@@ -303,6 +409,11 @@
 	async function saveRouterConfig() {
 		await runAction('router-config', async () => {
 			const result = await SparkMoeService.saveRouterConfig(routerConfig);
+			const persistedConfig = { ...defaultRouterConfig, ...result.status.config };
+
+			managerStatus = result.status;
+			savedRouterConfig = persistedConfig;
+			routerConfig = { ...persistedConfig };
 			const staysHere = await waitForManagerReady(result.port);
 
 			if (staysHere) {
@@ -315,7 +426,7 @@
 	async function startRouter() {
 		await runAction('router-start', async () => {
 			await SparkMoeService.start();
-			await waitForManagerReady(routerConfig.port);
+			await waitForManagerReady(savedRouterConfig.port);
 			await refreshModels();
 		});
 	}
@@ -323,7 +434,7 @@
 	async function restartRouter() {
 		await runAction('router-restart', async () => {
 			await SparkMoeService.restart();
-			await waitForManagerReady(routerConfig.port);
+			await waitForManagerReady(savedRouterConfig.port);
 			await refreshModels();
 			notice = 'The llama.cpp router restarted.';
 		});
@@ -336,6 +447,18 @@
 			metrics = null;
 			runtimeConfig = null;
 			notice = 'The router and all loaded model processes were stopped.';
+		});
+	}
+
+	async function exitSparkMoe() {
+		exitDialogOpen = false;
+		await runAction('shutdown', async () => {
+			await SparkMoeService.shutdown();
+			connected = false;
+			managerStatus = null;
+			metrics = null;
+			runtimeConfig = null;
+			notice = 'SparkMoE has exited. You can now close this browser tab.';
 		});
 	}
 
@@ -497,7 +620,7 @@
 					<p class="truncate text-xs text-muted-foreground">
 						{connected
 							? 'API and Web UI on port ' +
-								routerConfig.port +
+								(managerStatus?.port || savedRouterConfig.port) +
 								' | PID ' +
 								(managerStatus?.pid || '-')
 							: 'Start the app with SparkMoE.exe to enable local management.'}
@@ -530,6 +653,15 @@
 						Start
 					</Button>
 				{/if}
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() => (exitDialogOpen = true)}
+					disabled={!connected || busy !== ''}
+				>
+					<Power />
+					Exit SparkMoE
+				</Button>
 			</div>
 		</Card.Content>
 	</Card.Root>
@@ -638,7 +770,7 @@
 							</div>
 							<div class="rounded-lg bg-muted/50 p-3">
 								<span class="text-xs text-muted-foreground">Maximum loaded models</span>
-								<b class="mt-1 block">{routerConfig.models_max || 'Unlimited'}</b>
+								<b class="mt-1 block">{savedRouterConfig.models_max || 'Unlimited'}</b>
 							</div>
 						</Card.Content>
 						<Card.Footer class="flex-wrap justify-end gap-2">
@@ -724,9 +856,34 @@
 									bind:checked={routerConfig.models_autoload}
 								/>
 							</label>
+							{#if routerConfigDirty}
+								<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+									These server settings have not been applied yet. Background status refreshes will
+									keep this draft intact.
+								</div>
+							{/if}
 						</Card.Content>
-						<Card.Footer class="justify-end">
-							<Button onclick={() => void saveRouterConfig()} disabled={!connected || busy !== ''}>
+						<Card.Footer class="flex-wrap justify-end gap-2">
+							<Button
+								variant="ghost"
+								onclick={discardRouterChanges}
+								disabled={!routerConfigDirty || busy !== ''}
+							>
+								Discard changes
+							</Button>
+							<Button
+								variant="outline"
+								onclick={() => void rescanModels()}
+								disabled={!managerStatus?.server_ready || routerConfigDirty || busy !== ''}
+							>
+								{#if busy === 'models-rescan'}<LoaderCircle class="animate-spin" />{:else}<RefreshCw
+									/>{/if}
+								Rescan saved folder
+							</Button>
+							<Button
+								onclick={() => void saveRouterConfig()}
+								disabled={!connected || !routerConfigDirty || busy !== ''}
+							>
 								{#if busy === 'router-config'}<LoaderCircle class="animate-spin" />{/if}
 								Apply server settings
 							</Button>
@@ -968,48 +1125,24 @@
 							</Card.Header>
 							<Card.Content>
 								{#if selectedModelLoaded && metrics}
-									<div class="grid grid-cols-2 gap-3">
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Cache hits</span><b
-												class="mt-1 block">{metricNumber('cache_hits').toLocaleString()}</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Cache misses</span><b
-												class="mt-1 block">{metricNumber('cache_misses').toLocaleString()}</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Hit rate</span><b
-												class="mt-1 block">{(metricNumber('cache_hit_rate') * 100).toFixed(1)}%</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">SSD read</span><b
-												class="mt-1 block">{formatBytes(metricNumber('bytes_read'))}</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Cache committed</span><b
-												class="mt-1 block">{formatBytes(metricNumber('cache_committed_bytes'))}</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Process RAM</span><b
-												class="mt-1 block">{formatBytes(metricNumber('process_rss_bytes'))}</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Evictions</span><b
-												class="mt-1 block">{metricNumber('evictions').toLocaleString()}</b
-											>
-										</div>
-										<div class="rounded-lg bg-muted/50 p-3">
-											<span class="text-xs text-muted-foreground">Avg. read</span><b
-												class="mt-1 block"
-												>{(metricNumber('average_read_latency_us') / 1000).toFixed(2)} ms</b
-											>
-										</div>
+									<div class="space-y-5">
+										{#each [{ items: cacheMetrics, title: 'Cache and experts' }, { items: memoryMetrics, title: 'Memory and storage reads' }, { items: pipelineMetrics, title: 'I/O pipeline and resizing' }, { items: prefetchMetrics, title: 'Prefetch and PLE cache' }] as group (group.title)}
+											<section class="space-y-2">
+												<h4
+													class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+												>
+													{group.title}
+												</h4>
+												<div class="grid grid-cols-2 gap-3">
+													{#each group.items as item (item.label)}
+														<div class="rounded-lg bg-muted/50 p-3">
+															<span class="text-xs text-muted-foreground">{item.label}</span>
+															<b class="mt-1 block">{item.value}</b>
+														</div>
+													{/each}
+												</div>
+											</section>
+										{/each}
 									</div>
 								{:else}
 									<p class="text-sm text-muted-foreground">
@@ -1249,18 +1382,40 @@
 					</Card.Header>
 					<Card.Content>
 						<label class="grid gap-2 text-sm">
-							<span class="font-medium">Default reasoning behavior</span>
+							<span class="flex items-center gap-2 font-medium">
+								Default reasoning effort
+								<Tooltip.Root>
+									<Tooltip.Trigger
+										aria-label="How the reasoning profile affects chat and API requests"
+									>
+										<Info class="h-4 w-4 text-muted-foreground" />
+									</Tooltip.Trigger>
+									<Tooltip.Content class="max-w-80" side="right">
+										<p>
+											This is the server default. A choice in the chat Reasoning menu overrides it
+											for that conversation, and an API request can override it with
+											reasoning_effort. Use none to disable reasoning through the API.
+										</p>
+									</Tooltip.Content>
+								</Tooltip.Root>
+							</span>
 							<select
 								class="rounded-md border border-input bg-background px-3 py-2"
 								bind:value={profile.reasoning}
 							>
-								<option value="auto">Automatic - model template default</option>
-								<option value="on">Enabled by default</option>
-								<option value="off">Disabled by default</option>
+								{#each REASONING_EFFORT_LEVELS as level (level.value)}
+									{@const tokens = REASONING_EFFORT_TOKENS[level.value]}
+									<option value={level.value}>
+										{level.label}{level.value === 'default'
+											? ' - model template'
+											: tokens === -1
+												? ' - unlimited'
+												: tokens
+													? ` - ${tokens.toLocaleString()} tokens`
+													: ''}
+									</option>
+								{/each}
 							</select>
-							<span class="text-xs text-muted-foreground">
-								This is a model-process default, not a restriction on API callers.
-							</span>
 						</label>
 					</Card.Content>
 				</Card.Root>
@@ -1358,34 +1513,6 @@
 				</Card.Root>
 			{/if}
 
-			<Card.Root class="border-primary/30 bg-primary/5">
-				<Card.Header>
-					<Card.Title>External API and thinking control</Card.Title>
-					<Card.Description>
-						Loading settings come from this model profile. Generation settings come from each API
-						request.
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="space-y-3 text-sm">
-					<p>
-						SmartiAI can use the normal OpenAI-compatible endpoint on port {routerConfig.port}. Send
-						the selected model ID in the request. If it is not loaded, the Router loads it with the
-						profile above.
-					</p>
-					<p>
-						To disable thinking for one chat request, send both
-						<code class="rounded bg-muted px-1 py-0.5">reasoning_effort: "none"</code> and
-						<code class="rounded bg-muted px-1 py-0.5"
-							>chat_template_kwargs: {disableThinkingKwargs}</code
-						>. This overrides the profile default without restarting or reloading the model.
-					</p>
-					<pre
-						class="overflow-x-auto rounded-lg border border-border/60 bg-muted/40 p-4 text-xs"><code
-							>{apiExample}</code
-						></pre>
-				</Card.Content>
-			</Card.Root>
-
 			<div class="flex flex-wrap justify-end gap-2">
 				{#if profileIsOverride}
 					<Button
@@ -1471,3 +1598,15 @@
 		</div>
 	{/if}
 </div>
+
+<DialogConfirmation
+	bind:open={exitDialogOpen}
+	title="Exit SparkMoE"
+	description="This stops the Router, every loaded model process, and the hidden SparkMoE manager. The browser tab can then be closed. Launch SparkMoE again from the Start menu or shortcut to reopen it."
+	confirmText="Exit SparkMoE"
+	cancelText="Cancel"
+	variant="destructive"
+	icon={Power}
+	onConfirm={() => void exitSparkMoe()}
+	onCancel={() => (exitDialogOpen = false)}
+/>
