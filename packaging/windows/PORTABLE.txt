@@ -1,0 +1,25 @@
+SparkMoE for Windows
+
+Extract the whole ZIP before starting SparkMoE.exe. Keep WebView2Loader.dll beside
+the executable. The desktop window uses Microsoft's shared Evergreen WebView2
+Runtime; the full browser runtime is not included in this package.
+
+If the Runtime is missing or the window cannot initialize, SparkMoE opens its
+local interface in your default browser. The manager and inference keep working.
+Get the Runtime from https://developer.microsoft.com/microsoft-edge/webview2/
+
+To force browser mode for one launch in PowerShell:
+  $env:SPARKMOE_BROWSER_ONLY = '1'
+  .\SparkMoE.exe
+  Remove-Item Env:SPARKMOE_BROWSER_ONLY
+
+Settings, logs, and the desktop browser profile are stored in
+%LOCALAPPDATA%\SparkMoE by default. They survive upgrades and uninstall.
+The ZIP is portable as an application; it does not silently put personal data
+inside its extracted folder. Use SPARKMOE_DATA_DIR to choose a separate data folder.
+
+Browser conversations and desktop conversations use separate browser storage.
+Use the chat UI's export and import controls to transfer conversations.
+
+The installer is per-user. Its optional WebView2 task downloads and installs the
+Runtime only when you select it. Skipping it leaves browser fallback available.

@@ -77,6 +77,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 				defaultValue: '',
 				help: `Set the API Key if you are using <code> ${CLI_FLAGS.API_KEY} </code> option for the server.`,
 				isPrivate: true,
+				isAdvanced: true,
 				key: SETTINGS_KEYS.API_KEY,
 				label: 'API Key',
 				type: SettingsFieldType.INPUT
@@ -377,6 +378,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Addon for the temperature sampler. The added value to the range of dynamic temperature, which adjusts probabilities by entropy of tokens.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.DYNATEMP_RANGE,
 				label: 'Dynamic temperature range',
 				sync: {
@@ -388,6 +390,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Addon for the temperature sampler. Smoothes out the probability redistribution based on the most probable token.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.DYNATEMP_EXPONENT,
 				label: 'Dynamic temperature exponent',
 				sync: {
@@ -423,6 +426,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'XTC sampler cuts out top tokens; this parameter controls the chance of cutting tokens at all. 0 disables XTC.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.XTC_PROBABILITY,
 				label: 'XTC probability',
 				sync: {
@@ -434,6 +438,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'XTC sampler cuts out top tokens; this parameter controls the token probability that is required to cut that token.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.XTC_THRESHOLD,
 				label: 'XTC threshold',
 				sync: {
@@ -445,6 +450,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Sorts and limits tokens based on the difference between log-probability and entropy.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.TYP_P,
 				label: 'Typical P',
 				sync: { paramType: SyncableParameterType.NUMBER, serverKey: SETTINGS_KEYS.TYP_P },
@@ -464,6 +470,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: '',
 				help: 'The order at which samplers are applied, in simplified way. Default is "top_k;typ_p;top_p;min_p;temperature": top_k->typ_p->top_p->min_p->temperature',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.SAMPLERS,
 				label: 'Samplers',
 				sync: { paramType: SyncableParameterType.STRING, serverKey: SETTINGS_KEYS.SAMPLERS },
@@ -472,6 +479,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: false,
 				help: 'Enable backend-based samplers. When enabled, supported samplers run on the accelerator backend for faster sampling.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.BACKEND_SAMPLING,
 				label: 'Backend sampling',
 				type: SettingsFieldType.CHECKBOX
@@ -479,6 +487,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Last n tokens to consider for penalizing repetition',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.REPEAT_LAST_N,
 				label: 'Repeat last N',
 				sync: {
@@ -490,6 +499,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Controls the repetition of token sequences in the generated text',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.REPEAT_PENALTY,
 				label: 'Repeat penalty',
 				sync: {
@@ -501,6 +511,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Limits tokens based on whether they appear in the output or not.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.PRESENCE_PENALTY,
 				label: 'Presence penalty',
 				sync: {
@@ -512,6 +523,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'Limits tokens based on how often they appear in the output.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.FREQUENCY_PENALTY,
 				label: 'Frequency penalty',
 				sync: {
@@ -523,6 +535,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'DRY sampling reduces repetition in generated text even across long contexts. This parameter sets the DRY sampling multiplier.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.DRY_MULTIPLIER,
 				label: 'DRY multiplier',
 				sync: {
@@ -534,6 +547,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'DRY sampling reduces repetition in generated text even across long contexts. This parameter sets the DRY sampling base value.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.DRY_BASE,
 				label: 'DRY base',
 				sync: { paramType: SyncableParameterType.NUMBER, serverKey: SETTINGS_KEYS.DRY_BASE },
@@ -542,6 +556,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'DRY sampling reduces repetition in generated text even across long contexts. This parameter sets the allowed length for DRY sampling.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.DRY_ALLOWED_LENGTH,
 				label: 'DRY allowed length',
 				sync: {
@@ -553,6 +568,7 @@ export const SETTINGS_REGISTRY: SettingsSectionEntry[] = [
 			{
 				defaultValue: undefined,
 				help: 'DRY sampling reduces repetition in generated text even across long contexts. This parameter sets DRY penalty for the last n tokens.',
+				isAdvanced: true,
 				key: SETTINGS_KEYS.DRY_PENALTY_LAST_N,
 				label: 'DRY penalty last N',
 				sync: {
@@ -659,6 +675,8 @@ function toSettingsSection(section: SettingsSectionEntry): SettingsSection {
 			.filter((s) => s.standaloneField !== false)
 			.map((s) => ({
 				dependsOn: s.dependsOn,
+				isAdvanced:
+					s.isAdvanced ?? s.isExperimental ?? section.slug === SETTINGS_SECTION_SLUGS.DEVELOPER,
 				help: s.help,
 				isExperimental: s.isExperimental,
 				isPositiveInteger: s.isPositiveInteger,

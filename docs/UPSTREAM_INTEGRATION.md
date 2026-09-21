@@ -1,5 +1,11 @@
 # SparkMoE upstream integration
 
+## Desktop manager ownership (2026-09-14)
+
+The stable manager UI origin, HTTP facade, model library, and native Windows shell live in SparkMoE-owned modules under `tools/sparkmoe/`. The desktop-manager manifest group checks the STA host, restricted navigation/download surface, CMake loader integration, pinned SDK restore, and installer Runtime/PATH behavior. Preserve these modules during an upstream refresh and keep shared chat changes scoped to existing UI integration points.
+
+The SDK pin is `packaging/windows/webview2-sdk.json`. SDK sources, loader hashes, notices, and package signature state are recorded by the Windows scripts. The current native and package validation requirements are in `WEBVIEW2_DESKTOP_INTEGRATION_PLAN.md`; historical refresh evidence below does not validate this new desktop implementation.
+
 ## Audit before the refresh (2026-08-31)
 
 - Original upstream: `6b4dc2116a92c5c8f2782bfe51fabe5ee66fb5ef`.

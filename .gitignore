@@ -53,6 +53,7 @@ compile_commands.json
 
 # Build Artifacts
 
+artifacts/
 /tags
 /.build/
 /build*

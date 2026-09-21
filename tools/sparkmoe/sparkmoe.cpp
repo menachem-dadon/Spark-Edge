@@ -2,9 +2,16 @@
 // Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
 #include "httplib.h"
+#include "model-library.h"
+#include "http-facade.h"
+#include "desktop-window.h"
+#include "connections.h"
+#include "downloads.h"
+#include "ui.h"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <condition_variable>
@@ -69,6 +76,9 @@ struct router_config {
 };
 
 struct model_profile {
+    std::string context_mode = "auto";
+    std::string memory_mode = "auto";
+    int gpu_layers = 0;
     std::string mode = "auto";
     int cache = 2048;
     int ple_cache_mib = 64;
@@ -106,8 +116,21 @@ struct app_state {
     std::mutex mutex;
     std::mutex log_mutex;
     router_config router;
+    router_config applied_router;
     model_profile default_profile;
-    std::map<std::string, model_profile> profiles;
+    std::map<std::string, json> overrides;
+    std::map<std::string, json> applied_recipes;
+    std::map<std::string, model_profile> applied_profiles;
+    std::map<std::string, uint64_t> profile_revisions;
+    json library = json::array();
+    json application = {{"background_mode", false}, {"launch_at_login", false}, {"default_model", ""}};
+    std::unordered_set<std::string> removed_paths;
+    uint64_t revision = 1;
+    std::mutex operation_mutex;
+    std::atomic<int> active_requests{0};
+    std::atomic<bool> background_mode{false};
+    std::function<void()> open_ui;
+    std::function<void *()> native_window;
     std::filesystem::path data_directory;
     std::filesystem::path config_path;
     std::filesystem::path preset_path;
@@ -115,6 +138,8 @@ struct app_state {
     std::filesystem::path log_path;
     std::string log_session;
     std::string last_error;
+    std::string configuration_warning;
+    bool configuration_read_only = false;
     int previous_router_port = 0;
     int64_t started_at_ms = 0;
     int last_exit_code = 0;
@@ -294,6 +319,9 @@ router_config router_config_from_json(const json & input, const router_config & 
 
 json profile_json(const model_profile & profile) {
     return {
+        {"context_mode", profile.context_mode},
+        {"memory_mode", profile.memory_mode},
+        {"gpu_layers", profile.gpu_layers},
         {"mode", profile.mode},
         {"cache", profile.cache},
         {"ple_cache_mib", profile.ple_cache_mib},
@@ -330,6 +358,9 @@ json profile_json(const model_profile & profile) {
 
 model_profile profile_from_json(const json & input, const model_profile & base) {
     model_profile profile = base;
+    profile.context_mode = input.value("context_mode", profile.context_mode);
+    profile.memory_mode = input.value("memory_mode", profile.memory_mode);
+    profile.gpu_layers = input.value("gpu_layers", profile.gpu_layers);
     profile.mode = input.value("mode", profile.mode);
     profile.cache = input.value("cache", profile.cache);
     profile.ple_cache_mib = input.value("ple_cache_mib", profile.ple_cache_mib);
@@ -373,12 +404,6 @@ void validate_router_config(const router_config & config) {
     if (config.models_max < 0 || config.models_max > 64) {
         throw std::runtime_error("models-max must be between 0 and 64");
     }
-    if (!config.model_directory.empty()) {
-        std::error_code error;
-        if (!std::filesystem::is_directory(native_path(config.model_directory), error) || error) {
-            throw std::runtime_error("models directory does not exist or is not readable");
-        }
-    }
 }
 
 bool local_gguf_is_valid(const std::string & path) {
@@ -393,10 +418,14 @@ bool local_gguf_is_valid(const std::string & path) {
     return std::filesystem::is_regular_file(native_path(path), error) && !error;
 }
 
-void validate_profile(const model_profile & profile) {
+void validate_profile(const model_profile & profile, bool validate_files = true) {
     static const std::unordered_set<std::string> cache_types = {
         "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1",
     };
+    if ((profile.context_mode != "auto" && profile.context_mode != "manual") ||
+            (profile.memory_mode != "auto" && profile.memory_mode != "manual") || profile.gpu_layers < -1 || profile.gpu_layers > 4096) {
+        throw std::runtime_error("invalid automatic model settings");
+    }
     if (profile.mode != "explicit" && profile.mode != "auto" && profile.mode != "os" && profile.mode != "off") {
         throw std::runtime_error("invalid paging mode");
     }
@@ -441,7 +470,7 @@ void validate_profile(const model_profile & profile) {
             profile.reasoning != "medium" && profile.reasoning != "high" && profile.reasoning != "max") {
         throw std::runtime_error("invalid reasoning effort");
     }
-    if (!local_gguf_is_valid(profile.mtp_model)) {
+    if (validate_files && !local_gguf_is_valid(profile.mtp_model)) {
         throw std::runtime_error("MTP sidecar must be a readable local .gguf file");
     }
     if (profile.mtp_cache_mib < 1 || profile.mtp_cache_mib > 65536 ||
@@ -467,6 +496,7 @@ void validate_ini_value(const std::string & value) {
 
 void write_profile(std::ostream & output, const model_profile & profile) {
     validate_ini_value(profile.mtp_model);
+    output << "n-gpu-layers = " << profile.gpu_layers << '\n';
     output << "ctx-size = " << profile.ctx_size << '\n';
     output << "batch-size = " << profile.batch_size << '\n';
     output << "ubatch-size = " << profile.ubatch_size << '\n';
@@ -529,44 +559,68 @@ void write_profile(std::ostream & output, const model_profile & profile) {
     }
 }
 
+model_profile resolved_profile(const app_state & state, const std::string & model);
+
+json recipe_locked(const app_state & state, const std::string & model) {
+    json recipe = profile_json(state.default_profile);
+    const auto found = state.overrides.find(model);
+    if (found != state.overrides.end()) recipe.update(found->second);
+    return recipe;
+}
+
+std::string canonical_model(const app_state & state, const std::string & id) {
+    for (const auto & model : state.library) if (model["id"] == id) return id;
+    for (const auto & model : state.library) {
+        for (const auto & alias : model.value("legacy_ids", json::array())) {
+            if (alias == id) return model["id"].get<std::string>();
+        }
+    }
+    return id;
+}
+
 void write_preset_locked(app_state & state) {
-    std::ofstream output(state.preset_path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        throw std::runtime_error("cannot write the model profiles file");
-    }
-    output << "# Generated by SparkMoE. Edit profiles through the Web UI.\n\n[*]\n";
-    output << "n-gpu-layers = 0\n";
+    std::ostringstream output;
+    output << "# Generated by SparkMoE. Edit model settings in the app.\n\n[*]\n";
     write_profile(output, state.default_profile);
-    for (const auto & item : state.profiles) {
-        validate_model_id(item.first);
-        output << "\n[" << item.first << "]\n";
-        write_profile(output, item.second);
+    for (const auto & model : state.library) {
+        if (!model.value("available", false)) continue;
+        const auto id = model["id"].get<std::string>();
+        validate_model_id(id);
+        const auto path = model["path"].get<std::string>();
+        validate_ini_value(path);
+        output << "\n[" << id << "]\nmodel = " << path << '\n';
+        std::string aliases;
+        for (const auto & alias : model.value("legacy_ids", json::array())) {
+            const auto value = alias.get<std::string>();
+            validate_ini_value(value);
+            if (value != id && value.find(',') == std::string::npos && canonical_model(state, value) == id) {
+                if (!aliases.empty()) aliases += ',';
+                aliases += value;
+            }
+        }
+        if (!aliases.empty()) output << "alias = " << aliases << '\n';
+        const auto projector = model.value("mmproj", std::string());
+        if (!projector.empty()) { validate_ini_value(projector); output << "mmproj = " << projector << '\n'; }
+        const auto applied = state.applied_profiles.find(id);
+        write_profile(output, applied == state.applied_profiles.end() ? resolved_profile(state, id) : applied->second);
     }
-    if (!output) {
-        throw std::runtime_error("cannot finish writing the model profiles file");
-    }
+    sparkmoe::atomic_write(state.preset_path, output.str(), false);
 }
 
 void save_config_locked(app_state & state) {
-    json profiles = json::object();
-    for (const auto & item : state.profiles) {
-        profiles[item.first] = profile_json(item.second);
-    }
+    if (state.configuration_read_only) throw std::runtime_error("These settings require a newer SparkMoE version. Install that version before saving changes.");
     const json root = {
-        {"version", 1},
+        {"version", 2},
+        {"revision", state.revision},
         {"router", router_config_json(state.router)},
         {"default_profile", profile_json(state.default_profile)},
-        {"profiles", profiles},
+        {"profiles", state.overrides},
+        {"profile_revisions", state.profile_revisions},
+        {"library", state.library},
+        {"removed_paths", state.removed_paths},
+        {"application", state.application},
     };
-    std::ofstream output(state.config_path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        throw std::runtime_error("cannot write the SparkMoE configuration");
-    }
-    output << root.dump(2) << '\n';
-    if (!output) {
-        throw std::runtime_error("cannot finish writing the SparkMoE configuration");
-    }
-    write_preset_locked(state);
+    sparkmoe::atomic_write(state.config_path, root.dump(2) + '\n');
 }
 
 void load_config(app_state & state) {
@@ -580,27 +634,39 @@ void load_config(app_state & state) {
         throw std::runtime_error("cannot read the SparkMoE configuration");
     }
     const json root = json::parse(input);
+    const int version = root.value("version", 1);
+    if (version > 2) throw std::runtime_error("Settings were created by a newer SparkMoE version.");
     router_config router = router_config_from_json(root.value("router", json::object()), state.router);
     model_profile default_profile = profile_from_json(
         root.value("default_profile", json::object()), state.default_profile);
-    std::map<std::string, model_profile> profiles;
+    if (version == 1) {
+        default_profile.context_mode = "manual";
+        default_profile.memory_mode = "manual";
+    }
+    std::map<std::string, json> profiles;
     const json saved_profiles = root.value("profiles", json::object());
     if (!saved_profiles.is_object()) {
         throw std::runtime_error("saved model profiles are invalid");
     }
-    validate_router_config(router);
-    validate_profile(default_profile);
+    if (router.port < 1024 || router.port > 65535 || router.port == manager_port()) throw std::runtime_error("Invalid saved server port.");
+    validate_profile(default_profile, false);
     for (const auto & item : saved_profiles.items()) {
         validate_model_id(item.key());
         model_profile profile = profile_from_json(item.value(), default_profile);
-        validate_profile(profile);
-        profiles[item.key()] = profile;
+        validate_profile(profile, false);
+        profiles[item.key()] = version == 1 ? profile_json(profile) : item.value();
     }
     std::lock_guard<std::mutex> lock(state.mutex);
     state.router = router;
     state.default_profile = default_profile;
-    state.profiles = std::move(profiles);
-    write_preset_locked(state);
+    state.overrides = std::move(profiles);
+    state.library = root.value("library", json::array());
+    state.application.update(root.value("application", json::object()));
+    state.background_mode = state.application.value("background_mode", false);
+    state.revision = root.value("revision", uint64_t(1));
+    state.profile_revisions = root.value("profile_revisions", std::map<std::string, uint64_t>());
+    state.removed_paths = root.value("removed_paths", std::unordered_set<std::string>());
+    if (version == 1) std::filesystem::copy_file(state.config_path, state.data_directory / "config-v1-backup.json", std::filesystem::copy_options::skip_existing);
 }
 
 json recommendation_json() {
@@ -655,6 +721,135 @@ void configure_initial_recommendation(app_state & state) {
     state.default_profile.ubatch_size = recommendation["ubatch_size"].get<int>();
 }
 
+json model_recommendation(const app_state & state, const std::string & id) {
+    json result = recommendation_json();
+    json metadata = json::object();
+    for (const auto & model : state.library) if (model["id"] == id) metadata = model.value("metadata", json::object());
+    auto number = [&](const char * key, uint64_t fallback = 0) -> uint64_t {
+        return metadata.contains(key) && metadata[key].is_number_integer() && metadata[key].get<int64_t>() > 0 ? metadata[key].get<uint64_t>() : fallback;
+    };
+    const uint64_t total = result["total_ram_mib"].get<uint64_t>();
+    const uint64_t available = result["available_ram_mib"].get<uint64_t>();
+    const uint64_t reserve = std::max<uint64_t>(1024, total / 8);
+    const uint64_t budget = available > reserve ? available - reserve : 0;
+    const uint64_t resident = number("resident_bytes") / 1048576;
+    const uint64_t layers = number("block_count", 32);
+    const uint64_t heads = number("attention.head_count", 32);
+    const uint64_t kv_heads = number("attention.head_count_kv", heads);
+    const uint64_t dimension = number("embedding_length", 4096) / std::max<uint64_t>(1, heads);
+    const uint64_t kv_per_token = 2 * layers * kv_heads *
+        (number("attention.key_length", dimension) + number("attention.value_length", dimension));
+    uint64_t context = std::min<uint64_t>(8192, number("context_length", 4096));
+    const uint64_t free = budget > resident + 512 ? budget - resident - 512 : 0;
+    while (context > 512 && (context * kv_per_token / 1048576) > free / 2) context /= 2;
+    const uint64_t kv = context * kv_per_token / 1048576;
+    const uint64_t cache = std::max<uint64_t>(64, std::min<uint64_t>(8192, free > kv ? free - kv : 64));
+    result["ctx_size"] = context;
+    result["cache_mib"] = cache;
+    result["estimated_kv_mib"] = kv;
+    result["resident_mib"] = resident;
+    result["headroom_mib"] = reserve;
+    result["estimate"] = true;
+    result["memory_fit"] = budget > resident + kv + 512 ? "estimated" : "limited";
+    result["reason"] = budget > resident + kv + 512 ? "Based on model metadata and available memory." : "Available memory is limited. A smaller model or context may be needed.";
+    result["supports_reasoning"] = metadata.value("supports_reasoning", json(nullptr));
+    result["supports_mtp"] = metadata.value("supports_mtp", json(false));
+    result["ubatch_size"] = std::min<uint64_t>(128, std::max<uint64_t>(2, free / 64));
+    return result;
+}
+
+model_profile resolved_profile(const app_state & state, const std::string & id) {
+    model_profile profile = profile_from_json(recipe_locked(state, id), state.default_profile);
+    const json recommendation = model_recommendation(state, id);
+    if (profile.context_mode == "auto") profile.ctx_size = recommendation["ctx_size"].get<int>();
+    if (profile.memory_mode == "auto") profile.cache = recommendation["cache_mib"].get<int>();
+    if (profile.context_mode == "auto" && profile.memory_mode == "auto" &&
+            (!state.overrides.count(id) || !state.overrides.at(id).contains("ubatch_size"))) {
+        profile.ubatch_size = std::min(profile.batch_size, recommendation["ubatch_size"].get<int>());
+    }
+    return profile;
+}
+
+json model_profile_response(app_state & state, const std::string & requested) {
+    const std::string id = canonical_model(state, requested);
+    const auto recipe = recipe_locked(state, id);
+    const auto applied = state.applied_recipes.find(id);
+    return {{"model", id}, {"is_override", state.overrides.count(id) != 0}, {"profile", recipe},
+        {"revision", state.profile_revisions[id]}, {"recommendation", model_recommendation(state, id)},
+        {"applied_profile", state.applied_profiles.count(id) ? profile_json(state.applied_profiles.at(id)) : json(nullptr)},
+        {"pending", applied != state.applied_recipes.end() && applied->second != recipe}};
+}
+
+void merge_library_locked(app_state & state, const json & discovered, bool explicit_import = false) {
+    const auto previous_library = state.library;
+    const auto previous_overrides = state.overrides;
+    const auto previous_removed = state.removed_paths;
+    for (auto entry : discovered) {
+        const auto path = entry["path"].get<std::string>();
+        if (explicit_import) state.removed_paths.erase(path);
+        if (state.removed_paths.count(path)) continue;
+        auto existing = std::find_if(state.library.begin(), state.library.end(), [&](const json & model) { return model["path"] == path; });
+        if (existing != state.library.end()) {
+            entry["id"] = (*existing)["id"];
+            entry["display_name"] = (*existing)["display_name"];
+            entry["favorite"] = (*existing)["favorite"];
+            for (const auto & alias : (*existing)["legacy_ids"]) {
+                if (std::find(entry["legacy_ids"].begin(), entry["legacy_ids"].end(), alias) == entry["legacy_ids"].end()) entry["legacy_ids"].push_back(alias);
+            }
+            *existing = entry;
+        } else {
+            const auto stem = entry["id"].get<std::string>();
+            std::string id = stem;
+            for (int suffix = 2; std::any_of(state.library.begin(), state.library.end(), [&](const json & model) { return model["id"] == id; }); ++suffix) id = stem + "-" + std::to_string(suffix);
+            entry["id"] = id;
+            state.library.push_back(entry);
+        }
+        const auto id = entry["id"].get<std::string>();
+        if (!state.overrides.count(id)) {
+            for (const auto & alias : entry["legacy_ids"]) {
+                const auto found = state.overrides.find(alias.get<std::string>());
+                if (found != state.overrides.end()) {
+                    state.overrides[id] = found->second;
+                    if (found->first != id) state.overrides.erase(found);
+                    break;
+                }
+            }
+        }
+    }
+    ++state.revision;
+    try { save_config_locked(state); }
+    catch (...) {
+        state.library = previous_library;
+        state.overrides = previous_overrides;
+        state.removed_paths = previous_removed;
+        --state.revision;
+        throw;
+    }
+}
+
+json library_response_locked(app_state & state) {
+    for (auto & model : state.library) {
+        std::error_code error;
+        bool present = std::filesystem::is_regular_file(native_path(model["path"].get<std::string>()), error);
+        for (const auto & file : model.value("files", json::array())) {
+            present = present && std::filesystem::is_regular_file(native_path(file.get<std::string>()), error);
+        }
+        model["available"] = present && !error && !model.contains("error");
+        model["missing"] = !present || bool(error);
+    }
+    return {{"models", state.library}, {"revision", state.revision}};
+}
+
+void apply_all_locked(app_state & state) {
+    state.applied_router = state.router;
+    for (const auto & model : state.library) {
+        const auto id = model["id"].get<std::string>();
+        state.applied_profiles[id] = resolved_profile(state, id);
+        state.applied_recipes[id] = recipe_locked(state, id);
+    }
+    write_preset_locked(state);
+}
+
 std::vector<std::string> router_arguments(const app_state & state) {
     std::vector<std::string> arguments = {
         "--host", "127.0.0.1",
@@ -666,9 +861,6 @@ std::vector<std::string> router_arguments(const app_state & state) {
         "--log-colors", "off",
         "--log-timestamps",
     };
-    if (!state.router.model_directory.empty()) {
-        arguments.insert(arguments.end(), {"--models-dir", state.router.model_directory});
-    }
     return arguments;
 }
 
@@ -737,7 +929,7 @@ void start_router_locked(app_state & state) {
     }
     validate_router_config(state.router);
     validate_profile(state.default_profile);
-    write_preset_locked(state);
+    apply_all_locked(state);
     begin_log_session_locked(state);
     state.last_error.clear();
     state.has_exit_code = false;
@@ -897,7 +1089,7 @@ void stop_router_locked(app_state & state) {
 }
 
 bool router_ready_locked(const app_state & state) {
-    httplib::Client client("127.0.0.1", state.router.port);
+    httplib::Client client("127.0.0.1", state.applied_router.port);
     client.set_connection_timeout(0, 250000);
     client.set_read_timeout(0, 500000);
     const auto response = client.Get("/health");
@@ -913,10 +1105,14 @@ json status_json(app_state & state) {
         {"running", running},
         {"server_ready", ready},
         {"phase", phase},
-        {"port", state.router.port},
+        {"port", state.applied_router.port},
+        {"revision", state.revision},
+        {"pending", router_config_json(state.router) != router_config_json(state.applied_router)},
+        {"active_requests", state.active_requests.load()},
         {"manager_port", manager_port()},
         {"started_at_ms", state.started_at_ms},
         {"last_error", state.last_error},
+        {"configuration_warning", state.configuration_warning},
         {"last_exit_code", state.has_exit_code ? json(state.last_exit_code) : json(nullptr)},
         {"log_session", state.log_session},
         {"config", router_config_json(state.router)},
@@ -928,7 +1124,7 @@ json status_json(app_state & state) {
     };
 }
 
-json browse_models_directory(const std::string & initial_directory) {
+json browse_models_directory(const std::string & initial_directory, bool file = false, void * owner_window = nullptr) {
 #if defined(_WIN32)
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     const bool uninitialize = SUCCEEDED(initialized);
@@ -939,10 +1135,12 @@ json browse_models_directory(const std::string & initial_directory) {
     HRESULT result = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
     DWORD options = 0;
     if (SUCCEEDED(result)) result = dialog->GetOptions(&options);
-    if (SUCCEEDED(result)) result = dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM |
+    if (SUCCEEDED(result)) result = dialog->SetOptions(options | (file ? FOS_FILEMUSTEXIST : FOS_PICKFOLDERS) | FOS_FORCEFILESYSTEM |
         FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR | FOS_DONTADDTORECENT);
-    if (SUCCEEDED(result)) result = dialog->SetTitle(L"Choose the folder that contains your GGUF models");
-    if (SUCCEEDED(result)) result = dialog->SetOkButtonLabel(L"Select folder");
+    if (SUCCEEDED(result)) result = dialog->SetTitle(file ? L"Add model" : L"Add model folder");
+    if (SUCCEEDED(result)) result = dialog->SetOkButtonLabel(L"Select");
+    const COMDLG_FILTERSPEC filters[] = {{L"GGUF models", L"*.gguf"}};
+    if (SUCCEEDED(result) && file) result = dialog->SetFileTypes(1, filters);
     if (SUCCEEDED(result) && !initial_directory.empty()) {
         IShellItem * initial_item = nullptr;
         const HRESULT folder_result = SHCreateItemFromParsingName(
@@ -952,7 +1150,7 @@ json browse_models_directory(const std::string & initial_directory) {
             initial_item->Release();
         }
     }
-    HWND owner = GetForegroundWindow();
+    HWND owner = static_cast<HWND>(owner_window);
     if (owner && !IsWindowVisible(owner)) owner = nullptr;
     if (SUCCEEDED(result)) result = dialog->Show(owner);
     if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
@@ -972,7 +1170,7 @@ json browse_models_directory(const std::string & initial_directory) {
     if (FAILED(result) || selected.empty()) {
         throw std::runtime_error("the selected folder does not have a local filesystem path");
     }
-    return {{"cancelled", false}, {"directory", wide_to_utf8(selected)}};
+    return {{"cancelled", false}, {"directory", wide_to_utf8(selected)}, {"path", wide_to_utf8(selected)}};
 #else
     throw std::runtime_error("native folder selection is currently available on Windows only");
 #endif
@@ -1051,11 +1249,11 @@ json read_log_json(app_state & state, const std::string & session, uint64_t requ
     };
 }
 
-void open_browser(int port) {
+void open_browser(int port, const std::string & route = "/") {
     if (std::getenv("SPARKMOE_NO_BROWSER")) {
         return;
     }
-    const std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
+    const std::string url = "http://127.0.0.1:" + std::to_string(port) + route;
 #if defined(_WIN32)
     ShellExecuteW(nullptr, L"open", utf8_to_wide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 #else
@@ -1065,25 +1263,6 @@ void open_browser(int port) {
         _exit(127);
     }
 #endif
-}
-
-void open_browser_when_ready(app_state & state) {
-    int port = 8080;
-    for (int attempt = 0; attempt < 120; ++attempt) {
-        {
-            std::lock_guard<std::mutex> lock(state.mutex);
-            port = state.router.port;
-            if (!process_running_locked(state)) {
-                return;
-            }
-            if (router_ready_locked(state)) {
-                open_browser(port);
-                return;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    }
-    open_browser(port);
 }
 
 #if defined(_WIN32)
@@ -1201,8 +1380,7 @@ private:
     }
 
     void open_ui() {
-        const snapshot value = current_snapshot();
-        open_browser(value.port);
+        if (state_.open_ui) state_.open_ui();
     }
 
     void start_router() {
@@ -1397,6 +1575,8 @@ std::string request_origin(const httplib::Request & request) {
 }
 
 bool origin_allowed(const httplib::Request & request, app_state & state) {
+    const auto host = lowercase(request.get_header_value("Host"));
+    if (host != "127.0.0.1:" + std::to_string(manager_port()) && host != "localhost:" + std::to_string(manager_port())) return false;
     const std::string origin = request_origin(request);
     if (origin.empty()) {
         return true;
@@ -1405,7 +1585,7 @@ bool origin_allowed(const httplib::Request & request, app_state & state) {
     int previous_port = 0;
     {
         std::lock_guard<std::mutex> lock(state.mutex);
-        port = state.router.port;
+        port = state.applied_router.port;
         previous_port = state.previous_router_port;
     }
     std::vector<std::string> allowed = {
@@ -1428,7 +1608,7 @@ void set_cors_headers(const httplib::Request & request, httplib::Response & resp
         response.set_header("Vary", "Origin");
     }
     response.set_header("Access-Control-Allow-Headers", "Content-Type");
-    response.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    response.set_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
 }
 
 void json_response(httplib::Response & response, const json & value, int status = 200) {
@@ -1442,6 +1622,102 @@ bool reload_router_models(const router_config & config) {
     client.set_read_timeout(60, 0);
     const auto response = client.Get("/models?reload=1");
     return response && response->status >= 200 && response->status < 300;
+}
+
+json router_models(int port) {
+    httplib::Client client("127.0.0.1", port);
+    client.set_connection_timeout(0, 300000);
+    client.set_read_timeout(3);
+    const auto response = client.Get("/models");
+    if (!response || response->status != 200) return json::array();
+    return json::parse(response->body).value("data", json::array());
+}
+
+std::string model_status(const json & models, const std::string & id) {
+    for (const auto & model : models) if (model.value("id", "") == id) return model.value("status", json::object()).value("value", "unloaded");
+    return "unloaded";
+}
+
+// Call with operation_mutex held. Requests keep their applied settings until the next load.
+void prepare_model(app_state & state, const std::string & requested, bool apply_pending) {
+    std::string id;
+    router_config router;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        id = canonical_model(state, requested);
+        library_response_locked(state);
+        const auto model = std::find_if(state.library.begin(), state.library.end(), [&](const json & row) { return row["id"] == id; });
+        if (model == state.library.end()) throw std::runtime_error("Model not found in the library.");
+        if (!model->value("available", false)) throw std::runtime_error("Model files are missing or incomplete. Update the model location.");
+        if (!process_running_locked(state)) start_router_locked(state);
+        router = state.applied_router;
+    }
+    httplib::Client client("127.0.0.1", router.port);
+    client.set_connection_timeout(1);
+    client.set_read_timeout(120);
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        const auto health = client.Get("/health");
+        if (health && health->status == 200) break;
+        if (attempt == 99) throw std::runtime_error("The model server is still starting. Try again shortly.");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    const auto status = model_status(router_models(router.port), id);
+    const bool running = status == "loaded" || status == "loading" || status == "sleeping";
+    bool pending;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        pending = !state.applied_recipes.count(id) || state.applied_recipes.at(id) != recipe_locked(state, id);
+    }
+    if (running && (!apply_pending || !pending)) return;
+    if (state.active_requests > 0) throw std::runtime_error("Wait for active requests to finish before loading or reloading a model.");
+    std::map<std::string, model_profile> previous_profiles;
+    std::map<std::string, json> previous_recipes;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        previous_profiles = state.applied_profiles;
+        previous_recipes = state.applied_recipes;
+        state.applied_profiles[id] = resolved_profile(state, id);
+        state.applied_recipes[id] = recipe_locked(state, id);
+        try { write_preset_locked(state); }
+        catch (...) { state.applied_profiles = previous_profiles; state.applied_recipes = previous_recipes; throw; }
+    }
+    try {
+        if (!reload_router_models(router)) throw std::runtime_error("The model server could not read the saved settings.");
+        const auto reloaded_status = model_status(router_models(router.port), id);
+        if (reloaded_status == "unloaded" || reloaded_status == "failed") {
+            const auto response = client.Post("/models/load", json({{"model", id}}).dump(), "application/json");
+            if (!response || response->status != 200) throw std::runtime_error("The model could not be loaded. Check Activity for details.");
+        }
+    } catch (...) {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.applied_profiles = previous_profiles;
+        state.applied_recipes = previous_recipes;
+        write_preset_locked(state);
+        throw;
+    }
+}
+
+json public_models(app_state & state, bool detailed) {
+    int port;
+    { std::lock_guard<std::mutex> lock(state.mutex); port = state.applied_router.port; }
+    const auto runtime = router_models(port);
+    std::lock_guard<std::mutex> lock(state.mutex);
+    library_response_locked(state);
+    json result = json::array();
+    for (const auto & entry : state.library) {
+        if (!entry.value("available", false)) continue;
+        const auto id = entry["id"].get<std::string>();
+        json model = {{"id", id}, {"object", "model"}, {"created", 0}, {"owned_by", "sparkmoe"},
+                      {"status", {{"value", model_status(runtime, id)}}}};
+        if (detailed) {
+            for (const auto & current : runtime) if (current.value("id", "") == id) model = current;
+            if (!model.contains("status")) model["status"] = {{"value", "unloaded"}};
+            model["name"] = entry["display_name"];
+            model["sparkmoe"] = {{"favorite", entry.value("favorite", false)}, {"is_default", state.application.value("default_model", "") == id}};
+        }
+        result.push_back(std::move(model));
+    }
+    return {{"object", "list"}, {"data", result}, {"models", result}};
 }
 
 int run_manager() {
@@ -1463,13 +1739,27 @@ int run_manager() {
     try {
         load_config(state);
     } catch (const std::exception & error) {
-        std::lock_guard<std::mutex> lock(state.mutex);
-        begin_log_session_locked(state);
-        state.last_error = std::string("Saved configuration was not loaded: ") + error.what();
-        append_log(state, state.last_error);
-        save_config_locked(state);
+        state.configuration_warning = std::string("Saved settings could not be loaded. A recovery copy was kept: ") + error.what();
+        state.configuration_read_only = std::string(error.what()).find("newer SparkMoE") != std::string::npos;
+        if (std::filesystem::exists(state.config_path)) {
+            std::filesystem::copy_file(state.config_path, state.data_directory / ("config-recovery-" + timestamp_string(true) + ".json"), std::filesystem::copy_options::skip_existing);
+        }
+        const auto config_path = state.config_path;
+        const auto backup = std::filesystem::path(config_path.native() + std::filesystem::path(".bak").native());
+        if (!state.configuration_read_only && std::filesystem::exists(backup)) {
+            try {
+                state.config_path = backup;
+                load_config(state);
+                state.configuration_warning = "Settings were restored from the last backup. A recovery copy of the unreadable file was kept.";
+            } catch (...) {}
+            state.config_path = config_path;
+        }
+        append_log(state, state.configuration_warning);
     }
     try {
+        if (state.library.empty() && !state.router.model_directory.empty() && std::filesystem::is_directory(native_path(state.router.model_directory))) {
+            merge_library_locked(state, sparkmoe::discover_models(native_path(state.router.model_directory)));
+        }
         std::lock_guard<std::mutex> lock(state.mutex);
         start_router_locked(state);
     } catch (const std::exception & error) {
@@ -1479,6 +1769,8 @@ int run_manager() {
     }
 
     httplib::Server server;
+    server.new_task_queue = []() { return new httplib::ThreadPool(16); };
+    server.set_payload_max_length(64 * 1024 * 1024);
     auto authorize = [&](const httplib::Request & request, httplib::Response & response) {
         if (!origin_allowed(request, state)) {
             json_response(response, {{"error", "request origin is not allowed"}}, 403);
@@ -1488,18 +1780,74 @@ int run_manager() {
         return true;
     };
 
-    server.Get("/", [&](const httplib::Request &, httplib::Response & response) {
-        int port = 8080;
-        {
-            std::lock_guard<std::mutex> lock(state.mutex);
-            port = state.router.port;
-        }
-        response.status = 302;
-        response.set_header("Location", "http://127.0.0.1:" + std::to_string(port) + "/#/sparkmoe");
-    });
-    server.Options(R"(/api/.*)", [&](const httplib::Request & request, httplib::Response & response) {
+    server.Options(R"(/.*)", [&](const httplib::Request & request, httplib::Response & response) {
         if (authorize(request, response)) response.status = 204;
     });
+    server.Post("/api/browse-model-file", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try { json_response(response, browse_models_directory("", true, state.native_window ? state.native_window() : nullptr)); }
+        catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    });
+    sparkmoe::downloads downloads(state.data_directory, [&](const std::filesystem::path & path) {
+        const auto models = sparkmoe::discover_models(path);
+        std::lock_guard<std::mutex> operation(state.operation_mutex);
+        router_config router;
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            merge_library_locked(state, models, true);
+            write_preset_locked(state);
+            router = state.applied_router;
+        }
+        if (state.active_requests == 0) reload_router_models(router);
+    });
+    auto download_action = [&](const std::string & action, const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            auto input = request.body.empty() ? json::object() : json::parse(request.body);
+            for (const auto & param : request.params) input[param.first] = param.second;
+            json_response(response, downloads.dispatch(action, input));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    };
+    server.Get("/api/downloads", [&](const auto & request, auto & response) { download_action("list", request, response); });
+    server.Post("/api/downloads", [&](const auto & request, auto & response) { download_action("add", request, response); });
+    for (const std::string action : {"search", "catalog"}) server.Get("/api/downloads/" + action, [&, action](const auto & request, auto & response) { download_action(action, request, response); });
+    for (const std::string action : {"pause", "resume"}) server.Post("/api/downloads/" + action, [&, action](const auto & request, auto & response) { download_action(action, request, response); });
+    auto connection_action = [&](const std::string & action, const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            sparkmoe::connection_context context;
+            context.data_directory = state.data_directory;
+            context.api_base_url = "http://127.0.0.1:" + std::to_string(manager_port()) + "/v1";
+            context.api_key = "sparkmoe-local";
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                library_response_locked(state);
+                for (auto model : state.library) {
+                    if (!model.value("available", false)) continue;
+                    model["context_length"] = resolved_profile(state, model["id"].get<std::string>()).ctx_size;
+                    model["supports_tools"] = model.value("metadata", json::object()).value("supports_tools", json(nullptr));
+                    context.models.push_back(model);
+                }
+            }
+            context.ensure_model_ready = [&](const std::string & id) {
+                std::lock_guard<std::mutex> operation(state.operation_mutex);
+                prepare_model(state, id, false);
+                int port;
+                { std::lock_guard<std::mutex> lock(state.mutex); port = state.applied_router.port; }
+                for (int attempt = 0; attempt < 120; ++attempt) {
+                    const auto status = model_status(router_models(port), id);
+                    if (status == "loaded" || status == "sleeping") return;
+                    if (status != "loading") throw std::runtime_error("The model did not load. Check Activity for details.");
+                    if (request.is_connection_closed()) throw std::runtime_error("Connection launch was cancelled.");
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+                throw std::runtime_error("The model is still loading. Open the connection again when it is ready.");
+            };
+            json_response(response, sparkmoe::connections_dispatch(action, request.body.empty() ? json::object() : json::parse(request.body), context));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    };
+    server.Get("/api/connections", [&](const auto & request, auto & response) { connection_action("list", request, response); });
+    for (const std::string action : {"preview", "configure", "launch", "remove"}) server.Post("/api/connections/" + action, [&, action](const auto & request, auto & response) { connection_action(action, request, response); });
     server.Get("/api/status", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         json_response(response, status_json(state));
@@ -1513,30 +1861,22 @@ int run_manager() {
         if (!authorize(request, response)) return;
         try {
             const json input = json::parse(request.body);
-            router_config next;
             {
                 std::lock_guard<std::mutex> lock(state.mutex);
-                next = router_config_from_json(input, state.router);
-            }
-            validate_router_config(next);
-            {
-                std::lock_guard<std::mutex> lock(state.mutex);
-                stop_router_locked(state);
-                state.previous_router_port = state.router.port;
+                if (input.contains("revision") && input["revision"] != state.revision) {
+                    json_response(response, {{"error", "Settings changed in another window. Reload them before saving."}}, 409);
+                    return;
+                }
+                const router_config previous = state.router;
+                const router_config next = router_config_from_json(input, previous);
+                validate_router_config(next);
                 state.router = next;
-                save_config_locked(state);
-                start_router_locked(state);
+                ++state.revision;
+                try { save_config_locked(state); }
+                catch (...) { state.router = previous; --state.revision; throw; }
             }
-            append_log(state, "Router configuration saved");
-            json_response(response, {{"ok", true}, {"port", next.port}, {"status", status_json(state)}});
-        } catch (const std::exception & error) {
-            {
-                std::lock_guard<std::mutex> lock(state.mutex);
-                state.last_error = error.what();
-            }
-            append_log(state, std::string("Configuration update failed: ") + error.what());
-            json_response(response, {{"error", error.what()}}, 400);
-        }
+            json_response(response, {{"ok", true}, {"port", manager_port()}, {"status", status_json(state)}});
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
     });
     server.Get("/api/recommendation", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
@@ -1550,70 +1890,217 @@ int run_manager() {
                 std::lock_guard<std::mutex> lock(state.mutex);
                 initial_directory = state.router.model_directory;
             }
-            json_response(response, browse_models_directory(initial_directory));
+            json_response(response, browse_models_directory(initial_directory, false, state.native_window ? state.native_window() : nullptr));
         } catch (const std::exception & error) {
             json_response(response, {{"error", error.what()}}, 500);
         }
     });
+    server.Get("/api/library", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            if (request.get_param_value("rescan") == "1") {
+                std::string directory;
+                { std::lock_guard<std::mutex> lock(state.mutex); directory = state.router.model_directory; }
+                if (!directory.empty()) {
+                    auto discovered = sparkmoe::discover_models(native_path(directory));
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    merge_library_locked(state, discovered);
+                    write_preset_locked(state);
+                }
+            }
+            std::lock_guard<std::mutex> lock(state.mutex);
+            json_response(response, library_response_locked(state));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    });
+    server.Post("/api/library", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            std::lock_guard<std::mutex> operation(state.operation_mutex);
+            const auto input = json::parse(request.body);
+            const auto discovered = sparkmoe::discover_models(native_path(input.value("path", std::string())));
+            router_config router;
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                merge_library_locked(state, discovered, true);
+                write_preset_locked(state);
+                router = state.applied_router;
+            }
+            if (state.active_requests == 0) reload_router_models(router);
+            std::lock_guard<std::mutex> lock(state.mutex);
+            json_response(response, library_response_locked(state));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    });
+    server.Patch("/api/library", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            std::lock_guard<std::mutex> operation(state.operation_mutex);
+            const auto input = json::parse(request.body);
+            if (input.contains("path") && state.active_requests > 0) throw std::runtime_error("Wait for active requests to finish before moving a model.");
+            json relocated;
+            if (input.contains("path")) relocated = sparkmoe::discover_models(native_path(input["path"].get<std::string>()));
+            std::lock_guard<std::mutex> lock(state.mutex);
+            const auto previous = state.library;
+            const auto id = input.value("id", std::string());
+            auto model = std::find_if(state.library.begin(), state.library.end(), [&](const json & entry) { return entry["id"] == id; });
+            if (model == state.library.end()) throw std::runtime_error("Model not found.");
+            if (!relocated.is_null()) {
+                if (relocated.size() != 1) throw std::runtime_error("Choose one model file to update its location.");
+                auto replacement = relocated[0];
+                replacement["id"] = (*model)["id"];
+                replacement["display_name"] = (*model)["display_name"];
+                replacement["favorite"] = (*model)["favorite"];
+                replacement["legacy_ids"] = (*model)["legacy_ids"];
+                *model = replacement;
+            }
+            if (input.contains("display_name")) {
+                const auto name = input["display_name"].get<std::string>();
+                if (name.empty() || name.size() > 160 || name.find_first_of("\r\n") != std::string::npos) throw std::runtime_error("Enter a model name of up to 160 characters.");
+                (*model)["display_name"] = name;
+            }
+            if (input.contains("favorite")) (*model)["favorite"] = input["favorite"].get<bool>();
+            ++state.revision;
+            try { save_config_locked(state); write_preset_locked(state); }
+            catch (...) { state.library = previous; --state.revision; throw; }
+            json_response(response, library_response_locked(state));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    });
+    server.Delete("/api/library", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            std::lock_guard<std::mutex> operation(state.operation_mutex);
+            if (state.active_requests > 0) { json_response(response, {{"error", "Wait for active requests to finish before removing a model."}}, 409); return; }
+            router_config router;
+            {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                const auto id = request.get_param_value("id");
+                auto model = std::find_if(state.library.begin(), state.library.end(), [&](const json & entry) { return entry["id"] == id; });
+                if (model == state.library.end()) throw std::runtime_error("Model not found.");
+                state.removed_paths.insert((*model)["path"].get<std::string>());
+                state.library.erase(model);
+                ++state.revision;
+                save_config_locked(state);
+                write_preset_locked(state);
+                router = state.applied_router;
+            }
+            if (state.active_requests == 0) reload_router_models(router);
+            std::lock_guard<std::mutex> lock(state.mutex);
+            json_response(response, library_response_locked(state));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    });
+    server.Get("/api/application", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        std::lock_guard<std::mutex> lock(state.mutex);
+        auto result = state.application;
+        result["revision"] = state.revision;
+        json_response(response, result);
+    });
+    server.Post("/api/application", [&](const httplib::Request & request, httplib::Response & response) {
+        if (!authorize(request, response)) return;
+        try {
+            const auto input = json::parse(request.body);
+            std::lock_guard<std::mutex> lock(state.mutex);
+            auto next = state.application;
+            for (const auto & field : input.items()) {
+                if (field.key() == "revision") {
+                    if (field.value() != state.revision) { json_response(response, {{"error", "Settings changed in another window."}}, 409); return; }
+                } else if (field.key() == "background_mode" || field.key() == "launch_at_login") next[field.key()] = field.value().get<bool>();
+                else if (field.key() == "default_model") next[field.key()] = field.value().get<std::string>();
+                else throw std::runtime_error("Unknown application setting.");
+            }
+            const auto default_model = next.value("default_model", "");
+            if (!default_model.empty() && std::none_of(state.library.begin(), state.library.end(), [&](const auto & model) { return model["id"] == default_model; })) throw std::runtime_error("Default model is not in the library.");
+            const auto previous = state.application;
+            auto startup = [&](bool enabled) {
+#if defined(_WIN32)
+                HKEY key = nullptr;
+                if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) throw std::runtime_error("Cannot update Windows startup settings.");
+                LSTATUS result = ERROR_SUCCESS;
+                if (enabled) {
+                    const auto command = quote_windows_arg((executable_directory() / L"SparkMoE.exe").wstring());
+                    result = RegSetValueExW(key, L"SparkMoE", 0, REG_SZ, reinterpret_cast<const BYTE *>(command.c_str()), static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+                } else { result = RegDeleteValueW(key, L"SparkMoE"); if (result == ERROR_FILE_NOT_FOUND) result = ERROR_SUCCESS; }
+                RegCloseKey(key);
+                if (result != ERROR_SUCCESS) throw std::runtime_error("Cannot update Windows startup settings.");
+#else
+                if (enabled) throw std::runtime_error("Launch at sign-in is available on Windows.");
+#endif
+            };
+            const bool startup_changed = previous["launch_at_login"] != next["launch_at_login"];
+            if (startup_changed) startup(next.value("launch_at_login", false));
+            state.application = next;
+            ++state.revision;
+            try { save_config_locked(state); }
+            catch (...) {
+                state.application = previous;
+                --state.revision;
+                if (startup_changed) startup(previous.value("launch_at_login", false));
+                throw;
+            }
+            state.background_mode = next.value("background_mode", false);
+            next["revision"] = state.revision;
+            json_response(response, next);
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    });
     server.Get("/api/model-profile", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            const std::string model = request.has_param("model") ? request.get_param_value("model") : "";
+            const auto model = request.get_param_value("model");
             validate_model_id(model);
             std::lock_guard<std::mutex> lock(state.mutex);
-            const auto found = state.profiles.find(model);
-            json_response(response, {
-                {"model", model},
-                {"is_override", found != state.profiles.end()},
-                {"profile", profile_json(found == state.profiles.end() ? state.default_profile : found->second)},
-            });
-        } catch (const std::exception & error) {
-            json_response(response, {{"error", error.what()}}, 400);
-        }
+            json_response(response, model_profile_response(state, model));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
     });
-    server.Post("/api/model-profile", [&](const httplib::Request & request, httplib::Response & response) {
+    auto save_profile = [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            const json input = json::parse(request.body);
-            const std::string model = input.value("model", std::string());
-            validate_model_id(model);
-            router_config router;
-            {
-                std::lock_guard<std::mutex> lock(state.mutex);
-                const auto found = state.profiles.find(model);
-                const model_profile base = found == state.profiles.end() ? state.default_profile : found->second;
-                model_profile profile = profile_from_json(input.value("profile", json::object()), base);
-                validate_profile(profile);
-                state.profiles[model] = profile;
-                save_config_locked(state);
-                router = state.router;
+            const bool reset = request.method == "DELETE";
+            const json input = reset ? json::object() : json::parse(request.body);
+            const auto requested = reset ? request.get_param_value("model") : input.value("model", std::string());
+            validate_model_id(requested);
+            std::lock_guard<std::mutex> lock(state.mutex);
+            const auto model = canonical_model(state, requested);
+            const json revision = reset && request.has_param("revision") ? json(std::stoull(request.get_param_value("revision"))) : input.value("revision", json(nullptr));
+            if (!revision.is_null() && revision != state.profile_revisions[model]) {
+                json_response(response, {{"error", "Model settings changed in another window. Reload them before saving."}}, 409);
+                return;
             }
-            const bool reloaded = reload_router_models(router);
-            append_log(state, "Saved model profile for " + model);
-            json_response(response, {{"ok", true}, {"model", model}, {"router_reloaded", reloaded}});
-        } catch (const std::exception & error) {
-            append_log(state, std::string("Model profile update failed: ") + error.what());
-            json_response(response, {{"error", error.what()}}, 400);
-        }
-    });
-    server.Delete("/api/model-profile", [&](const httplib::Request & request, httplib::Response & response) {
+            const auto previous = state.overrides;
+            if (reset) state.overrides.erase(model);
+            else {
+                const json changes = input.value("profile", json::object());
+                if (!changes.is_object()) throw std::runtime_error("Model settings must be an object.");
+                auto recipe = recipe_locked(state, model);
+                for (const auto & field : changes.items()) {
+                    if (!recipe.contains(field.key())) throw std::runtime_error("Unknown model setting: " + field.key());
+                    recipe[field.key()] = field.value();
+                }
+                validate_profile(profile_from_json(recipe, state.default_profile));
+                json overrides = state.overrides.count(model) ? state.overrides[model] : json::object();
+                overrides.update(changes);
+                state.overrides[model] = overrides;
+            }
+            ++state.profile_revisions[model];
+            ++state.revision;
+            try { save_config_locked(state); }
+            catch (...) { state.overrides = previous; --state.profile_revisions[model]; --state.revision; throw; }
+            auto result = model_profile_response(state, model);
+            result["ok"] = true;
+            result["router_reloaded"] = false;
+            json_response(response, result);
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
+    };
+    server.Post("/api/model-profile", save_profile);
+    server.Delete("/api/model-profile", save_profile);
+    server.Post("/api/model-apply", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
-            const std::string model = request.has_param("model") ? request.get_param_value("model") : "";
-            validate_model_id(model);
-            router_config router;
-            {
-                std::lock_guard<std::mutex> lock(state.mutex);
-                state.profiles.erase(model);
-                save_config_locked(state);
-                router = state.router;
-            }
-            const bool reloaded = reload_router_models(router);
-            append_log(state, "Reset model profile for " + model);
-            json_response(response, {{"ok", true}, {"router_reloaded", reloaded}});
-        } catch (const std::exception & error) {
-            json_response(response, {{"error", error.what()}}, 400);
-        }
+            const auto input = json::parse(request.body);
+            std::lock_guard<std::mutex> operation(state.operation_mutex);
+            const auto model = input.value("model", std::string());
+            prepare_model(state, model, true);
+            std::lock_guard<std::mutex> lock(state.mutex);
+            json_response(response, model_profile_response(state, model));
+        } catch (const std::exception & error) { json_response(response, {{"error", error.what()}}, 400); }
     });
     server.Post("/api/start", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
@@ -1628,6 +2115,8 @@ int run_manager() {
     server.Post("/api/restart", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
         try {
+            std::lock_guard<std::mutex> operation(state.operation_mutex);
+            if (state.active_requests > 0) { json_response(response, {{"error", "Wait for active requests to finish before restarting the server."}}, 409); return; }
             std::lock_guard<std::mutex> lock(state.mutex);
             stop_router_locked(state);
             start_router_locked(state);
@@ -1650,12 +2139,7 @@ int run_manager() {
     });
     server.Post("/api/open", [&](const httplib::Request & request, httplib::Response & response) {
         if (!authorize(request, response)) return;
-        int port = 8080;
-        {
-            std::lock_guard<std::mutex> lock(state.mutex);
-            port = state.router.port;
-        }
-        open_browser(port);
+        if (state.open_ui) state.open_ui();
         json_response(response, {{"ok", true}});
     });
     server.Get("/api/log-sessions", [&](const httplib::Request & request, httplib::Response & response) {
@@ -1703,7 +2187,7 @@ int run_manager() {
             diagnostic = {
                 {"sparkmoe_version", SPARKMOE_VERSION},
                 {"router", router_config_json(state.router)},
-                {"profile_count", state.profiles.size()},
+                {"profile_count", state.overrides.size()},
                 {"log_session", state.log_session},
 #if defined(_WIN32)
                 {"platform", "windows"},
@@ -1717,6 +2201,71 @@ int run_manager() {
         response.set_header("Content-Disposition", "attachment; filename=sparkmoe-diagnostics.json");
         json_response(response, diagnostic);
     });
+    auto proxy = [&](const httplib::Request & request, httplib::Response & response) {
+        if (!origin_allowed(request, state)) { json_response(response, {{"error", "Request origin is not allowed."}}, 403); return; }
+        set_cors_headers(request, response);
+        if (request.method == "GET" && sparkmoe::serve_ui_asset(request, response)) return;
+        if (request.path.rfind("/api/", 0) == 0) { json_response(response, {{"error", "Unknown management endpoint."}}, 404); return; }
+        try {
+            if (request.method == "GET" && (request.path == "/v1/models" || request.path == "/models")) {
+                json_response(response, public_models(state, request.path == "/models"));
+                return;
+            }
+            const bool generation = request.method == "POST" &&
+                (request.path.find("complet") != std::string::npos || request.path == "/v1/responses" || request.path == "/responses" || request.path == "/v1/messages");
+            const bool control = request.path == "/models/load" || request.path == "/models/unload";
+            httplib::Request forwarded = request;
+            std::unique_lock<std::mutex> operation(state.operation_mutex, std::defer_lock);
+            if (generation || control) operation.lock();
+            if (generation || request.path == "/models/load") {
+                auto body = json::parse(request.body);
+                std::string model = body.value("model", "");
+                if (model.empty()) {
+                    std::lock_guard<std::mutex> lock(state.mutex);
+                    model = state.application.value("default_model", "");
+                    if (model.empty() && state.library.size() == 1) model = state.library[0]["id"].get<std::string>();
+                }
+                if (generation) {
+                    bool autoload;
+                    int engine_port;
+                    { std::lock_guard<std::mutex> lock(state.mutex); autoload = state.applied_router.models_autoload; engine_port = state.applied_router.port; model = canonical_model(state, model); }
+                    const auto status = model_status(router_models(engine_port), model);
+                    if (!autoload && status != "loaded" && status != "loading" && status != "sleeping") throw std::runtime_error("Automatic model loading is disabled. Load the model in SparkMoE first.");
+                }
+                prepare_model(state, model, request.path == "/models/load");
+                { std::lock_guard<std::mutex> lock(state.mutex); body["model"] = canonical_model(state, model); }
+                forwarded.body = body.dump();
+                if (request.path == "/models/load") { json_response(response, {{"success", true}}); return; }
+            } else if (control && state.active_requests > 0) {
+                json_response(response, {{"error", "Wait for active requests to finish before unloading the model."}}, 409);
+                return;
+            }
+            int port;
+            { std::lock_guard<std::mutex> lock(state.mutex); port = state.applied_router.port; }
+            if (request.path == "/models/unload" && request.method == "POST") {
+                const auto body = json::parse(request.body);
+                std::string id;
+                { std::lock_guard<std::mutex> lock(state.mutex); id = canonical_model(state, body.value("model", "")); }
+                httplib::Client client("127.0.0.1", port);
+                client.set_connection_timeout(1);
+                client.set_read_timeout(30);
+                const auto result = client.Post("/models/unload", json({{"model", id}}).dump(), "application/json");
+                if (!result || result->status != 200) throw std::runtime_error("The model could not be unloaded.");
+                for (int attempt = 0; attempt < 300; ++attempt) {
+                    if (model_status(router_models(port), id) == "unloaded") { json_response(response, {{"success", true}}); return; }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                throw std::runtime_error("The model is still unloading. Try again shortly.");
+            }
+            sparkmoe::proxy_request(forwarded, response, port, generation ? &state.active_requests : nullptr);
+        } catch (const std::exception & error) { json_response(response, {{"error", {{"message", error.what()}, {"type", "invalid_request_error"}}}}, 400); }
+
+    };
+    server.Get(R"(/.*)", proxy);
+    server.Post(R"(/.*)", proxy);
+    server.Delete(R"(/.*)", proxy);
+    server.Patch(R"(/.*)", proxy);
+    server.Put(R"(/.*)", proxy);
     server.set_exception_handler([](const auto &, auto & response, std::exception_ptr error) {
         try {
             if (error) std::rethrow_exception(error);
@@ -1725,16 +2274,40 @@ int run_manager() {
         }
     });
 
+    sparkmoe::desktop_window desktop;
+    std::atomic<bool> desktop_ready{false};
+    const std::string initial_route = state.library.empty() ? "/#/sparkmoe" : "/";
+    state.native_window = [&]() { return desktop.native_handle(); };
+    state.open_ui = [&]() { if (!desktop_ready || !desktop.show()) open_browser(manager_port(), initial_route); };
+    if (!server.bind_to_port("127.0.0.1", manager_port())) {
+        append_log(state, "The SparkMoE application port is already in use.");
+        std::lock_guard<std::mutex> lock(state.mutex);
+        stop_router_locked(state);
+        return 1;
+    }
 #if defined(_WIN32)
     notification_area tray(state, server);
     const bool tray_enabled = std::getenv("SPARKMOE_NO_TRAY") == nullptr;
-    if (tray_enabled) {
-        append_log(state, tray.start() ? "Notification area icon ready" : "Notification area icon unavailable");
-    }
+    if (tray_enabled) append_log(state, tray.start() ? "Notification area icon ready" : "Notification area icon unavailable");
 #endif
-    std::thread browser_thread([&state]() { open_browser_when_ready(state); });
-    const bool ok = server.listen("127.0.0.1", manager_port());
-    if (browser_thread.joinable()) browser_thread.join();
+    std::thread window_thread([&]() {
+        if (std::getenv("SPARKMOE_NO_BROWSER")) return;
+        for (int attempt = 0; attempt < 100 && !server.is_running(); ++attempt) std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        if (!server.is_running()) return;
+        sparkmoe::desktop_window::options options;
+        options.url = "http://127.0.0.1:" + std::to_string(manager_port()) + initial_route;
+        options.user_data_directory = state.data_directory / "WebView2";
+        options.keep_in_background = [&]() { return state.background_mode.load(); };
+        options.has_active_requests = [&]() { return state.active_requests.load() > 0; };
+        options.request_shutdown = [&]() { server.stop(); };
+        options.log = [&](const std::string & message) { append_log(state, message); };
+        options.browser_fallback = [&]() { open_browser(manager_port(), initial_route); };
+        desktop_ready = std::getenv("SPARKMOE_BROWSER_ONLY") == nullptr && desktop.start(std::move(options));
+        if (!desktop_ready) open_browser(manager_port(), initial_route);
+    });
+    const bool ok = server.listen_after_bind();
+    if (window_thread.joinable()) window_thread.join();
+    desktop.stop();
 #if defined(_WIN32)
     if (tray_enabled) tray.stop();
 #endif
@@ -1749,6 +2322,7 @@ int run_manager() {
 
 #if defined(_WIN32)
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    SetCurrentProcessExplicitAppUserModelID(L"SparkMoE.Desktop");
     std::wstring mutex_name = L"Local\\SparkMoEManager";
     if (manager_port() != default_manager_port) {
         mutex_name += L"-" + std::to_wstring(manager_port());
@@ -1761,15 +2335,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         CloseHandle(instance);
         httplib::Client client("127.0.0.1", manager_port());
         client.set_connection_timeout(0, 500000);
-        const auto response = client.Get("/api/status");
-        int port = 8080;
-        if (response && response->status == 200) {
-            try {
-                port = json::parse(response->body).value("port", port);
-            } catch (...) {
-            }
-        }
-        open_browser(port);
+        client.Post("/api/open", "{}", "application/json");
         return 0;
     }
     const int result = run_manager();

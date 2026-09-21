@@ -3,6 +3,7 @@
 
 """Exercise the real HTTP server with tiny local GGUF fixtures, without downloads."""
 import argparse
+import gzip
 import json
 import os
 from pathlib import Path
@@ -15,9 +16,9 @@ import urllib.parse
 import urllib.request
 
 
-def request(base, route, body=None):
+def request(base, route, body=None, method=None, headers=None):
     data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(base + route, data=data, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(base + route, data=data, method=method, headers={"Content-Type": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=30) as response:
             return json.load(response)
@@ -187,6 +188,7 @@ def run_manager(binary_dir, root, log_dir):
     suffix = ".exe" if os.name == "nt" else ""
     env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
     env["SPARKMOE_NO_BROWSER"] = "1"
+    env["SPARKMOE_NO_TRAY"] = "1"
     env["SPARKMOE_DATA_DIR"] = str(root / "manager-state")
     env["SPARKMOE_MANAGER_PORT"] = str(manager_port)
     env["SPARKMOE_SERVER_PORT"] = str(port)
@@ -206,7 +208,12 @@ def run_manager(binary_dir, root, log_dir):
                     time.sleep(.1)
             assert config["models_max"] == 1 and config["models_autoload"] and config["port"] == port
             config.update(model_directory=str(root), models_max=2)
+            original_pid = request(base, "/api/status")["pid"]
             request(base, "/api/config", config)
+            assert request(base, "/api/status")["pid"] == original_pid, "saving restarted the router"
+            assert request(base, "/api/status")["pending"], "saved engine changes were not marked pending"
+            request(base, "/api/library", {"path": str(root)})
+            request(base, "/api/restart", {})
             deadline = time.monotonic() + 45
             while True:
                 status = request(base, "/api/status")
@@ -216,16 +223,50 @@ def run_manager(binary_dir, root, log_dir):
                     logs = request(base, "/api/logs?max_bytes=16384")
                     raise RuntimeError(f"manager-controlled router did not become ready: {status}; logs: {logs}")
                 time.sleep(.2)
-            backend = f"http://127.0.0.1:{port}"
+            backend = base
             models = request(backend, "/models")["data"]
-            model_id = next(model["id"] for model in models if "test-sharded-00001" in model["id"])
+            model_id = next(model["id"] for model in models if model["id"] == "test-sharded")
             profile_response = request(base, "/api/model-profile?" + urllib.parse.urlencode({"model": model_id}))
             assert not profile_response["is_override"]
             profile = profile_response["profile"]
-            profile.update(mode="explicit", cache=1, slots=4, io_threads=2, inference_threads=2,
+            profile.update(context_mode="manual", memory_mode="manual", mode="explicit", cache=1, slots=4, io_threads=2, inference_threads=2,
                            ctx_size=256, batch_size=4, ubatch_size=4, parallel=1, cache_policy="hybrid",
                            overlap="on", prefetch="temporal", io_mode="direct", dense_residency="resident")
-            request(base, "/api/model-profile", {"model": model_id, "profile": profile})
+            saved = request(base, "/api/model-profile", {"model": model_id, "profile": profile, "revision": profile_response["revision"]})
+            assert saved["router_reloaded"] is False
+            try:
+                request(base, "/api/model-profile", {"model": model_id, "profile": {"cache": 7}, "revision": profile_response["revision"]})
+                raise AssertionError("stale revision accepted")
+            except RuntimeError as error:
+                assert "409" in str(error), error
+            library = request(base, "/api/library")["models"]
+            grouped = next(model for model in library if model["id"] == model_id)
+            assert len(grouped["files"]) == 2 and grouped["size_bytes"] == sum(Path(f).stat().st_size for f in grouped["files"])
+            assert grouped["metadata"]["resident_bytes"] > 0
+            public = request(base, "/v1/models")
+            assert all("/" not in model["id"] and "\\" not in model["id"] for model in public["data"])
+            assert all(set(model) == {"id", "object", "created", "owned_by", "status"} for model in public["data"]), "API model list exposes paths"
+            detailed = {model["id"]: model for model in request(base, "/models")["data"]}
+            assert all(model["status"]["value"] == detailed[model["id"]]["status"]["value"] for model in public["data"]), "API model list omits UI load status"
+            renamed = request(base, "/api/library", {"id": model_id, "display_name": "Short model", "favorite": True}, method="PATCH")
+            assert next(model for model in renamed["models"] if model["id"] == model_id)["favorite"]
+            request(base, "/api/application", {"default_model": model_id})
+            for headers in ({"Origin": "https://example.com"}, {"Host": "example.com"}):
+                try:
+                    request(base, "/api/status", headers=headers)
+                    raise AssertionError("foreign origin or host accepted")
+                except RuntimeError as error:
+                    assert "403" in str(error)
+            assert request(base, "/api/downloads")["jobs"] == []
+            for url in ("http://localhost/model.gguf", "https://huggingface.co/a/b/resolve/main/../../bad.gguf"):
+                try:
+                    request(base, "/api/downloads", {"url": url})
+                    raise AssertionError("invalid download URL accepted")
+                except RuntimeError as error:
+                    assert "400" in str(error)
+            connections = request(base, "/api/connections")
+            assert connections["connectors"] and connections["connections"] == []
+
             try:
                 request(backend, "/models/load", {"model": model_id})
             except RuntimeError as cause:
@@ -263,6 +304,40 @@ def run_manager(binary_dir, root, log_dir):
                 "chat_template_kwargs": {"enable_thinking": False},
             })
             assert chat["choices"], "router did not forward request-level thinking controls"
+            sse = urllib.request.Request(base + "/v1/chat/completions",
+                data=json.dumps({"model": model_id, "messages": [{"role": "user", "content": "ABC"}], "max_tokens": 4, "stream": True, "ignore_eos": True}).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(sse, timeout=30) as response:
+                events = [line[6:] for line in response.read().decode().splitlines() if line.startswith("data: ")]
+            assert events and events[-1] == "[DONE]", "manager truncated SSE"
+            current_profile = request(base, "/api/model-profile" + query)
+            changed = request(base, "/api/model-profile", {"model": model_id, "profile": {"overlap": "off"}, "revision": current_profile["revision"]})
+            assert changed["pending"]
+            assert request(base, "/sparkmoe/v1/config" + query)["overlap"], "saving changed the running model"
+            request(base, "/completion", {"model": model_id, "prompt": "ABC", "n_predict": 2, "ignore_eos": True})
+            assert request(base, "/sparkmoe/v1/config" + query)["overlap"], "a request applied pending settings to the running model"
+            request(base, "/models/unload", {"model": model_id})
+            request(base, "/completion", {"model": model_id, "prompt": "ABC", "n_predict": 2, "ignore_eos": True})
+            assert not request(base, "/sparkmoe/v1/config" + query)["overlap"], "next load did not apply saved settings"
+            assert not request(base, "/api/model-profile" + query)["pending"]
+            long_sse = urllib.request.Request(base + "/v1/chat/completions",
+                data=json.dumps({"model": model_id, "messages": [{"role": "user", "content": "ABC"}], "max_tokens": 100000, "stream": True, "ignore_eos": True}).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(long_sse, timeout=30) as response:
+                response.readline()
+                assert request(base, "/api/status")["active_requests"] > 0
+                try:
+                    request(base, "/api/restart", {})
+                    raise AssertionError("restart interrupted an active stream")
+                except RuntimeError as error:
+                    assert "409" in str(error), error
+            deadline = time.monotonic() + 10
+            while request(base, "/api/status")["active_requests"] != 0:
+                if time.monotonic() > deadline:
+                    raise AssertionError("disconnect did not release the active request")
+                time.sleep(.1)
+
+
             diagnostic = request(base, "/api/diagnostics")
             assert "model_directory" not in diagnostic["router"] and diagnostic["profile_count"] == 1
             sessions = request(base, "/api/log-sessions")["sessions"]
@@ -272,11 +347,11 @@ def run_manager(binary_dir, root, log_dir):
 
             subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
                            cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            request(backend, "/models?" + urllib.parse.urlencode({"reload": 1}))
+            request(base, "/api/library", {"path": str(root)})
             models = request(backend, "/models")["data"]
             qwen_id = next(model["id"] for model in models if model["id"] == "test-qwen38")
             qwen_profile = request(base, "/api/model-profile?" + urllib.parse.urlencode({"model": qwen_id}))["profile"]
-            qwen_profile.update(mode="explicit", cache=1, slots=4, io_threads=2, inference_threads=2,
+            qwen_profile.update(context_mode="manual", memory_mode="manual", mode="explicit", cache=1, slots=4, io_threads=2, inference_threads=2,
                                 ctx_size=256, batch_size=16, ubatch_size=2, parallel=1,
                                 mtp_enabled=True, mtp_model=str(root / "test-qwen38-mtp.gguf"),
                                 mtp_cache_mib=1, ple_cache_mib=1, mtp_draft_tokens=2,
@@ -302,9 +377,58 @@ def run_manager(binary_dir, root, log_dir):
             assert active["ple_cache_bytes"] == 1048576
             request(base, "/api/stop", {})
             assert not request(base, "/api/status")["running"]
+            ui_request = urllib.request.Request(base + "/", headers={"Accept-Encoding": "gzip"})
+            with urllib.request.urlopen(ui_request, timeout=10) as response:
+                body = response.read()
+                if response.headers.get("Content-Encoding") == "gzip":
+                    body = gzip.decompress(body)
+                assert b"<html" in body and response.status == 200, "UI unavailable while engine stopped"
+            stopped_models = request(base, "/v1/models")["data"]
+            assert stopped_models, "model list disappeared with stopped engine"
+            assert all(model["status"]["value"] == "unloaded" for model in stopped_models), "stopped engine reports loaded models"
+
             assert (root / "manager-state" / "config.json").is_file()
             assert list((root / "manager-state" / "logs").glob("session-*.log"))
-            print("PASS Desktop manager: hidden router, persistent config/profiles, routed generation, telemetry, logs and stop")
+            config_path = root / "manager-state" / "config.json"
+            saved_config = json.loads(config_path.read_text(encoding="utf-8"))
+            assert saved_config["version"] == 2
+            request(base, "/api/shutdown", {})
+            proc.wait(timeout=10)
+            for scenario in ("restart", "recovery", "newer-version"):
+                if scenario == "recovery":
+                    config_path.write_text("{invalid", encoding="utf-8")
+                elif scenario == "newer-version":
+                    future = {**saved_config, "version": 999}
+                    config_path.write_text(json.dumps(future), encoding="utf-8")
+                proc = subprocess.Popen([str(binary_dir / ("SparkMoE" + suffix))], cwd=binary_dir, env=env,
+                    stdout=log, stderr=log, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                deadline = time.monotonic() + 20
+                while True:
+                    try:
+                        status = request(base, "/api/status")
+                        break
+                    except (OSError, RuntimeError):
+                        if proc.poll() is not None or time.monotonic() > deadline:
+                            raise RuntimeError("manager restart/recovery failed")
+                        time.sleep(.1)
+                if scenario != "newer-version":
+                    assert request(base, "/api/application")["default_model"] == model_id
+                    restored = next(model for model in request(base, "/api/library")["models"] if model["id"] == model_id)
+                    assert restored["display_name"] == "Short model" and restored["favorite"]
+                    if scenario == "recovery":
+                        assert status["configuration_warning"] and list(config_path.parent.glob("config-recovery-*.json"))
+                else:
+                    assert status["configuration_warning"]
+                    try:
+                        request(base, "/api/application", {"background_mode": True})
+                        raise AssertionError("newer settings schema was overwritten")
+                    except RuntimeError as error:
+                        assert "newer SparkMoE" in str(error)
+                    assert json.loads(config_path.read_text(encoding="utf-8"))["version"] == 999
+                request(base, "/api/shutdown", {})
+                proc.wait(timeout=10)
+            print("PASS Desktop manager: stable IDs, revisions, autosave/apply, API/SSE/cancel, backup recovery and schema protection")
+
             print("PASS Desktop Qwen MTP: routed sidecar validation, launch, budgets and drafting")
         finally:
             try:
@@ -319,7 +443,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin-dir", type=Path, required=True)
     parser.add_argument("--log-dir", type=Path, required=True)
-    parser.add_argument("--skip-manager", action="store_true", help="Do not use port 18080 or touch an existing Desktop instance")
+    parser.add_argument("--skip-manager", action="store_true", help="Skip the isolated Desktop manager checks")
+    parser.add_argument("--manager-only", action="store_true", help="Run only the isolated desktop integration checks")
     parser.add_argument("--qwen", action="store_true", help="Run the Qwen PLE/MTP HTTP regression")
     args = parser.parse_args()
     binary_dir = args.bin_dir.resolve()
@@ -329,6 +454,9 @@ def main():
         root = Path(folder)
         subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--fixtures-only"],
                        cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if args.manager_only:
+            run_manager(binary_dir, root, args.log_dir)
+            return
         if args.qwen:
             subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
                            cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

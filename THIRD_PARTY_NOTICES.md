@@ -16,3 +16,9 @@ evaluated here. No BigMoeOnEdge source file was copied and it is not a dependenc
 Windows MSVC packages include Microsoft Visual C++ runtime DLLs from the Visual
 Studio redistributable directory. These Microsoft components retain their own
 copyright and distribution terms; the SparkMoE license does not apply to them.
+
+Windows desktop builds use the official Microsoft.Web.WebView2 SDK version
+1.0.3650.58 and redistribute its x64 WebView2Loader.dll. The package includes
+Microsoft's LICENSE.txt and NOTICE.txt under licenses/WebView2. The shared
+Evergreen Runtime is installed separately under Microsoft's terms. SDK archive
+version, source URL, and SHA256 are pinned in packaging/windows/webview2-sdk.json.

@@ -38,7 +38,7 @@
 		</Button>
 	</div>
 
-	<Button onclick={handleSave}>Save settings</Button>
+	{#if onSave}<Button onclick={handleSave}>Save settings</Button>{/if}
 </div>
 
 <AlertDialog.Root bind:open={showResetDialog}>

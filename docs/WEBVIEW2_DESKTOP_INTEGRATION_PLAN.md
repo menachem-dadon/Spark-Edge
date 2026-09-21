@@ -1,489 +1,113 @@
-# WebView2 desktop integration plan
+# WebView2 desktop integration
 
-Status: design guidance only. WebView2 is not part of the current SparkMoE build.
+Status: implemented in source for local validation. The complete release matrix below remains required. A successful build or syntax check does not establish native UX, clean-machine installation, or a signed release.
 
-This document describes a future Windows-only desktop shell for the existing SparkMoE Web UI. The goal is one branded application window and one taskbar button without replacing the Svelte UI, the local manager, or the llama.cpp Router.
+## Architecture
 
-The current notification-area icon should remain the control surface for background operation and the fallback when WebView2 is unavailable.
+SparkMoE uses a direct Win32 WebView2 host in `tools/sparkmoe/desktop-window.cpp`. The Svelte chat and management interface remain shared with browser mode. No Electron, CEF, Tauri, or external browser window embedding is involved.
 
-## 1. Product decision
+The stable application origin is `http://127.0.0.1:18080/`, or the manager port selected through `SPARKMOE_MANAGER_PORT`. The manager serves the embedded UI and forwards inference requests to its Router. Stopping the Router does not remove the application's UI or model-management APIs.
 
-Use a direct Win32 WebView2 host inside `SparkMoE.exe`.
+The manager listener retains its own lifecycle. The desktop window owns a separate, joinable STA thread, message loop, HWND, controller, and environment. The existing notification-area window retains its own thread. Native activation crosses these boundaries through posted messages; WebView2 objects never leave their owning thread.
 
-Do not migrate SparkMoE to Electron, CEF, Tauri, WinUI, or another application framework only to obtain a desktop window. A direct host reuses the current C++ launcher and adds the smallest new runtime surface.
+`desktop_window::start(options)` waits up to 25 seconds for successful initial navigation. An initialization timer limits each WebView2 startup attempt to 20 seconds. The main window becomes visible after initial navigation succeeds. The notification-area controls and session log provide startup and failure information.
 
-Use the WebView2 Evergreen Runtime by default. Do not bundle a Fixed Version Runtime in the normal ZIP or installer. A Fixed Version package adds more than 250 MB and makes SparkMoE responsible for browser security updates.
+`show()` restores and activates the existing window. `stop()` posts an unconditional close and joins its thread. Shutdown callbacks signal the manager; they must not join the desktop thread. The root lifecycle joins the startup worker, closes the desktop, removes the notification-area icon, and stops the Router before destroying shared state.
 
-Official references:
+## Build and dependency restore
 
-- Win32 setup: https://learn.microsoft.com/en-us/microsoft-edge/webview2/get-started/win32
-- Runtime distribution: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution
-- Security guidance: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security
-- User data folders: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/user-data-folder
+The official Microsoft.Web.WebView2 SDK is pinned to `1.0.3650.58`. Its NuGet source URL and SHA256 are recorded in `packaging/windows/webview2-sdk.json`.
 
-## 2. Goals
+Run:
 
-- Start SparkMoE from one shortcut.
-- Show one native window titled `SparkMoE` with the existing application icon.
-- Show the window in the taskbar, Start menu, and Alt+Tab.
-- Render the existing llama.cpp and SparkMoE Web UI without a frontend rewrite.
-- Keep `SparkMoE.exe`, the manager API, the Router, model profiles, logs, and diagnostics as the authority.
-- Preserve the current hidden launch of `llama-server.exe` and its model processes.
-- Keep the notification-area icon for Open, Start, Stop, and Exit actions.
-- Fall back to the default browser if WebView2 cannot initialize.
-- Preserve the Linux behavior that opens the default browser.
-
-## 3. Non-goals
-
-- Do not embed Edge, Chrome, or another external browser window by HWND reparenting.
-- Do not expose a general-purpose browser with an address bar.
-- Do not allow arbitrary remote navigation inside the trusted application window.
-- Do not replace the Svelte UI with native Win32 controls.
-- Do not move inference or manager logic into JavaScript.
-- Do not add a second model-management protocol.
-- Do not bundle Chromium in the normal package.
-
-## 4. Current architecture
-
-```text
-SparkMoE.exe
-  - owns configuration, logs, and the manager API on 127.0.0.1:18080
-  - starts llama-server.exe as a Router without a console window
-  - opens http://127.0.0.1:<router-port>/ in the default browser
-
-llama-server.exe
-  - serves the embedded Svelte Web UI
-  - exposes chat, model, Router, and SparkMoE runtime APIs
-  - owns one child process per loaded model
+```powershell
+./scripts/restore-webview2.ps1
+./scripts/build-windows.ps1 -Variant avx2 -RunTests
 ```
 
-Relevant files:
+The restore helper checks the archive hash before extracting required SDK headers, the x64 loader, and Microsoft notices. It produces an SDK file-hash manifest. Existing cached archives are checked again. Build dependencies remain under ignored `build-deps/webview2/`.
 
-- `tools/sparkmoe/sparkmoe.cpp`: manager lifecycle, browser launch, single-instance mutex, notification-area icon, and manager API.
-- `tools/sparkmoe/CMakeLists.txt`: Windows GUI target and native libraries.
-- `tools/sparkmoe/sparkmoe.rc.in`: executable icon.
-- `tools/ui/`: existing Svelte UI.
-- `tools/server/`: embedded UI and Router HTTP server.
-- `packaging/windows/SparkMoE.iss`: installer.
-- `scripts/build-windows.ps1`: Windows build.
-- `scripts/package-windows.ps1`: portable package and ZIP.
+The normal Windows build script restores the SDK explicitly and enables `SPARKMOE_WEBVIEW2`. CMake never downloads a dependency during configure. A direct configure needs `SPARKMOE_WEBVIEW2_SDK_DIR` pointing to the restored SDK. The current package and loader path target Windows x64.
 
-## 5. Target architecture
+For a build without the desktop shell:
 
-```text
-Win32 UI thread
-  - main SparkMoE window
-  - WebView2 controller
-  - notification-area icon
-  - window activation and shutdown messages
-
-Manager worker
-  - loopback manager API
-  - Router process lifecycle
-  - configuration and logs
-
-Router process
-  - embedded Web UI
-  - chat and model APIs
-  - model child processes
+```powershell
+./scripts/build-windows.ps1 -Variant avx2 -BrowserOnly
 ```
 
-The WebView2 control navigates only to the configured loopback Router origin. The target URL remains:
+Non-Windows builds retain browser mode. The native source has a no-WebView implementation for those builds.
 
-```text
-http://127.0.0.1:<router-port>/
+## Runtime and fallback
+
+The application loads `WebView2Loader.dll` only from the executable directory, with system DLL lookup restricted to the system directory. It calls Microsoft's Runtime version API before creating an environment and selects the stable Evergreen channel. It does not download or install a Runtime.
+
+If the loader, Runtime, environment, controller, or initial navigation is unavailable, the manager opens the same stable application origin in the default browser. Serving and model management do not depend on desktop initialization.
+
+One controller/environment recreation is attempted after a WebView2 process failure. A further failure opens browser fallback without restarting loaded models. Logs contain the failing stage and HRESULT, without prompts, browser storage, or personal file paths.
+
+Set `SPARKMOE_BROWSER_ONLY=1` for a recovery launch that bypasses WebView2 initialization. `SPARKMOE_NO_BROWSER=1` is the existing headless test switch and suppresses opening either surface.
+
+## Window behavior and storage
+
+The real top-level window provides the SparkMoE icon, normal taskbar presence, resize, minimize, restore, focus, and Windows title-bar theme. Its minimum size scales with DPI and fits the current monitor. Saved normal bounds and maximized state are restored within the available monitor work area, with size adjusted for changed DPI.
+
+Closing exits SparkMoE by default. If background operation is enabled, close hides the window and leaves the notification-area controls. Closing with an active proxied generation requests confirmation. Notification-area Exit and manager shutdown use the unconditional close path.
+
+The existing single-instance manager endpoint `/api/open` activates the native window when available, otherwise it opens browser fallback. No additional local port or broad native bridge is introduced.
+
+The WebView profile is stored under `%LOCALAPPDATA%\\SparkMoE\\WebView2` by default. `SPARKMOE_DATA_DIR` can select a separate application-data root. Window placement is stored beside that profile. Installed and portable packages use the same explicit data policy; extraction does not silently place personal data beside the executable.
+
+Browser and desktop storage are separate. Use the chat UI's export/import controls to transfer conversations; SparkMoE does not read another browser's profile database. Upgrades, fallback, and uninstall preserve local application data.
+
+## Navigation, permissions, and downloads
+
+- Top-level and frame navigation require the exact configured manager origin.
+- User-initiated external HTTP/HTTPS links open in the default browser.
+- New-window requests are handled explicitly; same-origin links remain in the shell.
+- File, JavaScript, data, custom, and UNC navigation are rejected.
+- Native host objects, web messages, and release DevTools are disabled.
+- User-initiated microphone and clipboard-read requests from the manager origin use Runtime permission prompts. Other permission requests are denied.
+- Downloads require a manager URL or a blob belonging to that origin and retain the standard Runtime download controls.
+- Uploads, clipboard writing, keyboard interaction, and chat dialogs use ordinary web capabilities. There is no general JavaScript-to-native command interface.
+
+## Installer and portable packaging
+
+`scripts/package-windows.ps1` checks the configured SDK manifest and compares the built loader hash before staging. It includes Microsoft SDK notices under `licenses/WebView2`, `PORTABLE.txt`, the SDK version/archive hash, and binary signatures in the release manifest. Browser-only packages exclude a stale WebView2 loader from a previous build.
+
+`scripts/build-installer.ps1` verifies stage hashes before compiling. For desktop packages it downloads or reuses Microsoft's small Evergreen bootstrapper and requires a valid Microsoft Corporation Authenticode signature. The installer artifact manifest records that bootstrapper's version and hash. The full Runtime is not bundled.
+
+Inno Setup checks documented per-user and per-machine WebView2 registry keys. A missing Runtime exposes an unchecked, explicit optional installation task. The bootstrapper runs as the original user. Decline or installation failure preserves browser fallback.
+
+The installer uses per-user installation. Its optional PATH update compares complete normalized segments and records whether it added the segment. Uninstall removes only the segment that this installer added, preserves similar directory names, and retains application data. Windows receives the environment-change notification.
+
+To sign the outer installer with an existing CurrentUser code-signing certificate:
+
+```powershell
+./scripts/build-installer.ps1 -StageDir <stage> -SigningCertificateThumbprint <thumbprint>
 ```
 
-The manager redirect at port 18080 can remain for browser fallback, but the native host should navigate directly to the Router after readiness is confirmed.
-
-## 6. Required refactor before WebView2
-
-The current manager blocks in `httplib::Server::listen`. WebView2 requires a single-threaded COM apartment and a Windows message loop on its owning thread.
-
-Refactor the launcher into a small runtime object before adding WebView2:
-
-```text
-manager_runtime
-  start()
-  stop_router()
-  start_router()
-  request_shutdown()
-  router_port()
-  router_running()
-  router_ready()
-  wait_until_ready()
-```
-
-Requirements:
-
-- Keep `app_state` protected by its existing mutex.
-- Run the manager HTTP listener on a worker thread.
-- Keep all HWND, WebView2, and notification-area operations on the Win32 UI thread.
-- Use one idempotent shutdown path for the Web UI, window close, notification-area Exit, Windows session end, and fatal initialization errors.
-- Stop accepting manager requests before destroying shared state.
-- Stop the Router job before `app_state` is destroyed.
-- Join the log reader and manager threads before process exit.
-- Do not detach threads.
-
-Add this refactor separately and prove that browser mode behaves exactly as before. Do not combine an untested lifecycle rewrite with the first WebView2 window.
-
-## 7. WebView2 SDK integration
-
-Use the official `Microsoft.Web.WebView2` NuGet package and pin an explicit release version in the build configuration.
-
-Recommended build policy:
-
-1. Add a Windows-only CMake option such as `SPARKMOE_WEBVIEW2`.
-2. Keep the option disabled on non-Windows platforms.
-3. Restore the pinned SDK in `scripts/build-windows.ps1` or a dedicated helper.
-4. Verify the downloaded NuGet package and retain its license notice.
-5. Add the SDK include directory to the SparkMoE target.
-6. Prefer the static WebView2 loader when its license and supported toolchain are verified. Otherwise package `WebView2Loader.dll` beside `SparkMoE.exe`.
-7. Do not download dependencies implicitly during a normal CMake configure.
-8. Record the SDK version in the release manifest.
-
-Keep the WebView2 host in SparkMoE-owned files. Do not place it in upstream llama.cpp UI or server files.
-
-Suggested files after design approval:
-
-```text
-tools/sparkmoe/windows-webview.h
-tools/sparkmoe/windows-webview.cpp
-```
-
-Do not add these files until the lifecycle refactor and public behavior are approved.
-
-## 8. Runtime detection and fallback
-
-Before creating the environment, call the official runtime version API. Treat a missing or invalid version as WebView2 unavailable.
-
-Fallback order:
-
-1. Start the SparkMoE manager and Router normally.
-2. Attempt WebView2 initialization.
-3. If the Runtime is missing or initialization fails, write the HRESULT and stage to the SparkMoE log.
-4. Show one concise native error message.
-5. Open the existing UI in the default browser.
-6. Keep the notification-area icon available.
-
-Do not fail model serving only because the desktop shell failed.
-
-Do not silently download or install the Runtime from `SparkMoE.exe`. Runtime installation belongs in the installer and requires a clear user-facing action.
-
-## 9. Installer behavior
-
-The normal installer should use the Evergreen Runtime.
-
-During installation:
-
-1. Detect the WebView2 Runtime using the official API or documented registry locations.
-2. If present, continue without downloading anything.
-3. If missing, explain that SparkMoE can still use the default browser.
-4. Offer an explicit action to install the Microsoft Evergreen bootstrapper.
-5. Run the bootstrapper per-user because the SparkMoE installer uses `PrivilegesRequired=lowest`.
-6. If installation is declined or fails, finish installing SparkMoE and retain browser fallback.
-
-Portable ZIP behavior:
-
-- Do not include the full Runtime.
-- Detect the Runtime at launch.
-- Fall back to the default browser when unavailable.
-- Include troubleshooting instructions and the official Microsoft download URL.
-
-An optional offline package may include the Evergreen Standalone Installer, but it must have a distinct filename and documented size. Do not make the normal portable ZIP hundreds of megabytes larger.
-
-## 10. Window behavior
-
-Create one standard resizable top-level window.
-
-Minimum behavior:
-
-- Title: `SparkMoE`.
-- Use `SparkMoE.ico` for the small and large window icons.
-- Restore the last valid size and position.
-- Validate restored bounds against current monitors.
-- Use a sensible minimum size so the chat composer remains usable.
-- Resize the WebView2 controller on `WM_SIZE`.
-- Apply the current Windows theme to the title bar when supported.
-- Preserve keyboard navigation and standard shortcuts.
-- Set focus to WebView2 after the controller is ready.
-- Show a native startup surface until the Router and WebView2 are ready.
-
-Recommended close policy:
-
-- Default: closing the main window exits SparkMoE and unloads models.
-- Optional future setting: `Keep running in the notification area`.
-- Never keep models loaded invisibly unless the user enabled that setting.
-- Notification-area Exit always stops the Router, all model processes, WebView2, and the manager.
-
-Do not use a fake invisible taskbar window. The taskbar button must belong to the real SparkMoE window.
-
-## 11. Single-instance activation
-
-Keep the existing named mutex.
-
-When a second `SparkMoE.exe` starts:
-
-1. Query the existing manager on port 18080.
-2. Request native activation through a small internal callback or registered Windows message.
-3. Restore the window if minimized.
-4. bring it to the foreground without opening a second WebView2 profile.
-5. Fall back to opening the default browser if native activation is unavailable.
-
-The existing `/api/open` endpoint can be extended to call a registered native activation callback. Do not add another local network port.
-
-## 12. User data and conversation continuity
-
-Use one explicit writable user data folder:
-
-```text
-%LOCALAPPDATA%\SparkMoE\WebView2
-```
-
-Do not use the directory beside `SparkMoE.exe`. The portable package may be extracted under a read-only or protected location.
-
-The Web UI stores conversation and UI state in browser storage. Moving from the user's default browser to WebView2 creates a new storage profile, so existing browser conversations do not automatically appear in the desktop shell.
-
-Before release, choose and document one policy:
-
-- Accept a new desktop-only conversation store, or
-- Add an explicit export/import flow using the existing Web UI data model.
-
-Do not read another browser's profile database directly. Do not copy passwords, cookies, or unrelated browser state.
-
-Persist the WebView2 user data folder across normal upgrades. Remove it on uninstall only when the user explicitly selects deletion of local application data.
-
-## 13. Navigation and security policy
-
-Treat all WebView2 content as untrusted until its origin is validated.
-
-Required rules:
-
-- Allow top-level navigation only to `http://127.0.0.1:<current-router-port>` and the equivalent current loopback origin chosen by SparkMoE.
-- Reject unexpected frames and top-level redirects.
-- Open approved external `http` and `https` links in the user's default browser.
-- Reject `file:`, `javascript:`, `data:`, custom schemes, UNC paths, and non-loopback hosts inside WebView2 unless a later design explicitly requires them.
-- Do not add native host objects to JavaScript for the first implementation.
-- Do not use `ExecuteScript` for lifecycle or model control when existing HTTP APIs already provide the operation.
-- Disable DevTools in release builds unless a documented diagnostics setting enables them.
-- Disable default script dialogs unless the UI has a verified need for them.
-- Keep the WebView2 host at normal user integrity. Never run it elevated.
-- Preserve the manager API origin checks.
-
-If a native bridge is added later, validate the current document origin for every message and use a narrow JSON schema.
-
-## 14. Browser capability inventory
-
-Verify these existing UI behaviors inside WebView2 before replacing browser mode:
-
-- Chat streaming and reconnect.
-- IndexedDB conversation persistence.
-- Service worker update behavior.
-- File upload and drag-and-drop.
-- Clipboard read and write.
-- Audio recording and microphone permission.
-- Image, audio, video, PDF, SVG, and Mermaid rendering.
-- File downloads for diagnostics and logs.
-- External documentation links.
-- Model directory picker.
-- Browser history, refresh, and deep routes such as `/#/sparkmoe`.
-- Dark and light theme updates.
-
-For permissions, default to deny and add explicit handling only for capabilities SparkMoE uses. Permission prompts must name the requested capability and remember a choice only when appropriate.
-
-## 15. Native folder picker ownership
-
-The manager currently selects `GetForegroundWindow()` as the owner of `IFileOpenDialog`. That is acceptable for external browser mode but is not a stable contract for WebView2.
-
-After the desktop window exists:
-
-- Store or register its HWND through a narrow Windows-only interface.
-- Use that exact HWND as the folder dialog owner.
-- Clear the reference before destroying the window.
-- Fall back to no owner only when browser mode is active.
-
-Validate focus restoration after both selection and cancellation.
-
-## 16. Startup sequence
-
-Recommended order:
-
-1. Acquire the single-instance mutex.
-2. Initialize COM as `COINIT_APARTMENTTHREADED` on the UI thread.
-3. Load configuration and start the manager listener.
-4. Create the main Win32 window and notification-area icon.
-5. Start the Router.
-6. Show native startup status while polling bounded Router readiness.
-7. Detect the WebView2 Runtime.
-8. Create the WebView2 environment with the explicit user data folder.
-9. Create the controller as a child of the main window.
-10. Register navigation, permission, download, process-failure, and new-window handlers.
-11. Navigate to the loopback Router URL.
-12. Replace the startup surface after navigation completes.
-
-Never block the UI thread while waiting for Router health or WebView2 callbacks.
-
-## 17. Shutdown sequence
-
-Use one idempotent shutdown coordinator:
-
-1. Mark shutdown requested.
-2. Reject new start or restart actions.
-3. Close WebView2 and release controller and environment references on the UI thread.
-4. Stop the manager listener.
-5. Stop the Router job and all model processes.
-6. Join the log reader and manager worker threads.
-7. Remove the notification-area icon.
-8. Destroy the native window.
-9. Call `CoUninitialize` on the UI thread.
-10. Release the single-instance mutex.
-
-Handle repeated requests from the Web UI, the window close button, the notification-area icon, and Windows session shutdown without double-closing handles.
-
-## 18. Failure handling
-
-Write structured stage information to the normal SparkMoE session log for:
-
-- Runtime detection.
-- Environment creation.
-- Controller creation.
-- Navigation start and completion.
-- WebView process failure.
-- Router readiness timeout.
-- Fallback browser launch.
-
-Do not log prompts, generated text, API keys, browser storage, or full private paths.
-
-On WebView2 process failure:
-
-- Attempt one bounded controller recreation when the manager and Router remain healthy.
-- If recreation fails, open the default browser and keep the notification-area controls.
-- Do not restart loaded models solely because the rendering process failed.
-
-## 19. Implementation stages
-
-### Stage A: lifecycle preparation
-
-- Extract the manager listener into a joinable worker.
-- Centralize idempotent shutdown.
-- Retain default-browser behavior.
-- Add focused lifecycle tests using the existing test infrastructure.
-
-Acceptance gate: browser mode, manager API, Start, Stop, Exit, second launch, logs, and notification-area behavior remain unchanged.
-
-### Stage B: opt-in WebView2 prototype
-
-- Add the pinned SDK and CMake option.
-- Create the window and controller.
-- Navigate to the local UI.
-- Keep browser fallback.
-- Hide the feature behind an explicit development flag.
-
-Acceptance gate: chat, SparkMoE management, downloads, uploads, persistence, and shutdown work in a local Release build.
-
-### Stage C: security and UX completion
-
-- Enforce navigation and permission policy.
-- Add startup and failure surfaces.
-- Complete single-instance activation.
-- Make the folder picker owned by the native window.
-- Complete keyboard, DPI, theme, and accessibility behavior.
-
-Acceptance gate: no remote page can access a native bridge or remain inside the trusted application window.
-
-### Stage D: packaging
-
-- Add Runtime detection to Inno Setup.
-- Package the loader and notices.
-- Add portable fallback instructions.
-- Record versions and hashes in the release manifest.
-- Preserve the browser-only recovery route.
-
-Acceptance gate: clean Windows 10, Windows 11, installed, portable, Runtime-present, and Runtime-missing scenarios pass.
-
-### Stage E: default enablement
-
-- Enable WebView2 by default only after the complete validation matrix passes.
-- Retain a documented browser fallback switch for recovery.
-- Keep Linux behavior unchanged.
-
-## 20. Validation matrix
-
-Run at least the following tests before release:
-
-### Build and static checks
-
-- MSVC AVX2 Release build.
-- MSVC generic Release build.
-- Existing SparkMoE server regression.
-- Relevant UI checks and production build.
-- Upstream integration inventory check.
-- `git diff --check`.
-
-### Windows runtime
-
-- Windows 11 with Evergreen Runtime.
-- Windows 10 with Evergreen Runtime.
-- Runtime missing: browser fallback and clear guidance.
-- Installed and portable layouts.
-- Unicode Windows user and model paths.
-- Standard user without elevation.
-- Explorer restart while SparkMoE is running.
-- Windows logoff and shutdown.
-
-### Window and lifecycle
-
-- First launch opens one window.
-- Second launch activates the same window.
-- Minimize, restore, Alt+Tab, taskbar pin, and multi-monitor restore.
-- Close with no model loaded.
-- Close while a model is loading.
-- Close while generation is active.
-- Notification-area Open, Start, Stop, and Exit.
-- Web UI Exit and manager API shutdown.
-- Router crash and WebView render-process crash.
-
-### UI capabilities
-
-- New and existing conversations.
-- Streaming cancellation and reconnect.
-- Model load and unload.
-- Settings and profile persistence.
-- Folder picker focus and cancellation.
-- Diagnostics download.
-- File upload and drag-and-drop.
-- Clipboard and microphone permission.
-- External link handoff.
-- Dark and light themes at 100, 125, 150, and 200 percent DPI.
-
-### Packaging
-
-- ZIP required-file inventory.
-- Installer install, upgrade, repair, and uninstall.
-- Release manifest hashes.
-- PE GUI subsystem verification.
-- Signature verification when release signing exists.
-- No model, token, log, WebView profile, or personal path in the package.
-
-## 21. Rollback
-
-Keep external browser launch as a complete fallback until at least one released version has proven the WebView2 path.
-
-The rollback switch should bypass WebView2 before COM or Runtime initialization and use the current `ShellExecuteW` path. A WebView2 failure must never require uninstalling SparkMoE to reach the UI.
-
-Do not delete the user's WebView2 data folder during rollback. Preserve it for a later fixed release unless the user explicitly requests removal.
-
-## 22. Release evidence boundary
-
-A successful compile does not prove WebView2 behavior. A production claim requires a packaged Release build and live validation of the native window, taskbar identity, Runtime detection, navigation restrictions, UI capabilities, lifecycle, and fallback.
-
-Report separately:
-
-- Source and static checks.
-- Build results.
-- Automated runtime tests.
-- Live Windows UI checks.
-- ZIP and installer checks.
-- Signature status.
-
-Do not describe an unsigned local installer as a trusted production release.
+Signing requires an available private key and a trusted timestamp; the script rejects failed signature or timestamp verification. This option does not sign all application binaries or the embedded uninstaller. Without a supplied certificate the artifact is explicitly recorded as unsigned. Do not present an unsigned local installer as a trusted production release.
+
+## Validation matrix
+
+Record evidence separately for each category:
+
+| Category | Required checks |
+| --- | --- |
+| Source/build | AVX2 and generic Release, browser-only build, UI check/build, server regression, upstream integration, diff whitespace |
+| Native Windows | One first-launch window; second launch activation; focus, keyboard, taskbar, minimize/restore; light/dark and 100/125/150/200 percent DPI; changed monitors |
+| Lifecycle | Idle close; active load/generation close; background setting; notification-area Open/Start/Stop/Exit; manager shutdown; Windows logoff; Explorer restart |
+| Failure | Missing loader/Runtime; startup timeout; render/browser process failure; browser fallback; Router stopped/crashed without losing management UI |
+| UI capabilities | Conversation persistence/export/import; streaming/cancel/reconnect; model settings; folder picker ownership; upload/drag-drop; downloads; microphone/clipboard prompts; external links and rejected schemes |
+| Package | Installed and extracted ZIP; Windows 10/11; standard user; Unicode paths; no bundled user data; required files and all manifest hashes |
+| Installer | Install/upgrade/uninstall; Runtime present/missing; optional task declined/failed/succeeded; exact PATH addition/removal; signature status |
+
+PowerShell parser and Inno Setup syntax-fixture checks establish syntax only. They do not install SparkMoE, run the Runtime bootstrapper, or validate the real packaged application. Record live native checks and clean-machine installer checks before release.
+
+## Official references
+
+- [Win32 setup](https://learn.microsoft.com/en-us/microsoft-edge/webview2/get-started/win32)
+- [Runtime distribution and detection](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)
+- [Security guidance](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security)
+- [User data folders](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/user-data-folder)
+- [Pinned NuGet SDK](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3650.58)

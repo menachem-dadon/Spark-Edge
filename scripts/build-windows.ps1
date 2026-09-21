@@ -5,7 +5,8 @@
 param(
     [ValidateSet('avx2', 'generic')][string]$Variant = 'avx2',
     [string]$BuildRoot = '',
-    [switch]$RunTests
+    [switch]$RunTests,
+    [switch]$BrowserOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,6 +62,12 @@ $cmakeArgs = @(
     '-DLLAMA_BUILD_SERVER=ON',
     '-DLLAMA_BUILD_TESTS=ON'
 )
+if ($BrowserOnly) {
+    $cmakeArgs += '-DSPARKMOE_WEBVIEW2=OFF'
+} else {
+    $webviewSdk = & (Join-Path $PSScriptRoot 'restore-webview2.ps1')
+    $cmakeArgs += @('-DSPARKMOE_WEBVIEW2=ON', "-DSPARKMOE_WEBVIEW2_SDK_DIR=$webviewSdk")
+}
 if ($Variant -eq 'generic') {
     $cmakeArgs += @('-DGGML_AVX=OFF', '-DGGML_AVX2=OFF', '-DGGML_FMA=OFF', '-DGGML_F16C=OFF', '-DGGML_BMI2=OFF')
 } else {

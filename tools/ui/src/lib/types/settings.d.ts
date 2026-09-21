@@ -20,6 +20,7 @@ export type SettingsSectionTitle =
 
 /** Per-setting metadata — one entry per setting. */
 export interface SettingsEntry {
+	isAdvanced?: boolean;
 	key: string;
 	label: string;
 	help: string;
@@ -53,6 +54,7 @@ export interface SettingsSectionEntry {
 }
 
 export interface SettingsFieldConfig {
+	isAdvanced?: boolean;
 	key: string;
 	label: string;
 	type: SettingsFieldType;

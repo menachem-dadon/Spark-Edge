@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## SparkMoE opens in a browser instead of its own window
+
+Keep `WebView2Loader.dll` beside `SparkMoE.exe` when extracting a desktop ZIP. The desktop window requires Microsoft's shared [Evergreen WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). The Windows installer offers an optional Runtime installation task. Missing Runtime or native-window initialization failure opens browser fallback while the manager remains available. Check the session log for the `desktop:` stage and HRESULT.
+
+For a recovery launch, set `SPARKMOE_BROWSER_ONLY=1` in the launching process. This skips WebView2 and retains the same manager interface at `http://127.0.0.1:18080/`. Do not delete the WebView2 profile to switch modes. Browser and desktop profiles are separate; use the chat export/import controls to transfer conversations.
+
 ## The server exits during the first prompt on Windows
 
 Current Windows AVX2 builds avoid passing 256-bit lookup vectors across the MinGW function boundary used by the Q4_0, IQ4_NL, and MXFP4 repack kernels. Older builds could load a model successfully and then exit with `0xC0000005` only when inference used more than one worker thread. This was a CPU stack-alignment failure, not an out-of-memory condition or a damaged GGUF.

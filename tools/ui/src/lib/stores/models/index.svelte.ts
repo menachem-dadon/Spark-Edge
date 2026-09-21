@@ -10,6 +10,7 @@
 import { FAVORITE_MODELS_LOCALSTORAGE_KEY } from '$lib/constants';
 import { ServerModelStatus } from '$lib/enums';
 import { ModelsService } from '$lib/services/models.service';
+import { SparkMoeService } from '$lib/services/sparkmoe.service';
 // direct imports between stores, not via the barrel, to avoid circular deps
 import { conversationsStore } from '$lib/stores/conversations/index.svelte';
 import { type ModelPropsHost, ModelPropsManager } from '$lib/stores/models/props.svelte';
@@ -39,6 +40,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 	// Dedup concurrent fetch() callers — all awaiters share the same inflight promise.
 	// Without this, ?model=<name> URL handler races an in-progress fetch and sees an empty list.
 	private inflightFetch: Promise<void> | null = null;
+	private favoriteUpdates = new Set<string>();
 
 	/**
 	 * Model the active conversation view resolves to. Router mode: the user's
@@ -153,6 +155,12 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		}
 
 		// Try a loaded model first
+		const preferred = this.routerModels.find((model) => model.sparkmoe?.is_default);
+		if (preferred && availableModels.some((model) => model.id === preferred.id)) {
+			await this.selectModelById(preferred.id);
+			return;
+		}
+
 		const loadedModel = availableModels.find((m) => this.isModelLoaded(m.model));
 
 		if (loadedModel) {
@@ -204,6 +212,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 			const response = await ModelsService.listRouter();
 
 			this.routerModels = response.data;
+			this.syncSparkMoeFavorites();
 			await this.props.fetchModalitiesForLoadedModels();
 
 			const visible = this.getVisibleModels();
@@ -335,7 +344,8 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		return candidate && candidate.trim().length > 0 ? candidate : id;
 	}
 
-	toggleFavorite(modelId: string): void {
+	async toggleFavorite(modelId: string): Promise<void> {
+		if (this.favoriteUpdates.has(modelId)) return;
 		const next = new SvelteSet(this.favoriteModelIds);
 
 		if (next.has(modelId)) {
@@ -345,12 +355,39 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		}
 
 		this.favoriteModelIds = next;
+		if (this.routerModels.find((model) => model.id === modelId)?.sparkmoe) {
+			this.favoriteUpdates.add(modelId);
+			try {
+				await SparkMoeService.updateLibraryModel(modelId, { favorite: next.has(modelId) });
+			} catch (error) {
+				const restored = new SvelteSet(this.favoriteModelIds);
+				if (next.has(modelId)) restored.delete(modelId);
+				else restored.add(modelId);
+				this.favoriteModelIds = restored;
+				toast.error(error instanceof Error ? error.message : 'Could not save favorite');
+			} finally {
+				this.favoriteUpdates.delete(modelId);
+			}
+			return;
+		}
 
 		try {
 			localStorage.setItem(FAVORITE_MODELS_LOCALSTORAGE_KEY, JSON.stringify([...next]));
 		} catch {
 			toast.error('Failed to save favorite models to local storage');
 		}
+	}
+
+	private syncSparkMoeFavorites(): void {
+		if (!this.routerModels.some((model) => model.sparkmoe)) return;
+		const favorites = new SvelteSet(
+			this.routerModels.filter((model) => model.sparkmoe?.favorite).map((model) => model.id)
+		);
+		for (const id of this.favoriteUpdates) {
+			if (this.favoriteModelIds.has(id)) favorites.add(id);
+			else favorites.delete(id);
+		}
+		this.favoriteModelIds = favorites;
 	}
 
 	/**
@@ -365,7 +402,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 			const details = response.models?.[index];
 			const rawCapabilities = Array.isArray(details?.capabilities) ? details?.capabilities : [];
 			const displayNameSource =
-				details?.name && details.name.trim().length > 0 ? details.name : item.id;
+				details?.name && details.name.trim().length > 0 ? details.name : item.name || item.id;
 			const modelId = details?.model || item.id;
 
 			return {
@@ -425,6 +462,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 				const response = await ModelsService.listRouter();
 
 				this.routerModels = response.data;
+				this.syncSparkMoeFavorites();
 				this.models = this.buildModelOptions(response);
 
 				await this.props.fetchModalitiesForLoadedModels();

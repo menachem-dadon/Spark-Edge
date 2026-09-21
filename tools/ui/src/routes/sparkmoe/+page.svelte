@@ -3,113 +3,88 @@
 <script lang="ts">
 	import {
 		Activity,
-		AlertCircle,
-		BrainCircuit,
-		ChartNoAxesCombined,
-		CheckCircle2,
 		CircleStop,
-		Database,
 		Download,
 		FolderOpen,
-		Info,
+		Library,
+		Link,
 		LoaderCircle,
+		MessageSquare,
 		Play,
+		Plus,
 		Power,
 		RefreshCw,
-		RotateCcw,
-		Server,
+		Search,
+		Settings,
 		Sparkles,
-		TerminalSquare
+		Star,
+		Trash2
 	} from '@lucide/svelte';
+	import { goto } from '$app/navigation';
 	import { DialogConfirmation } from '$lib/components/app';
+	import SparkMoeConnections from '$lib/components/app/settings/SparkMoeConnections.svelte';
+	import SparkMoeDownloads from '$lib/components/app/settings/SparkMoeDownloads.svelte';
+	import SparkMoeModelSettings from '$lib/components/app/settings/SparkMoeModelSettings.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { REASONING_EFFORT_LEVELS, REASONING_EFFORT_TOKENS } from '$lib/constants';
+	import { ROUTES } from '$lib/constants';
 	import { ServerModelStatus } from '$lib/enums';
+	import { RouterService } from '$lib/services/router.service';
 	import {
+		SparkMoeService,
+		type SparkMoeLibraryModel,
 		type SparkMoeLogSession,
 		type SparkMoeManagerStatus,
-		type SparkMoeModelProfile,
-		type SparkMoeRouterConfig,
-		SparkMoeService
+		type SparkMoeRouterConfig
 	} from '$lib/services/sparkmoe.service';
 	import { modelsStore } from '$lib/stores';
+	import { sparkMoeProfileStore } from '$lib/stores/sparkmoe-profile.svelte';
 	import { onMount } from 'svelte';
 
-	type SparkMoeTab = 'overview' | 'models' | 'engine' | 'context' | 'mtp' | 'metrics' | 'logs';
+	type Tab = 'models' | 'connections' | 'activity';
 	type MetricItem = { label: string; value: string };
-
-	const CONTEXT_PRESETS = [4096, 8192, 16384, 32768, 65536];
-	const CACHE_TYPES = ['f16', 'bf16', 'q8_0', 'q5_1', 'q5_0', 'q4_1', 'q4_0', 'iq4_nl'];
-
-	const defaultRouterConfig: SparkMoeRouterConfig = {
+	let activeTab = $state<Tab>('models');
+	let library = $state<SparkMoeLibraryModel[]>([]);
+	let selectedModel = $state('');
+	let managerStatus = $state<SparkMoeManagerStatus | null>(null);
+	let routerConfig = $state<SparkMoeRouterConfig>({
 		model_directory: '',
 		models_autoload: true,
 		models_max: 1,
 		port: 8080
-	};
-
-	const defaultProfile: SparkMoeModelProfile = {
-		batch_size: 1024,
-		cache: 2048,
-		cache_policy: 'lru',
-		cache_ram_mib: 0,
-		cache_type_k: 'f16',
-		cache_type_v: 'f16',
-		context_shift: true,
-		cpu_repack: 'auto',
-		ctx_checkpoints: 4,
-		ctx_size: 8192,
-		dense_residency: 'auto',
-		inference_threads: 0,
-		io_mode: 'buffered',
-		io_threads: 4,
-		mode: 'auto',
-		mtp_backend_sampling: true,
-		mtp_cache_mib: 512,
-		mtp_draft_tokens: 3,
-		mtp_enabled: false,
-		mtp_min_tokens: 0,
-		mtp_model: '',
-		mtp_p_min: 0,
-		mtp_threads: 0,
-		overlap: 'off',
-		paged_layers: 0,
-		parallel: 1,
-		ple_cache_mib: 64,
-		prefetch: 'off',
-		reasoning: 'default',
-		slots: 0,
-		ubatch_size: 128
-	};
-
-	let activeTab = $state<SparkMoeTab>('overview');
-	let managerStatus = $state<SparkMoeManagerStatus | null>(null);
-	let routerConfig = $state<SparkMoeRouterConfig>({ ...defaultRouterConfig });
-	let savedRouterConfig = $state<SparkMoeRouterConfig>({ ...defaultRouterConfig });
-	let profile = $state<SparkMoeModelProfile>({ ...defaultProfile });
-	let profileIsOverride = $state(false);
-	let selectedModel = $state('');
-	let loadedProfileModel = $state('');
-	let connected = $state(false);
+	});
+	let savedRouterConfig = $state<SparkMoeRouterConfig>({
+		model_directory: '',
+		models_autoload: true,
+		models_max: 1,
+		port: 8080
+	});
+	let initialized = $state(false);
+	let search = $state('');
+	let favoritesOnly = $state(false);
+	let importPath = $state('');
+	let importOpen = $state(false);
+	let downloadsOpen = $state(false);
+	let rename = $state('');
 	let busy = $state('');
 	let error = $state('');
 	let notice = $state('');
+	let removeDialogOpen = $state(false);
+	let exitDialogOpen = $state(false);
 	let metrics = $state<Record<string, unknown> | null>(null);
 	let runtimeConfig = $state<Record<string, unknown> | null>(null);
 	let hardware = $state<Record<string, number | string> | null>(null);
+	let metricsError = $state('');
 	let logSessions = $state<SparkMoeLogSession[]>([]);
 	let selectedLogSession = $state('');
 	let logContent = $state('');
+	let logsError = $state('');
 	let logDirectory = $state('');
-	let exitDialogOpen = $state(false);
-
-	let selectedModelEntry = $derived(
-		modelsStore.routerModels.find((model) => model.id === selectedModel)
-	);
+	let refreshing = false;
+	let selected = $derived(library.find((model) => model.id === selectedModel));
 	let selectedModelStatus = $derived(
-		selectedModelEntry?.status.value ?? ServerModelStatus.UNLOADED
+		modelsStore.routerModels.find((model) => model.id === selectedModel)?.status.value ??
+			ServerModelStatus.UNLOADED
 	);
 	let selectedModelLoaded = $derived(
 		selectedModelStatus === ServerModelStatus.LOADED ||
@@ -120,11 +95,21 @@
 			modelsStore.status.isOperationInProgress(selectedModel)
 	);
 	let routerConfigDirty = $derived(
-		routerConfig.model_directory !== savedRouterConfig.model_directory ||
-			routerConfig.models_autoload !== savedRouterConfig.models_autoload ||
-			routerConfig.models_max !== savedRouterConfig.models_max ||
-			routerConfig.port !== savedRouterConfig.port
+		JSON.stringify(routerConfig) !== JSON.stringify(savedRouterConfig)
 	);
+	let filteredModels = $derived(
+		library
+			.filter(
+				(model) =>
+					(!favoritesOnly || model.favorite) &&
+					(model.display_name + ' ' + model.path).toLowerCase().includes(search.toLowerCase())
+			)
+			.toSorted(
+				(a, b) =>
+					Number(b.favorite) - Number(a.favorite) || a.display_name.localeCompare(b.display_name)
+			)
+	);
+
 	let cacheMetrics = $derived<MetricItem[]>([
 		{
 			label: 'Cumulative generation rate',
@@ -177,1436 +162,668 @@
 		{ label: 'PLE evictions', value: metricNumber('ple_evictions').toLocaleString() }
 	]);
 
-	function describeManagerStatus() {
-		if (!managerStatus) return 'Manager unavailable';
-
-		if (managerStatus.server_ready) return 'llama.cpp router ready';
-
-		if (managerStatus.running) return 'llama.cpp router starting';
-
-		if (managerStatus.phase === 'exited') return 'llama.cpp router exited';
-
-		return 'llama.cpp router stopped';
-	}
-
 	function formatBytes(value: number) {
 		if (!Number.isFinite(value) || value <= 0) return '0 B';
-
 		const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
 		const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-
 		return (value / 1024 ** index).toFixed(index === 0 ? 0 : 1) + ' ' + units[index];
 	}
-
 	function metricNumber(key: string) {
 		const value = metrics?.[key];
-
 		return typeof value === 'number' ? value : 0;
 	}
-
-	function routerConfigsEqual(left: SparkMoeRouterConfig, right: SparkMoeRouterConfig) {
-		return (
-			left.model_directory === right.model_directory &&
-			left.models_autoload === right.models_autoload &&
-			left.models_max === right.models_max &&
-			left.port === right.port
-		);
-	}
-
 	function formatMilliseconds(value: number) {
 		return (value / 1000).toFixed(2) + ' ms';
 	}
+	function statusFor(id: string) {
+		return modelsStore.routerModels.find((model) => model.id === id)?.status.value ?? 'unloaded';
+	}
+	function selectSettingsModel(id: string) {
+		selectedModel = id;
+		rename = library.find((model) => model.id === id)?.display_name ?? '';
+		metrics = null;
+		runtimeConfig = null;
+	}
 
 	async function refreshManager() {
-		try {
-			const savedConfigAtStart = { ...savedRouterConfig };
-			const [status, recommendation] = await Promise.all([
-				SparkMoeService.status(),
-				SparkMoeService.recommendation()
-			]);
-			const savedConfigChanged = !routerConfigsEqual(savedRouterConfig, savedConfigAtStart);
-
-			managerStatus = status;
-
-			if (!savedConfigChanged) {
-				const preserveDraft = routerConfigDirty;
-				const nextConfig = { ...defaultRouterConfig, ...status.config };
-
-				savedRouterConfig = nextConfig;
-
-				if (!preserveDraft) routerConfig = { ...nextConfig };
-			}
-
-			hardware = recommendation;
-			connected = true;
-		} catch (cause) {
-			connected = false;
-			managerStatus = null;
-
-			throw cause;
-		}
+		const baseline = JSON.stringify(savedRouterConfig);
+		const status = await SparkMoeService.status();
+		managerStatus = status;
+		if (baseline !== JSON.stringify(savedRouterConfig)) return;
+		if (!routerConfigDirty) routerConfig = { ...status.config };
+		savedRouterConfig = { ...status.config };
 	}
-
-	async function refreshModels() {
-		await modelsStore.fetch(true);
-		await modelsStore.fetchRouterModels();
-
-		if (!selectedModel || !modelsStore.routerModels.some((model) => model.id === selectedModel)) {
-			selectedModel =
-				modelsStore.selectedModelName &&
-				modelsStore.routerModels.some((model) => model.id === modelsStore.selectedModelName)
-					? modelsStore.selectedModelName
-					: modelsStore.routerModels[0]?.id || '';
-		}
-
-		if (selectedModel && loadedProfileModel !== selectedModel) {
-			await loadProfile();
-		}
-	}
-
-	async function refreshRuntime() {
-		if (!selectedModel || !selectedModelLoaded) {
-			metrics = null;
-			runtimeConfig = null;
-
-			return;
-		}
-
-		try {
-			const [pagingMetrics, nextRuntimeConfig] = await Promise.all([
-				SparkMoeService.paging(selectedModel),
-				SparkMoeService.runtimeConfig(selectedModel)
-			]);
-
-			let generationTokensPerSecond = 0;
-
-			try {
-				const prometheus = await SparkMoeService.prometheusMetrics(selectedModel);
-				const seconds = prometheus['llamacpp:tokens_predicted_seconds_total'] || 0;
-
-				if (seconds > 0) {
-					generationTokensPerSecond =
-						(prometheus['llamacpp:tokens_predicted_total'] || 0) / seconds;
-				}
-			} catch {
-				generationTokensPerSecond = 0;
-			}
-
-			metrics = { ...pagingMetrics, generation_tokens_per_second: generationTokensPerSecond };
-			runtimeConfig = nextRuntimeConfig;
-		} catch {
-			metrics = null;
-			runtimeConfig = null;
-		}
-	}
-
-	async function loadProfile() {
-		if (!selectedModel) {
-			profile = { ...defaultProfile };
-			profileIsOverride = false;
-			loadedProfileModel = '';
-
-			return;
-		}
-
-		const response = await SparkMoeService.modelProfile(selectedModel);
-
-		profile = { ...defaultProfile, ...response.profile };
-		profileIsOverride = response.is_override;
-		loadedProfileModel = selectedModel;
-		await refreshRuntime();
-	}
-
-	async function handleModelSelection() {
-		error = '';
-		notice = '';
-		loadedProfileModel = '';
-
-		try {
-			await loadProfile();
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
-		}
-	}
-
-	async function initialize() {
-		try {
-			await refreshManager();
-			await refreshModels();
-			await refreshLogs();
+	async function refreshLibrary(rescan = false) {
+		const result = await SparkMoeService.library(rescan);
+		library = result.models;
+		if (!library.some((model) => model.id === selectedModel))
+			selectSettingsModel(library[0]?.id ?? '');
+		if (managerStatus?.server_ready) {
+			await modelsStore.fetch(true);
+			await modelsStore.fetchRouterModels();
 			modelsStore.status.subscribe();
-			error = '';
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
-
-	async function runAction(name: string, action: () => Promise<void>) {
+	async function refreshRuntime() {
+		const id = selectedModel;
+		if (!id || !selectedModelLoaded) {
+			metrics = null;
+			runtimeConfig = null;
+			return;
+		}
+		const results = await Promise.allSettled([
+			SparkMoeService.paging(id),
+			SparkMoeService.runtimeConfig(id),
+			SparkMoeService.prometheusMetrics(id)
+		]);
+		if (id !== selectedModel) return;
+		const [paging, runtime, rates] = results;
+		metricsError = paging.status === 'rejected' ? String(paging.reason) : '';
+		metrics = paging.status === 'fulfilled' ? paging.value : null;
+		runtimeConfig = runtime.status === 'fulfilled' ? runtime.value : null;
+		if (metrics && rates.status === 'fulfilled') {
+			const count = rates.value['llamacpp:tokens_predicted_total'] ?? 0;
+			const seconds = rates.value['llamacpp:tokens_predicted_seconds_total'] ?? 0;
+			metrics.generation_tokens_per_second = seconds > 0 ? count / seconds : 0;
+		}
+	}
+	async function refreshLogs() {
+		try {
+			const result = await SparkMoeService.logSessions();
+			logSessions = result.sessions;
+			logDirectory = result.directory;
+			if (!logSessions.some((session) => session.name === selectedLogSession))
+				selectedLogSession =
+					logSessions.find((session) => session.current)?.name ?? logSessions[0]?.name ?? '';
+			const session = selectedLogSession;
+			if (session) {
+				const chunk = await SparkMoeService.logChunk(session);
+				if (session === selectedLogSession) logContent = chunk.content;
+			}
+			logsError = '';
+		} catch (cause) {
+			logsError = cause instanceof Error ? cause.message : String(cause);
+		}
+	}
+	async function initialize() {
+		await refreshManager();
+		await refreshLibrary();
+		hardware = await SparkMoeService.recommendation();
+		initialized = true;
+	}
+	async function run(name: string, work: () => Promise<void>) {
+		if (busy) return;
 		busy = name;
 		error = '';
 		notice = '';
-
 		try {
-			await action();
+			await work();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = '';
 		}
 	}
-
-	async function chooseModelsDirectory() {
-		await runAction('browse', async () => {
-			const result = await SparkMoeService.chooseModelsDirectory();
-
-			if (!result.cancelled && result.directory) {
-				routerConfig.model_directory = result.directory;
-				notice = 'Folder selected but not saved yet. Apply server settings to use it.';
-			}
-		});
+	async function importModel(path: string) {
+		if (!path.trim()) return;
+		await SparkMoeService.importModel(path);
+		importPath = '';
+		importOpen = false;
+		await refreshLibrary();
+		notice = 'Model added to the library.';
 	}
-
-	function discardRouterChanges() {
-		routerConfig = { ...savedRouterConfig };
-		error = '';
-		notice = 'Unsaved server settings were discarded.';
+	async function chooseFile() {
+		const result = await SparkMoeService.chooseModelFile();
+		if (!result.cancelled && result.path) await importModel(result.path);
 	}
-
-	async function rescanModels() {
-		await runAction('models-rescan', async () => {
-			await SparkMoeService.reloadModels();
-			await refreshModels();
-			notice = 'The saved models folder was rescanned.';
-		});
+	async function chooseFolder() {
+		const result = await SparkMoeService.chooseModelsDirectory();
+		if (!result.cancelled && result.directory) await importModel(result.directory);
 	}
-
-	async function waitForManagerReady(port: number) {
-		for (let attempt = 0; attempt < 120; attempt += 1) {
-			const status = await SparkMoeService.status();
-
-			managerStatus = status;
-
-			if (status.server_ready) {
-				if (window.location.port !== String(port)) {
-					window.location.href = 'http://127.0.0.1:' + port + '/#/sparkmoe';
-
-					return false;
-				}
-
-				return true;
-			}
-
-			if (!status.running && status.phase === 'exited') {
-				throw new Error(status.last_error || 'The llama.cpp router exited during startup.');
-			}
-
-			await new Promise((resolve) => setTimeout(resolve, 500));
-		}
-
-		throw new Error('The llama.cpp router did not become ready within one minute.');
+	async function openChat() {
+		const id = selectedModel;
+		if (!id) return;
+		const draft = await sparkMoeProfileStore.load(id, true);
+		if (draft.saving || !(await sparkMoeProfileStore.save(id)))
+			throw new Error('Finish saving the model settings before starting a chat.');
+		if (!selectedModelLoaded || draft.pending) await SparkMoeService.applyModel(id);
+		await modelsStore.fetch(true);
+		await modelsStore.fetchRouterModels();
+		await modelsStore.selectModelById(id);
+		await goto(ROUTES.START);
 	}
-
-	async function saveRouterConfig() {
-		await runAction('router-config', async () => {
-			const result = await SparkMoeService.saveRouterConfig(routerConfig);
-			const persistedConfig = { ...defaultRouterConfig, ...result.status.config };
-
-			managerStatus = result.status;
-			savedRouterConfig = persistedConfig;
-			routerConfig = { ...persistedConfig };
-			const staysHere = await waitForManagerReady(result.port);
-
-			if (staysHere) {
-				await refreshModels();
-				notice = 'Server settings saved. The model library was rescanned.';
-			}
-		});
+	async function removeModel() {
+		const id = selectedModel;
+		removeDialogOpen = false;
+		await SparkMoeService.removeLibraryModel(id);
+		await refreshLibrary();
+		notice = 'Removed from the library. The model files were kept.';
 	}
-
-	async function startRouter() {
-		await runAction('router-start', async () => {
-			await SparkMoeService.start();
-			await waitForManagerReady(savedRouterConfig.port);
-			await refreshModels();
-		});
+	async function updateModel(
+		changes: Partial<Pick<SparkMoeLibraryModel, 'display_name' | 'favorite' | 'path'>>
+	) {
+		await SparkMoeService.updateLibraryModel(selectedModel, changes);
+		await refreshLibrary();
 	}
-
-	async function restartRouter() {
-		await runAction('router-restart', async () => {
-			await SparkMoeService.restart();
-			await waitForManagerReady(savedRouterConfig.port);
-			await refreshModels();
-			notice = 'The llama.cpp router restarted.';
-		});
+	async function lifecycle(action: 'start' | 'stop' | 'restart') {
+		await SparkMoeService[action]();
+		await refreshManager();
+		if (managerStatus?.server_ready) await refreshLibrary();
 	}
-
-	async function stopRouter() {
-		await runAction('router-stop', async () => {
-			await SparkMoeService.stop();
-			await refreshManager();
-			metrics = null;
-			runtimeConfig = null;
-			notice = 'The router and all loaded model processes were stopped.';
-		});
-	}
-
-	async function exitSparkMoe() {
-		exitDialogOpen = false;
-		await runAction('shutdown', async () => {
-			await SparkMoeService.shutdown();
-			connected = false;
-			managerStatus = null;
-			metrics = null;
-			runtimeConfig = null;
-			notice = 'SparkMoE has exited. You can now close this browser tab.';
-		});
-	}
-
-	async function toggleSelectedModel() {
-		if (!selectedModel) return;
-
-		await runAction('model', async () => {
-			if (selectedModelLoaded) {
-				await modelsStore.status.unload(selectedModel);
-				metrics = null;
-				runtimeConfig = null;
-			} else {
-				await modelsStore.status.load(selectedModel);
-				await refreshRuntime();
-			}
-		});
-	}
-
-	async function saveProfile() {
-		if (!selectedModel) return;
-
-		await runAction('profile', async () => {
-			const wasLoaded = selectedModelLoaded;
-
-			await SparkMoeService.saveModelProfile(selectedModel, profile);
-			profileIsOverride = true;
-			await modelsStore.fetchRouterModels();
-
-			if (wasLoaded) {
-				await modelsStore.status.load(selectedModel);
-				await refreshRuntime();
-				notice = 'Profile saved and the model reloaded with the new settings.';
-			} else {
-				notice = 'Profile saved. It will be used the next time this model loads.';
-			}
-		});
-	}
-
-	async function resetProfile() {
-		if (!selectedModel) return;
-
-		await runAction('profile-reset', async () => {
-			const wasLoaded = selectedModelLoaded;
-
-			await SparkMoeService.resetModelProfile(selectedModel);
-			await modelsStore.fetchRouterModels();
-			loadedProfileModel = '';
-			await loadProfile();
-
-			if (wasLoaded) {
-				await modelsStore.status.load(selectedModel);
-				await refreshRuntime();
-			}
-
-			notice = 'The model now uses the SparkMoE default profile.';
-		});
-	}
-
-	async function resizeCache() {
-		if (!selectedModel) return;
-
-		await runAction('cache-resize', async () => {
-			await SparkMoeService.resizeCache(selectedModel, profile.cache);
-			await refreshRuntime();
-			notice = 'The hybrid cache resize was accepted and will apply before the next decode.';
-		});
-	}
-
-	async function resetMetrics() {
-		if (!selectedModel) return;
-
-		await runAction('metrics-reset', async () => {
-			await SparkMoeService.resetMetrics(selectedModel);
-			await refreshRuntime();
-		});
-	}
-
-	async function refreshLogs() {
-		const response = await SparkMoeService.logSessions();
-
-		logSessions = response.sessions;
-		logDirectory = response.directory;
-
-		if (
-			!selectedLogSession ||
-			!logSessions.some((session) => session.name === selectedLogSession)
-		) {
-			selectedLogSession =
-				logSessions.find((session) => session.current)?.name || logSessions[0]?.name || '';
-		}
-
-		if (!selectedLogSession) {
-			logContent = '';
-
-			return;
-		}
-
-		const chunk = await SparkMoeService.logChunk(selectedLogSession);
-
-		logContent = chunk.content;
-	}
-
 	onMount(() => {
-		void initialize();
-		const timer = window.setInterval(() => {
-			void refreshManager().catch(() => {
-				connected = false;
-			});
-
-			if (activeTab === 'overview' || activeTab === 'metrics') void refreshRuntime();
-
-			if (activeTab === 'logs') void refreshLogs().catch(() => {});
-		}, 2000);
-
-		return () => {
-			window.clearInterval(timer);
-			modelsStore.status.unsubscribe();
-		};
+		void run('initialize', initialize);
+		const timer = setInterval(() => {
+			if (refreshing) return;
+			refreshing = true;
+			void (async () => {
+				const wasReady = managerStatus?.server_ready;
+				await refreshManager();
+				if (!wasReady && managerStatus?.server_ready) await refreshLibrary();
+				if (activeTab === 'activity') await Promise.all([refreshRuntime(), refreshLogs()]);
+			})()
+				.catch(() => {
+					managerStatus = null;
+				})
+				.finally(() => {
+					refreshing = false;
+				});
+		}, 2500);
+		return () => clearInterval(timer);
 	});
 </script>
 
-<svelte:head>
-	<title>SparkMoE</title>
-</svelte:head>
+<svelte:head><title>SparkMoE</title></svelte:head>
 
 <div class="mx-auto w-full max-w-6xl space-y-6 p-4 pb-24 md:p-8">
-	<div
-		class="flex flex-col gap-4 border-b border-border/40 pb-6 sm:flex-row sm:items-center sm:justify-between"
-	>
-		<div class="flex items-start gap-3">
-			<div class="rounded-xl bg-primary/10 p-2.5 text-primary">
-				<Sparkles class="h-5 w-5" />
-			</div>
+	<header class="flex flex-wrap items-center justify-between gap-4 border-b border-border/40 pb-5">
+		<div class="flex items-center gap-3">
+			<div class="rounded-xl bg-primary/10 p-2.5 text-primary"><Sparkles class="h-5 w-5" /></div>
 			<div>
 				<h1 class="text-xl font-semibold tracking-tight">SparkMoE</h1>
-				<p class="mt-1 text-sm text-muted-foreground">
-					Model loading, expert paging, context, MTP, diagnostics, and local server control.
-				</p>
+				<p class="mt-1 text-sm text-muted-foreground">Your local models, ready to use.</p>
 			</div>
 		</div>
-		<Button variant="outline" size="sm" onclick={() => void initialize()} disabled={busy !== ''}>
-			<RefreshCw class={busy === 'refresh' ? 'animate-spin' : ''} />
-			Refresh
-		</Button>
-	</div>
-
-	<Card.Root class="gap-4">
-		<Card.Content class="grid gap-4 px-6 sm:grid-cols-[1fr_auto] sm:items-center">
-			<div class="flex min-w-0 items-center gap-3">
-				{#if managerStatus?.server_ready}
-					<CheckCircle2 class="h-5 w-5 shrink-0 text-emerald-500" />
-				{:else if managerStatus?.running}
-					<LoaderCircle class="h-5 w-5 shrink-0 animate-spin text-amber-500" />
-				{:else}
-					<AlertCircle class="h-5 w-5 shrink-0 text-muted-foreground" />
-				{/if}
-				<div class="min-w-0">
-					<p class="font-medium">{describeManagerStatus()}</p>
-					<p class="truncate text-xs text-muted-foreground">
-						{connected
-							? 'API and Web UI on port ' +
-								(managerStatus?.port || savedRouterConfig.port) +
-								' | PID ' +
-								(managerStatus?.pid || '-')
-							: 'Start the app with SparkMoE.exe to enable local management.'}
-					</p>
-				</div>
-			</div>
-			<div class="flex flex-wrap gap-2">
-				{#if managerStatus?.running}
-					<Button
-						variant="outline"
-						size="sm"
-						onclick={() => void restartRouter()}
-						disabled={busy !== ''}
-					>
-						<RefreshCw class={busy === 'router-restart' ? 'animate-spin' : ''} />
-						Restart
-					</Button>
-					<Button
-						variant="destructive"
-						size="sm"
-						onclick={() => void stopRouter()}
-						disabled={busy !== ''}
-					>
-						<CircleStop />
-						Stop
-					</Button>
-				{:else}
-					<Button size="sm" onclick={() => void startRouter()} disabled={!connected || busy !== ''}>
-						<Play />
-						Start
-					</Button>
-				{/if}
-				<Button
-					variant="outline"
-					size="sm"
-					onclick={() => (exitDialogOpen = true)}
-					disabled={!connected || busy !== ''}
-				>
-					<Power />
-					Exit SparkMoE
-				</Button>
-			</div>
-		</Card.Content>
-	</Card.Root>
-
-	<div class="flex w-full gap-1 overflow-x-auto rounded-lg bg-muted/50 p-1">
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'overview' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'overview')}
+		<div class="flex items-center gap-2">
+			<span class="text-xs text-muted-foreground"
+				>{managerStatus?.server_ready
+					? 'Ready'
+					: managerStatus?.running
+						? 'Starting...'
+						: managerStatus
+							? 'Server stopped'
+							: 'Manager unavailable'}</span
+			><Button
+				aria-label="Application settings"
+				href={RouterService.settings('general')}
+				size="icon"
+				variant="ghost"><Settings /></Button
+			><Button
+				aria-label="Refresh SparkMoE"
+				disabled={busy !== ''}
+				onclick={() => void run('refresh', initialize)}
+				size="icon"
+				variant="ghost"><RefreshCw class={busy === 'refresh' ? 'animate-spin' : ''} /></Button
+			>
+		</div>
+	</header>
+	<nav aria-label="SparkMoE sections" class="flex gap-1 rounded-lg bg-muted/50 p-1">
+		{#each [{ id: 'models', label: 'Models', icon: Library }, { id: 'connections', label: 'Connections', icon: Link }, { id: 'activity', label: 'Activity', icon: Activity }] as tab}<Button
+				aria-current={activeTab === tab.id ? 'page' : undefined}
+				class="flex-1 sm:flex-none"
+				onclick={() => {
+					activeTab = tab.id as Tab;
+					if (activeTab === 'activity')
+						void run('activity', async () => {
+							await Promise.all([refreshLogs(), refreshRuntime()]);
+						});
+				}}
+				variant={activeTab === tab.id ? 'secondary' : 'ghost'}><tab.icon />{tab.label}</Button
+			>{/each}
+	</nav>
+	{#if managerStatus?.configuration_warning}<div
+			class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
+			role="status"
 		>
-			<Activity />
-			Overview
-		</Button>
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'models' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'models')}
-		>
-			<Server />
-			Models
-		</Button>
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'engine' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'engine')}
-		>
-			<Sparkles />
-			SparkMoE engine
-		</Button>
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'context' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'context')}
-		>
-			<Database />
-			Context & caches
-		</Button>
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'mtp' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'mtp')}
-		>
-			<BrainCircuit />
-			MTP & reasoning
-		</Button>
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'metrics' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'metrics')}
-		>
-			<ChartNoAxesCombined />
-			Metrics
-		</Button>
-		<Button
-			class="shrink-0"
-			variant={activeTab === 'logs' ? 'secondary' : 'ghost'}
-			onclick={() => (activeTab = 'logs')}
-		>
-			<TerminalSquare />
-			Logs & diagnostics
-		</Button>
-	</div>
-
-	{#if error}
-		<div
-			class="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+			{managerStatus.configuration_warning}
+		</div>{/if}
+	{#if error}<div
+			class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+			role="alert"
 		>
 			{error}
-		</div>
-	{/if}
-	{#if notice}
-		<div
-			class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-foreground"
-		>
-			{notice}
-		</div>
-	{/if}
+		</div>{/if}
+	{#if notice}<div class="rounded-lg bg-muted/50 p-3 text-sm" role="status">{notice}</div>{/if}
+	{#if !managerStatus}<Card.Root
+			><Card.Content class="space-y-3"
+				><p class="text-sm">Open SparkMoE from its shortcut to manage local models.</p>
+				<Button
+					disabled={busy !== ''}
+					onclick={() => void run('retry', initialize)}
+					variant="outline">Reconnect</Button
+				></Card.Content
+			></Card.Root
+		>{/if}
 
-	{#if ['overview', 'models', 'engine', 'metrics'].includes(activeTab)}
-		<div
-			class={activeTab === 'overview' || activeTab === 'metrics'
-				? 'grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]'
-				: 'space-y-6'}
-		>
-			<div class="space-y-6">
-				{#if activeTab === 'overview'}
-					<Card.Root>
-						<Card.Header>
-							<Card.Title>Overview and status</Card.Title>
-							<Card.Description>
-								A compact view of the Router, model library, and selected model process.
-							</Card.Description>
-						</Card.Header>
-						<Card.Content class="grid gap-3 sm:grid-cols-2">
-							<div class="rounded-lg bg-muted/50 p-3">
-								<span class="text-xs text-muted-foreground">Selected model</span>
-								<b class="mt-1 block truncate">{selectedModel || 'No model selected'}</b>
-							</div>
-							<div class="rounded-lg bg-muted/50 p-3">
-								<span class="text-xs text-muted-foreground">Model status</span>
-								<b class="mt-1 block">{selectedModel ? selectedModelStatus : '-'}</b>
-							</div>
-							<div class="rounded-lg bg-muted/50 p-3">
-								<span class="text-xs text-muted-foreground">Available models</span>
-								<b class="mt-1 block">{modelsStore.routerModels.length.toLocaleString()}</b>
-							</div>
-							<div class="rounded-lg bg-muted/50 p-3">
-								<span class="text-xs text-muted-foreground">Maximum loaded models</span>
-								<b class="mt-1 block">{savedRouterConfig.models_max || 'Unlimited'}</b>
-							</div>
-						</Card.Content>
-						<Card.Footer class="flex-wrap justify-end gap-2">
-							<Button variant="outline" onclick={() => (activeTab = 'models')}>Manage models</Button
-							>
-							<Button onclick={() => (activeTab = 'metrics')}>View metrics</Button>
-						</Card.Footer>
-					</Card.Root>
-				{/if}
-
-				{#if activeTab === 'models'}
-					<Card.Root>
-						<Card.Header>
-							<Card.Title>llama.cpp router</Card.Title>
-							<Card.Description>
-								The Web UI and API keep one stable address while model processes load on demand.
-							</Card.Description>
-						</Card.Header>
-						<Card.Content class="grid gap-4">
-							<label class="grid gap-2 text-sm">
-								<span class="font-medium">Models folder</span>
-								<div class="flex min-w-0 gap-2">
-									<input
-										class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2"
-										dir="ltr"
-										placeholder="Choose the folder that contains GGUF models"
-										readonly
-										bind:value={routerConfig.model_directory}
-									/>
-									<Button
-										variant="outline"
-										onclick={() => void chooseModelsDirectory()}
-										disabled={busy !== ''}
-									>
-										{#if busy === 'browse'}<LoaderCircle class="animate-spin" />{:else}<FolderOpen
-											/>{/if}
-										Choose
-									</Button>
-								</div>
-							</label>
-							<div class="grid gap-4 sm:grid-cols-2">
-								<label class="grid gap-2 text-sm">
-									<span class="font-medium">Maximum loaded models</span>
-									<input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="0"
-										max="64"
-										bind:value={routerConfig.models_max}
-									/>
-									<span class="text-xs text-muted-foreground">
-										0 means unlimited. The router unloads the least recently used idle model at the
-										limit.
-									</span>
-								</label>
-								<label class="grid gap-2 text-sm">
-									<span class="font-medium">Web UI and API port</span>
-									<input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="1024"
-										max="65535"
-										bind:value={routerConfig.port}
-									/>
-									<span class="text-xs text-muted-foreground"
-										>Changing this moves the browser and API address.</span
-									>
-								</label>
-							</div>
-							<label
-								class="flex items-start justify-between gap-4 rounded-lg border border-border/60 p-3 text-sm"
-							>
-								<span>
-									<b>Load models automatically for API requests</b>
-									<span class="mt-1 block text-xs text-muted-foreground">
-										When enabled, a request containing a model ID loads that model if it is not
-										already active.
-									</span>
-								</span>
-								<input
-									class="mt-1 h-4 w-4"
-									type="checkbox"
-									bind:checked={routerConfig.models_autoload}
-								/>
-							</label>
-							{#if routerConfigDirty}
-								<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-									These server settings have not been applied yet. Background status refreshes will
-									keep this draft intact.
-								</div>
-							{/if}
-						</Card.Content>
-						<Card.Footer class="flex-wrap justify-end gap-2">
-							<Button
-								variant="ghost"
-								onclick={discardRouterChanges}
-								disabled={!routerConfigDirty || busy !== ''}
-							>
-								Discard changes
-							</Button>
-							<Button
-								variant="outline"
-								onclick={() => void rescanModels()}
-								disabled={!managerStatus?.server_ready || routerConfigDirty || busy !== ''}
-							>
-								{#if busy === 'models-rescan'}<LoaderCircle class="animate-spin" />{:else}<RefreshCw
-									/>{/if}
-								Rescan saved folder
-							</Button>
-							<Button
-								onclick={() => void saveRouterConfig()}
-								disabled={!connected || !routerConfigDirty || busy !== ''}
-							>
-								{#if busy === 'router-config'}<LoaderCircle class="animate-spin" />{/if}
-								Apply server settings
-							</Button>
-						</Card.Footer>
-					</Card.Root>
-				{/if}
-
-				{#if activeTab === 'models' || activeTab === 'engine' || activeTab === 'metrics'}
-					<Card.Root>
-						<Card.Header>
-							<Card.Title
-								>{activeTab === 'engine'
-									? 'SparkMoE engine profile'
-									: activeTab === 'metrics'
-										? 'Metrics target'
-										: 'Models'}</Card.Title
-							>
-							<Card.Description>
-								{activeTab === 'engine'
-									? 'Each model keeps its own lossless expert-loading and memory policy.'
-									: 'Select a model and control whether its process is loaded.'}
-							</Card.Description>
-						</Card.Header>
-						<Card.Content class="space-y-5">
-							<label class="grid gap-2 text-sm">
-								<span class="font-medium">Model</span>
-								<select
-									class="min-w-0 rounded-md border border-input bg-background px-3 py-2"
-									bind:value={selectedModel}
-									onchange={() => void handleModelSelection()}
-								>
-									{#if modelsStore.routerModels.length === 0}
-										<option value="">No models found</option>
-									{/if}
-									{#each modelsStore.routerModels as model (model.id)}
-										<option value={model.id}>{model.id} ({model.status.value})</option>
-									{/each}
-								</select>
-							</label>
-
-							{#if selectedModel}
-								<div
-									class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"
-								>
-									<div>
-										<p class="text-sm font-medium">
-											{profileIsOverride ? 'Custom SparkMoE profile' : 'SparkMoE default profile'}
-										</p>
-										<p class="text-xs text-muted-foreground">Status: {selectedModelStatus}</p>
-									</div>
-									<div class="flex flex-wrap gap-2">
-										<Button
-											variant={selectedModelLoaded ? 'destructive' : 'outline'}
-											size="sm"
-											onclick={() => void toggleSelectedModel()}
-											disabled={busy !== '' || selectedModelBusy}
-										>
-											{#if selectedModelBusy}<LoaderCircle
-													class="animate-spin"
-												/>{:else if selectedModelLoaded}<CircleStop />{:else}<Play />{/if}
-											{selectedModelLoaded ? 'Unload' : 'Load'}
-										</Button>
-										{#if profileIsOverride}
-											<Button
-												variant="ghost"
-												size="sm"
-												onclick={() => void resetProfile()}
-												disabled={busy !== ''}
-											>
-												<RotateCcw />
-												Use defaults
-											</Button>
-										{/if}
-									</div>
-								</div>
-							{/if}
-
-							{#if activeTab === 'engine'}
-								<div class="grid gap-4 sm:grid-cols-2">
-									<label class="grid gap-2 text-sm">
-										<span class="font-medium">Loading method</span>
-										<select
-											class="rounded-md border border-input bg-background px-3 py-2"
-											bind:value={profile.mode}
-										>
-											<option value="auto">Automatic - recommended</option>
-											<option value="os">Standard mmap</option>
-											<option value="explicit">SparkMoE expert paging</option>
-											<option value="off">Fully resident / no mmap</option>
-										</select>
-									</label>
-									<label class="grid gap-2 text-sm">
-										<span class="font-medium">Expert RAM cache (MiB)</span>
-										<input
-											class="rounded-md border border-input bg-background px-3 py-2"
-											type="number"
-											min="0"
-											bind:value={profile.cache}
-										/>
-									</label>
-									<label class="grid gap-2 text-sm">
-										<span class="font-medium">SSD read workers</span>
-										<input
-											class="rounded-md border border-input bg-background px-3 py-2"
-											type="number"
-											min="1"
-											max="128"
-											bind:value={profile.io_threads}
-										/>
-									</label>
-									<label class="grid gap-2 text-sm">
-										<span class="font-medium">Expert slots per layer</span>
-										<input
-											class="rounded-md border border-input bg-background px-3 py-2"
-											type="number"
-											min="0"
-											bind:value={profile.slots}
-										/>
-									</label>
-								</div>
-
-								<details class="rounded-lg border border-border/60 p-4">
-									<summary class="cursor-pointer text-sm font-medium"
-										>Advanced loading policies</summary
-									>
-									<div class="mt-4 grid gap-4 sm:grid-cols-2">
-										<label class="grid gap-2 text-sm"
-											><span>Expert storage I/O</span><select
-												class="rounded-md border border-input bg-background px-3 py-2"
-												bind:value={profile.io_mode}
-												><option value="buffered">Buffered</option><option value="direct"
-													>Direct with fallback</option
-												></select
-											></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>Cache policy</span><select
-												class="rounded-md border border-input bg-background px-3 py-2"
-												bind:value={profile.cache_policy}
-												><option value="lru">Per-layer LRU</option><option value="hybrid"
-													>Hybrid global / per-layer</option
-												></select
-											></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>Compute / I/O overlap</span><select
-												class="rounded-md border border-input bg-background px-3 py-2"
-												bind:value={profile.overlap}
-												><option value="off">Off</option><option value="on">On</option></select
-											></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>Expert prefetch</span><select
-												class="rounded-md border border-input bg-background px-3 py-2"
-												bind:value={profile.prefetch}
-												><option value="off">Off</option><option value="temporal">Temporal</option
-												></select
-											></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>Dense / shared weights</span><select
-												class="rounded-md border border-input bg-background px-3 py-2"
-												bind:value={profile.dense_residency}
-												><option value="auto">Automatic</option><option value="mmap">mmap</option
-												><option value="resident">Resident buffers</option><option value="locked"
-													>Lock in RAM</option
-												></select
-											></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>First layers to page (0 = all)</span><input
-												class="rounded-md border border-input bg-background px-3 py-2"
-												type="number"
-												min="0"
-												max="4096"
-												bind:value={profile.paged_layers}
-											/></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>PLE page cache (MiB)</span><input
-												class="rounded-md border border-input bg-background px-3 py-2"
-												type="number"
-												min="1"
-												max="4096"
-												bind:value={profile.ple_cache_mib}
-											/></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>Inference CPU threads</span><input
-												class="rounded-md border border-input bg-background px-3 py-2"
-												type="number"
-												min="0"
-												max="128"
-												bind:value={profile.inference_threads}
-											/></label
-										>
-										<label class="grid gap-2 text-sm"
-											><span>CPU weight repacking</span><select
-												class="rounded-md border border-input bg-background px-3 py-2"
-												bind:value={profile.cpu_repack}
-												><option value="auto">Automatic</option><option value="on">Enabled</option
-												><option value="off">Disabled</option></select
-											></label
-										>
-									</div>
-								</details>
-							{/if}
-						</Card.Content>
-						{#if activeTab === 'engine'}
-							<Card.Footer class="flex-wrap justify-between gap-2">
-								<Button
-									variant="outline"
-									onclick={() => void resizeCache()}
-									disabled={!selectedModelLoaded ||
-										profile.cache_policy !== 'hybrid' ||
-										busy !== ''}
-								>
-									Apply hybrid cache now
-								</Button>
-								<Button onclick={() => void saveProfile()} disabled={!selectedModel || busy !== ''}>
-									{#if busy === 'profile'}<LoaderCircle class="animate-spin" />{/if}
-									Save model profile
-								</Button>
-							</Card.Footer>
-						{/if}
-					</Card.Root>
-				{/if}
+	{#if activeTab === 'models'}
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div>
+				<h2 class="text-lg font-semibold">Model library</h2>
+				<p class="text-xs text-muted-foreground">
+					{library.length} models | Chat model: {modelsStore.selectedModelName
+						? (library.find((item) => item.id === modelsStore.selectedModelName)?.display_name ??
+							modelsStore.selectedModelName)
+						: 'None'}
+				</p>
 			</div>
-
-			{#if activeTab === 'overview' || activeTab === 'metrics'}
-				<div class="space-y-6">
-					{#if activeTab === 'metrics'}
-						<Card.Root>
-							<Card.Header>
-								<Card.Title class="flex items-center gap-2"
-									><Activity class="h-4 w-4" /> Live expert paging</Card.Title
-								>
-								<Card.Description>Runtime counters for the selected loaded model.</Card.Description>
-							</Card.Header>
-							<Card.Content>
-								{#if selectedModelLoaded && metrics}
-									<div class="space-y-5">
-										{#each [{ items: cacheMetrics, title: 'Cache and experts' }, { items: memoryMetrics, title: 'Memory and storage reads' }, { items: pipelineMetrics, title: 'I/O pipeline and resizing' }, { items: prefetchMetrics, title: 'Prefetch and PLE cache' }] as group (group.title)}
-											<section class="space-y-2">
-												<h4
-													class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
-												>
-													{group.title}
-												</h4>
-												<div class="grid grid-cols-2 gap-3">
-													{#each group.items as item (item.label)}
-														<div class="rounded-lg bg-muted/50 p-3">
-															<span class="text-xs text-muted-foreground">{item.label}</span>
-															<b class="mt-1 block">{item.value}</b>
-														</div>
-													{/each}
-												</div>
-											</section>
-										{/each}
-									</div>
-								{:else}
-									<p class="text-sm text-muted-foreground">
-										Load the selected model to see its live memory and expert paging metrics.
-									</p>
-								{/if}
-							</Card.Content>
-							<Card.Footer class="justify-end">
-								<Button
-									variant="ghost"
-									size="sm"
-									onclick={() => void resetMetrics()}
-									disabled={!selectedModelLoaded || busy !== ''}
-								>
-									<RotateCcw />
-									Reset metrics
-								</Button>
-							</Card.Footer>
-						</Card.Root>
-					{/if}
-
-					<Card.Root>
-						<Card.Header>
-							<Card.Title>Effective runtime</Card.Title>
-							<Card.Description>Values reported by the loaded model process.</Card.Description>
-						</Card.Header>
-						<Card.Content class="space-y-2 text-sm">
-							<div class="flex justify-between gap-4">
-								<span class="text-muted-foreground">Paging mode</span><b
-									>{String(runtimeConfig?.mode ?? '-')}</b
-								>
-							</div>
-							<div class="flex justify-between gap-4">
-								<span class="text-muted-foreground">Architecture</span><b
-									>{String(runtimeConfig?.model_architecture ?? '-')}</b
-								>
-							</div>
-							<div class="flex justify-between gap-4">
-								<span class="text-muted-foreground">Context per slot</span><b
-									>{Number(runtimeConfig?.context_size_per_slot ?? 0).toLocaleString()}</b
-								>
-							</div>
-							<div class="flex justify-between gap-4">
-								<span class="text-muted-foreground">Active experts</span><b
-									>{String(runtimeConfig?.active_expert_count ?? '-')}</b
-								>
-							</div>
-							<div class="flex justify-between gap-4">
-								<span class="text-muted-foreground">MTP</span><b
-									>{runtimeConfig?.mtp_enabled ? 'Enabled' : 'Disabled'}</b
-								>
-							</div>
-						</Card.Content>
-					</Card.Root>
-
-					<Card.Root>
-						<Card.Header>
-							<Card.Title>System memory</Card.Title>
-							<Card.Description>Live machine-wide RAM, not a model-fit estimate.</Card.Description>
-						</Card.Header>
-						<Card.Content class="space-y-3">
-							{@const totalRam = Number(hardware?.total_ram_mib ?? 0) * 1024 * 1024}
-							{@const usedRam = Number(hardware?.used_ram_mib ?? 0) * 1024 * 1024}
-							{@const usedPercent = totalRam > 0 ? Math.min(100, (usedRam / totalRam) * 100) : 0}
-							<div class="h-2 overflow-hidden rounded-full bg-muted">
-								<div
-									class="h-full rounded-full bg-primary transition-[width]"
-									style:width={usedPercent + '%'}
-								></div>
-							</div>
-							<div class="flex justify-between gap-3 text-xs text-muted-foreground">
-								<span>Used {formatBytes(usedRam)}</span>
-								<span
-									>Available {formatBytes(
-										Number(hardware?.available_ram_mib ?? 0) * 1024 * 1024
-									)}</span
-								>
-							</div>
-						</Card.Content>
-					</Card.Root>
-				</div>
-			{/if}
-		</div>
-	{:else if activeTab === 'context' || activeTab === 'mtp'}
-		<div class="space-y-6">
-			<Card.Root>
-				<Card.Content class="grid gap-3 px-6 sm:grid-cols-[1fr_auto] sm:items-end">
-					<label class="grid gap-2 text-sm">
-						<span class="font-medium">Model profile</span>
-						<select
-							class="rounded-md border border-input bg-background px-3 py-2"
-							bind:value={selectedModel}
-							onchange={() => void handleModelSelection()}
-						>
-							{#if modelsStore.routerModels.length === 0}<option value="">No models found</option
-								>{/if}
-							{#each modelsStore.routerModels as model (model.id)}
-								<option value={model.id}>{model.id}</option>
-							{/each}
-						</select>
-					</label>
-					<span class="pb-2 text-xs text-muted-foreground"
-						>{profileIsOverride ? 'Custom profile' : 'SparkMoE defaults'}</span
-					>
-				</Card.Content>
-			</Card.Root>
-
-			{#if activeTab === 'context'}
-				<Card.Root>
-					<Card.Header>
-						<Card.Title>Context and request defaults</Card.Title>
-						<Card.Description>
-							These values belong to the selected model process and take effect when that model
-							loads.
-						</Card.Description>
-					</Card.Header>
-					<Card.Content class="space-y-5">
-						<div class="grid gap-4 sm:grid-cols-2">
-							<label class="grid gap-2 text-sm">
-								<span class="font-medium">Context tokens</span>
-								<input
-									class="rounded-md border border-input bg-background px-3 py-2"
-									type="number"
-									min="0"
-									max="1048576"
-									step="1024"
-									bind:value={profile.ctx_size}
-								/>
-								<span class="text-xs text-muted-foreground">0 uses the model default.</span>
-							</label>
-							<label class="grid gap-2 text-sm">
-								<span class="font-medium">When context is full</span>
-								<select
-									class="rounded-md border border-input bg-background px-3 py-2"
-									value={profile.context_shift ? 'shift' : 'stop'}
-									onchange={(event) =>
-										(profile.context_shift = event.currentTarget.value === 'shift')}
-								>
-									<option value="shift">Forget oldest messages and continue</option>
-									<option value="stop">Stop at the context limit</option>
-								</select>
-							</label>
-							<label class="grid gap-2 text-sm">
-								<span class="font-medium">Parallel chat slots</span>
-								<input
-									class="rounded-md border border-input bg-background px-3 py-2"
-									type="number"
-									min="1"
-									max="32"
-									bind:value={profile.parallel}
-								/>
-								<span class="text-xs text-muted-foreground"
-									>Expert paging currently requires one slot.</span
-								>
-							</label>
-						</div>
-						<div class="flex flex-wrap gap-2">
-							{#each CONTEXT_PRESETS as tokens (tokens)}
-								<Button
-									variant={profile.ctx_size === tokens ? 'secondary' : 'outline'}
-									size="sm"
-									onclick={() => (profile.ctx_size = tokens)}
-								>
-									{tokens / 1024}K
-								</Button>
-							{/each}
-						</div>
-						<details class="rounded-lg border border-border/60 p-4">
-							<summary class="cursor-pointer text-sm font-medium">Advanced context memory</summary>
-							<div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-								<label class="grid gap-2 text-sm"
-									><span>Logical batch size</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="1"
-										max="16384"
-										bind:value={profile.batch_size}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>Physical microbatch</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="1"
-										max="16384"
-										bind:value={profile.ubatch_size}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>Prompt cache RAM (MiB)</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="-1"
-										max="1048576"
-										bind:value={profile.cache_ram_mib}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>Context checkpoints</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="0"
-										max="128"
-										bind:value={profile.ctx_checkpoints}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>K cache precision</span><select
-										class="rounded-md border border-input bg-background px-3 py-2"
-										bind:value={profile.cache_type_k}
-										>{#each CACHE_TYPES as type (type)}<option value={type}>{type}</option
-											>{/each}</select
-									></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>V cache precision</span><select
-										class="rounded-md border border-input bg-background px-3 py-2"
-										bind:value={profile.cache_type_v}
-										>{#each CACHE_TYPES as type (type)}<option value={type}>{type}</option
-											>{/each}</select
-									></label
-								>
-							</div>
-						</details>
-					</Card.Content>
-				</Card.Root>
-			{/if}
-
-			{#if activeTab === 'mtp'}
-				<Card.Root>
-					<Card.Header>
-						<Card.Title>Reasoning defaults</Card.Title>
-						<Card.Description>
-							Choose the default for this model. Chat and API requests can override it
-							independently.
-						</Card.Description>
-					</Card.Header>
-					<Card.Content>
-						<label class="grid gap-2 text-sm">
-							<span class="flex items-center gap-2 font-medium">
-								Default reasoning effort
-								<Tooltip.Root>
-									<Tooltip.Trigger
-										aria-label="How the reasoning profile affects chat and API requests"
-									>
-										<Info class="h-4 w-4 text-muted-foreground" />
-									</Tooltip.Trigger>
-									<Tooltip.Content class="max-w-80" side="right">
-										<p>
-											This is the server default. A choice in the chat Reasoning menu overrides it
-											for that conversation, and an API request can override it with
-											reasoning_effort. Use none to disable reasoning through the API.
-										</p>
-									</Tooltip.Content>
-								</Tooltip.Root>
-							</span>
-							<select
-								class="rounded-md border border-input bg-background px-3 py-2"
-								bind:value={profile.reasoning}
-							>
-								{#each REASONING_EFFORT_LEVELS as level (level.value)}
-									{@const tokens = REASONING_EFFORT_TOKENS[level.value]}
-									<option value={level.value}>
-										{level.label}{level.value === 'default'
-											? ' - model template'
-											: tokens === -1
-												? ' - unlimited'
-												: tokens
-													? ` - ${tokens.toLocaleString()} tokens`
-													: ''}
-									</option>
-								{/each}
-							</select>
-						</label>
-					</Card.Content>
-				</Card.Root>
-
-				<Card.Root>
-					<Card.Header>
-						<Card.Title>Multi-Token Prediction (MTP)</Card.Title>
-						<Card.Description>
-							Optional speculative generation for models with a compatible embedded head or sidecar
-							GGUF.
-						</Card.Description>
-					</Card.Header>
-					<Card.Content class="space-y-5">
-						<label
-							class="flex items-start justify-between gap-4 rounded-lg border border-border/60 p-4 text-sm"
-						>
-							<span>
-								<b>Enable MTP for this model</b>
-								<span class="mt-1 block text-xs text-muted-foreground">
-									Disable it if startup reports that no compatible MTP head is available.
-								</span>
-							</span>
-							<input class="mt-1 h-4 w-4" type="checkbox" bind:checked={profile.mtp_enabled} />
-						</label>
-						{#if profile.mtp_enabled}
-							<label class="grid gap-2 text-sm">
-								<span class="font-medium">MTP sidecar GGUF path (optional)</span>
-								<input
-									class="rounded-md border border-input bg-background px-3 py-2"
-									dir="ltr"
-									bind:value={profile.mtp_model}
-								/>
-								<span class="text-xs text-muted-foreground"
-									>Leave empty to use an MTP head included in the target model.</span
-								>
-							</label>
-							<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-								<label class="grid gap-2 text-sm"
-									><span>Draft tokens per step</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="1"
-										max="64"
-										bind:value={profile.mtp_draft_tokens}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>Minimum accepted draft tokens</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="0"
-										max="64"
-										bind:value={profile.mtp_min_tokens}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>Minimum draft probability</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="0"
-										max="1"
-										step="0.01"
-										bind:value={profile.mtp_p_min}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>MTP expert cache (MiB)</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="1"
-										max="65536"
-										bind:value={profile.mtp_cache_mib}
-									/></label
-								>
-								<label class="grid gap-2 text-sm"
-									><span>MTP CPU threads</span><input
-										class="rounded-md border border-input bg-background px-3 py-2"
-										type="number"
-										min="0"
-										max="128"
-										bind:value={profile.mtp_threads}
-									/></label
-								>
-								<label
-									class="flex items-center gap-3 self-end rounded-lg border border-border/60 p-3 text-sm"
-									><input
-										class="h-4 w-4"
-										type="checkbox"
-										bind:checked={profile.mtp_backend_sampling}
-									/> Backend sampling</label
-								>
-							</div>
-						{/if}
-					</Card.Content>
-				</Card.Root>
-			{/if}
-
-			<div class="flex flex-wrap justify-end gap-2">
-				{#if profileIsOverride}
-					<Button
-						variant="ghost"
-						onclick={() => void resetProfile()}
-						disabled={!selectedModel || busy !== ''}
-					>
-						<RotateCcw />
-						Use defaults
-					</Button>
-				{/if}
-				<Button onclick={() => void saveProfile()} disabled={!selectedModel || busy !== ''}>
-					{#if busy === 'profile'}<LoaderCircle class="animate-spin" />{/if}
-					{activeTab === 'context'
-						? 'Save context and cache profile'
-						: 'Save MTP and reasoning profile'}
-				</Button>
+			<div class="flex gap-2">
+				<Button
+					disabled={!managerStatus}
+					onclick={() => (importOpen = !importOpen)}
+					variant="outline"><Plus />Add local model</Button
+				><Button
+					disabled={!managerStatus}
+					onclick={() => (downloadsOpen = !downloadsOpen)}
+					variant="outline"><Download />Download</Button
+				>
 			</div>
 		</div>
-	{:else}
-		<div class="space-y-6">
-			<Card.Root>
-				<Card.Header>
-					<Card.Title class="flex items-center gap-2"
-						><TerminalSquare class="h-4 w-4" /> Server logs</Card.Title
-					>
-					<Card.Description>
-						Complete combined llama.cpp Router and model-process output. Session files remain on
-						this computer.
-					</Card.Description>
-				</Card.Header>
-				<Card.Content class="space-y-4">
-					<div class="flex flex-col gap-3 sm:flex-row">
-						<select
-							class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-							bind:value={selectedLogSession}
-							onchange={() => void refreshLogs()}
+		{#if importOpen || (initialized && library.length === 0)}<Card.Root
+				><Card.Header
+					><Card.Title>{library.length ? 'Add a local model' : 'Add your first model'}</Card.Title
+					><Card.Description
+						>Select a GGUF file or a folder. Split files and companion weights are grouped
+						automatically.</Card.Description
+					></Card.Header
+				><Card.Content class="space-y-4"
+					><div class="flex flex-wrap gap-2">
+						<Button disabled={busy !== ''} onclick={() => void run('import', chooseFile)}
+							><Plus />Choose GGUF file</Button
+						><Button
+							disabled={busy !== ''}
+							onclick={() => void run('import', chooseFolder)}
+							variant="outline"><FolderOpen />Import folder</Button
 						>
-							{#if logSessions.length === 0}<option value="">No log sessions</option>{/if}
-							{#each logSessions as session (session.name)}
-								<option value={session.name}>
-									{session.name}{session.current ? ' (current)' : ''} - {formatBytes(session.size)}
-								</option>
-							{/each}
-						</select>
-						<Button variant="outline" onclick={() => void refreshLogs()} disabled={!connected}>
-							<RefreshCw />
-							Refresh
-						</Button>
-						<Button
-							variant="outline"
-							href={selectedLogSession
-								? SparkMoeService.logDownloadUrl(selectedLogSession)
-								: undefined}
-							disabled={!selectedLogSession}
-						>
-							<Download />
-							Download full log
-						</Button>
 					</div>
+					<form
+						class="flex gap-2"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void run('import', () => importModel(importPath));
+						}}
+					>
+						<input
+							aria-label="Local model file or folder path"
+							class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+							dir="ltr"
+							placeholder="Or paste a local file or folder path"
+							bind:value={importPath}
+						/><Button disabled={!importPath.trim() || busy !== ''} type="submit" variant="outline"
+							>Add</Button
+						>
+					</form></Card.Content
+				></Card.Root
+			>{/if}
+		{#if downloadsOpen}<Card.Root
+				><Card.Header><Card.Title>Download models</Card.Title></Card.Header><Card.Content
+					><SparkMoeDownloads onComplete={() => refreshLibrary()} /></Card.Content
+				></Card.Root
+			>{/if}
+		{#if library.length}<div class="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+				<aside aria-label="Model library" class="space-y-3">
+					<div class="flex gap-2">
+						<div class="relative min-w-0 flex-1">
+							<Search class="absolute top-3 left-3 h-4 w-4 text-muted-foreground" /><input
+								aria-label="Search model library"
+								class="w-full rounded-md border border-input bg-background py-2 pr-3 pl-9 text-sm"
+								placeholder="Find a model"
+								bind:value={search}
+							/>
+						</div>
+						<Button
+							aria-label="Show favorites only"
+							aria-pressed={favoritesOnly}
+							onclick={() => (favoritesOnly = !favoritesOnly)}
+							size="icon"
+							variant={favoritesOnly ? 'secondary' : 'outline'}
+							><Star class={favoritesOnly ? 'fill-current' : ''} /></Button
+						>
+					</div>
+					<div class="max-h-[65vh] space-y-2 overflow-y-auto">
+						{#each filteredModels as model}<button
+								aria-pressed={selectedModel === model.id}
+								class={[
+									'w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50',
+									selectedModel === model.id ? 'border-primary bg-primary/5' : 'border-border/60'
+								]}
+								onclick={() => selectSettingsModel(model.id)}
+								type="button"
+								><span class="block break-words text-sm font-medium"
+									>{#if model.favorite}<Star
+											class="mr-1 inline h-3 w-3 fill-current"
+										/>{/if}{model.display_name}</span
+								><span class="mt-2 block text-xs text-muted-foreground"
+									>{model.available ? statusFor(model.id) : 'File missing'} | {formatBytes(
+										model.size_bytes
+									)}</span
+								></button
+							>{/each}{#if !filteredModels.length}<p
+								class="py-6 text-center text-sm text-muted-foreground"
+							>
+								No matching models.
+							</p>{/if}
+					</div>
+				</aside>
+				<div class="min-w-0 space-y-5">
+					{#if selected}<Card.Root
+							><Card.Header
+								><div class="flex items-start justify-between gap-3">
+									<div class="min-w-0">
+										<Card.Title class="break-words">{selected.display_name}</Card.Title
+										><Card.Description class="mt-2"
+											>{selected.available
+												? selectedModelStatus
+												: 'File missing'}{modelsStore.selectedModelName === selectedModel
+												? ' | Selected for chat'
+												: ''}</Card.Description
+										>
+									</div>
+									<Button
+										aria-label={selected.favorite ? 'Remove favorite' : 'Add favorite'}
+										disabled={busy !== ''}
+										onclick={() =>
+											void run('favorite', () => updateModel({ favorite: !selected!.favorite }))}
+										size="icon"
+										variant="ghost"><Star class={selected.favorite ? 'fill-current' : ''} /></Button
+									>
+								</div></Card.Header
+							><Card.Content class="space-y-4"
+								><div class="flex flex-wrap gap-2">
+									<Button
+										disabled={!selected.available ||
+											!managerStatus ||
+											busy !== '' ||
+											selectedModelBusy}
+										onclick={() => void run('chat', openChat)}
+										>{#if busy === 'chat'}<LoaderCircle class="animate-spin" />{:else}<MessageSquare
+											/>{/if}Use in chat</Button
+									>{#if selectedModelLoaded}<Button
+											disabled={busy !== '' || selectedModelBusy}
+											onclick={() =>
+												void run('unload', () => modelsStore.status.unload(selectedModel))}
+											variant="outline"><CircleStop />Unload</Button
+										>{/if}
+								</div>
+								{#if !selected.available}<div class="rounded-lg bg-amber-500/10 p-3 text-sm">
+										The model file is missing. Locate it to keep this model's saved settings.<Button
+											class="mt-2"
+											disabled={busy !== ''}
+											onclick={() =>
+												void run('locate', async () => {
+													const file = await SparkMoeService.chooseModelFile();
+													if (file.path && !file.cancelled) await updateModel({ path: file.path });
+												})}
+											size="sm"
+											variant="outline"><FolderOpen />Locate file</Button
+										>
+									</div>{/if}
+								<details class="text-sm">
+									<summary class="cursor-pointer font-medium">Model information</summary>
+									<div class="mt-3 space-y-3">
+										<p class="break-all text-xs text-muted-foreground" dir="ltr">{selected.path}</p>
+										<dl class="grid grid-cols-2 gap-2 text-xs">
+											<dt class="text-muted-foreground">Size</dt>
+											<dd>{formatBytes(selected.size_bytes)}</dd>
+											{#each Object.entries(selected.metadata ?? {}) as [key, value]}{#if typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'}<dt
+														class="break-words text-muted-foreground"
+													>
+														{key.replaceAll('_', ' ')}
+													</dt>
+													<dd class="break-words">{String(value)}</dd>{/if}{/each}
+										</dl>
+										<form
+											class="flex gap-2"
+											onsubmit={(event) => {
+												event.preventDefault();
+												void run('rename', () => updateModel({ display_name: rename }));
+											}}
+										>
+											<input
+												aria-label="Model display name"
+												class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2"
+												bind:value={rename}
+											/><Button
+												disabled={!rename.trim() || rename === selected.display_name || busy !== ''}
+												type="submit"
+												variant="outline">Rename</Button
+											>
+										</form>
+										<Button
+											disabled={busy !== ''}
+											onclick={() => (removeDialogOpen = true)}
+											size="sm"
+											variant="ghost"><Trash2 />Remove from library</Button
+										>
+									</div>
+								</details></Card.Content
+							></Card.Root
+						><SparkMoeModelSettings
+							available={selected.available && Boolean(managerStatus)}
+							loaded={selectedModelLoaded}
+							model={selectedModel}
+							onApplied={() => refreshLibrary()}
+						/>{/if}
+				</div>
+			</div>{/if}
+		<details class="rounded-lg border border-border/60 p-4">
+			<summary class="cursor-pointer text-sm font-medium">Library folder</summary>
+			<p class="my-3 text-xs text-muted-foreground">
+				Save a discovery folder, then rescan to update the library.
+			</p>
+			<div class="flex gap-2">
+				<input
+					aria-label="Model discovery folder"
+					class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+					dir="ltr"
+					bind:value={routerConfig.model_directory}
+				/><Button
+					disabled={busy !== ''}
+					onclick={() =>
+						void run('folder', async () => {
+							const folder = await SparkMoeService.chooseModelsDirectory();
+							if (folder.directory && !folder.cancelled)
+								routerConfig.model_directory = folder.directory;
+						})}
+					size="icon"
+					variant="outline"><FolderOpen /></Button
+				>
+			</div>
+			<div class="mt-3 flex flex-wrap gap-2">
+				<Button
+					disabled={!routerConfigDirty || busy !== ''}
+					onclick={() =>
+						void run('folder-save', async () => {
+							await SparkMoeService.saveRouterConfig({
+								model_directory: routerConfig.model_directory
+							});
+							savedRouterConfig = { ...routerConfig };
+							notice = 'Folder saved. Rescan when ready.';
+						})}
+					size="sm"
+					variant="outline">Save folder</Button
+				><Button
+					disabled={routerConfigDirty || busy !== ''}
+					onclick={() => void run('rescan', () => refreshLibrary(true))}
+					size="sm"
+					variant="outline"><RefreshCw />Rescan saved folder</Button
+				>
+			</div>
+		</details>
+	{:else if activeTab === 'connections'}<SparkMoeConnections models={library} {selectedModel} />
+	{:else}
+		<Card.Root
+			><Card.Header
+				><Card.Title>Server activity</Card.Title><Card.Description
+					>{managerStatus?.server_ready
+						? 'Ready for requests'
+						: managerStatus?.running
+							? 'Starting the server'
+							: 'Server stopped'}</Card.Description
+				></Card.Header
+			><Card.Content class="space-y-4"
+				>{#if managerStatus?.last_error}<p class="text-sm text-destructive">
+						{managerStatus.last_error}
+					</p>{/if}
+				<div class="flex flex-wrap gap-2">
+					{#if managerStatus?.running}<Button
+							disabled={busy !== ''}
+							onclick={() => void run('restart', () => lifecycle('restart'))}
+							variant="outline"><RefreshCw />Restart server</Button
+						><Button
+							disabled={busy !== ''}
+							onclick={() => void run('stop', () => lifecycle('stop'))}
+							variant="outline"><CircleStop />Stop server</Button
+						>{:else}<Button
+							disabled={!managerStatus || busy !== ''}
+							onclick={() => void run('start', () => lifecycle('start'))}
+							><Play />Start server</Button
+						>{/if}<Button
+						disabled={!managerStatus || busy !== ''}
+						onclick={() => (exitDialogOpen = true)}
+						variant="ghost"><Power />Exit SparkMoE</Button
+					>
+				</div>
+				<p class="text-xs text-muted-foreground">
+					Application: {SparkMoeService.managerUrl} | Model API port: {managerStatus?.port ?? '-'} | PID:
+					{managerStatus?.pid || '-'}
+				</p></Card.Content
+			></Card.Root
+		>
+		<Card.Root
+			><Card.Header><Card.Title>Model activity</Card.Title></Card.Header><Card.Content
+				class="space-y-4"
+				><label class="grid gap-2 text-sm"
+					><span>Model</span><select
+						class="rounded-md border border-input bg-background px-3 py-2"
+						onchange={(event) => {
+							selectSettingsModel(event.currentTarget.value);
+							void refreshRuntime();
+						}}
+						value={selectedModel}
+						>{#each library as model}<option value={model.id}
+								>{model.display_name} ({statusFor(model.id)})</option
+							>{/each}</select
+					></label
+				>{#if selectedModelLoaded && metrics}<div class="grid gap-3 sm:grid-cols-3">
+						{#each [cacheMetrics[0], memoryMetrics[0], cacheMetrics[1]] as metric}<div
+								class="rounded-lg bg-muted/50 p-3"
+							>
+								<span class="text-xs text-muted-foreground">{metric.label}</span><strong
+									class="mt-1 block">{metric.value}</strong
+								>
+							</div>{/each}
+					</div>
+					<details>
+						<summary class="cursor-pointer text-sm font-medium">Detailed counters</summary>
+						<div class="mt-4 space-y-5">
+							{#each [{ title: 'Cache and experts', items: cacheMetrics }, { title: 'Memory and storage', items: memoryMetrics }, { title: 'I/O pipeline', items: pipelineMetrics }, { title: 'Prefetch and PLE', items: prefetchMetrics }] as group}<section
+								>
+									<h3 class="mb-2 text-sm font-medium">{group.title}</h3>
+									<dl class="grid grid-cols-2 gap-3">
+										{#each group.items as metric}<div class="rounded-lg bg-muted/30 p-3">
+												<dt class="text-xs text-muted-foreground">{metric.label}</dt>
+												<dd class="mt-1 text-sm">{metric.value}</dd>
+											</div>{/each}
+									</dl>
+								</section>{/each}
+						</div>
+						<Button
+							class="mt-4"
+							disabled={busy !== ''}
+							onclick={() =>
+								void run('reset-metrics', async () => {
+									await SparkMoeService.resetMetrics(selectedModel);
+									await refreshRuntime();
+								})}
+							size="sm"
+							variant="ghost">Reset counters</Button
+						>
+					</details>{:else}<p class="text-sm text-muted-foreground">
+						Load a model to see its runtime measurements.
+					</p>{/if}{#if metricsError}<p class="text-xs text-muted-foreground">
+						{metricsError}
+					</p>{/if}
+				<details>
+					<summary class="cursor-pointer text-sm font-medium"
+						>Effective runtime and hardware</summary
+					>
 					<pre
-						class="min-h-80 max-h-[60vh] overflow-auto rounded-lg border border-border/60 bg-muted/35 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap"
-						dir="ltr">{logContent || 'No log output yet.'}</pre>
-					<p class="break-all text-xs text-muted-foreground">Stored in: {logDirectory || '-'}</p>
-				</Card.Content>
-			</Card.Root>
-
-			<Card.Root>
-				<Card.Header>
-					<Card.Title>Diagnostics</Card.Title>
-					<Card.Description>
-						The diagnostic export excludes prompts, generated text, API keys, usernames, model
-						contents, and private paths.
-					</Card.Description>
-				</Card.Header>
-				<Card.Footer class="justify-end">
-					<Button variant="outline" href={SparkMoeService.diagnosticsUrl()}>
-						<Download />
-						Download diagnostics
-					</Button>
-				</Card.Footer>
-			</Card.Root>
-		</div>
+						class="mt-3 max-h-80 overflow-auto rounded-md bg-muted/50 p-3 text-xs"
+						dir="ltr">{JSON.stringify({ runtime: runtimeConfig, hardware }, null, 2)}</pre>
+				</details></Card.Content
+			></Card.Root
+		>
+		<Card.Root
+			><Card.Header
+				><Card.Title>Logs and diagnostics</Card.Title><Card.Description
+					>Inspect the current session or download logs for troubleshooting.</Card.Description
+				></Card.Header
+			><Card.Content class="space-y-4"
+				><div class="flex flex-wrap gap-2">
+					<select
+						aria-label="Log session"
+						class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+						onchange={() => void refreshLogs()}
+						bind:value={selectedLogSession}
+						>{#each logSessions as session}<option value={session.name}
+								>{session.name}{session.current ? ' (current)' : ''}</option
+							>{/each}</select
+					><Button
+						disabled={!selectedLogSession}
+						href={selectedLogSession
+							? SparkMoeService.logDownloadUrl(selectedLogSession)
+							: undefined}
+						size="sm"
+						variant="outline"><Download />Log</Button
+					><Button href={SparkMoeService.diagnosticsUrl()} size="sm" variant="outline"
+						><Download />Diagnostics</Button
+					>
+				</div>
+				{#if logsError}<p class="text-sm text-destructive">{logsError}</p>{/if}
+				<pre
+					class="max-h-[32rem] min-h-40 overflow-auto rounded-lg border border-border bg-muted/30 p-4 text-xs"
+					dir="ltr">{logContent || 'No log output yet.'}</pre>
+				<p class="break-all text-xs text-muted-foreground">{logDirectory}</p></Card.Content
+			></Card.Root
+		>
 	{/if}
 </div>
 
 <DialogConfirmation
-	bind:open={exitDialogOpen}
-	title="Exit SparkMoE"
-	description="This stops the Router, every loaded model process, and the hidden SparkMoE manager. The browser tab can then be closed. Launch SparkMoE again from the Start menu or shortcut to reopen it."
-	confirmText="Exit SparkMoE"
+	bind:open={removeDialogOpen}
 	cancelText="Cancel"
+	confirmText="Remove from library"
+	description="Remove this library entry and keep the model files on disk."
+	icon={Trash2}
+	onCancel={() => (removeDialogOpen = false)}
+	onConfirm={() => void run('remove', removeModel)}
+	title="Remove model from library"
 	variant="destructive"
+/>
+<DialogConfirmation
+	bind:open={exitDialogOpen}
+	cancelText="Cancel"
+	confirmText="Exit SparkMoE"
+	description="Stop the server and all loaded models, then close SparkMoE."
 	icon={Power}
-	onConfirm={() => void exitSparkMoe()}
 	onCancel={() => (exitDialogOpen = false)}
+	onConfirm={() => {
+		exitDialogOpen = false;
+		void run('exit', async () => {
+			await SparkMoeService.shutdown();
+			managerStatus = null;
+			notice = 'SparkMoE has exited. You can close this tab.';
+		});
+	}}
+	title="Exit SparkMoE"
+	variant="destructive"
 />

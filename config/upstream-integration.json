@@ -67,9 +67,10 @@
     "tools/ui/pwa-assets-dark.config.ts",
     "tools/ui/pwa-assets.config.ts",
     "tools/ui/src/app.html",
-    "tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte",
     "tools/ui/src/lib/components/app/misc/Logo.svelte",
+    "tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte",
     "tools/ui/src/lib/components/app/settings/SettingsChat/SettingsChat.svelte",
+    "tools/ui/src/lib/components/app/settings/SettingsFooter.svelte",
     "tools/ui/src/lib/components/app/settings/index.ts",
     "tools/ui/src/lib/constants/app.constants.ts",
     "tools/ui/src/lib/constants/pwa.constants.ts",
@@ -77,11 +78,45 @@
     "tools/ui/src/lib/constants/settings.constants.ts",
     "tools/ui/src/lib/constants/ui.constants.ts",
     "tools/ui/src/lib/services/chat.service.ts",
+    "tools/ui/src/lib/services/settings.service.ts",
+    "tools/ui/src/lib/stores/models/index.svelte.ts",
+    "tools/ui/src/lib/stores/settings/index.svelte.ts",
     "tools/ui/src/lib/types/api.d.ts",
+    "tools/ui/src/lib/types/settings.d.ts",
     "tools/ui/src/routes/search/+page.svelte",
+    "tools/ui/tests/client/ui-settings-sync.svelte.test.ts",
     "tools/ui/tests/e2e/pwa.e2e.ts"
   ],
   "points": [
+    {
+      "id": "desktop-manager",
+      "files": {
+        "tools/sparkmoe/desktop-window.h": [
+          "class desktop_window"
+        ],
+        "tools/sparkmoe/desktop-window.cpp": [
+          "COREWEBVIEW2_RELEASE_CHANNELS_STABLE",
+          "add_DownloadStarting",
+          "COINIT_APARTMENTTHREADED"
+        ],
+        "tools/sparkmoe/http-facade.cpp": [
+          "serve_ui_asset",
+          "proxy_request"
+        ],
+        "tools/sparkmoe/CMakeLists.txt": [
+          "SPARKMOE_WEBVIEW2_SDK_DIR",
+          "WebView2Loader.dll"
+        ],
+        "scripts/restore-webview2.ps1": [
+          "Get-FileHash",
+          "sdk-manifest.json"
+        ],
+        "packaging/windows/SparkMoE.iss": [
+          "NeedsWebView2",
+          "NormalizePathSegment"
+        ]
+      }
+    },
     {
       "id": "public-api",
       "files": {
@@ -231,9 +266,15 @@
         ],
         "tools/ui/src/routes/sparkmoe/+page.svelte": [
           "Models",
-          "Context & caches",
-          "MTP & reasoning",
-          "Logs & diagnostics"
+          "SparkMoeModelSettings",
+          "SparkMoeConnections",
+          "SparkMoeDownloads",
+          "Logs and diagnostics"
+        ],
+        "tools/ui/src/lib/components/app/settings/SparkMoeModelSettings.svelte": [
+          "Context and batching",
+          "Speculative decoding (MTP)",
+          "sparkMoeProfileStore"
         ]
       }
     },

@@ -5,6 +5,99 @@ import { base } from '$app/paths';
 import { getAuthHeaders, getJsonHeaders } from '$lib/utils/api-headers';
 
 const MANAGER_URL = 'http://127.0.0.1:18080';
+let resolvedManagerUrl: string | undefined;
+let managerDiscovery: Promise<string> | undefined;
+
+function managerUrl(): string {
+	return resolvedManagerUrl ?? MANAGER_URL;
+}
+
+async function discoverManager(): Promise<string> {
+	if (resolvedManagerUrl) return resolvedManagerUrl;
+	if (managerDiscovery) return managerDiscovery;
+	managerDiscovery = (async () => {
+		if (typeof window !== 'undefined') {
+			try {
+				const response = await fetch(window.location.origin + '/api/status', {
+					signal: AbortSignal.timeout(1500)
+				});
+				const status = await response.json();
+				if (response.ok && typeof status.manager_port === 'number') return window.location.origin;
+			} catch {
+				/* Try the local manager when this UI is served by the router. */
+			}
+		}
+		return MANAGER_URL;
+	})().then((url) => {
+		resolvedManagerUrl = url;
+		return url;
+	});
+	return managerDiscovery;
+}
+
+export interface SparkMoeDownload {
+	id: string;
+	url: string;
+	filename: string;
+	status: 'queued' | 'downloading' | 'paused' | 'failed' | 'completed';
+	downloaded_bytes: number;
+	total_bytes: number;
+	error: string;
+	path: string;
+}
+
+export interface SparkMoeLibraryModel {
+	id: string;
+	display_name: string;
+	path: string;
+	favorite: boolean;
+	available: boolean;
+	size_bytes: number;
+	legacy_ids?: string[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface SparkMoeApplication {
+	background_mode: boolean;
+	launch_at_login: boolean;
+	default_model: string;
+}
+
+export interface SparkMoeConnector {
+	id: string;
+	name: string;
+	installed: boolean;
+	executable: string;
+	version: string;
+	support: string;
+	launch_supported: boolean;
+}
+export interface SparkMoeConnection {
+	id: string;
+	connector: string;
+	model_id: string;
+	project_dir: string;
+	include_favorites: boolean;
+	experimental: boolean;
+	config_dir: string;
+}
+export interface SparkMoeConnectionInput {
+	connector: string;
+	model_id: string;
+	project_dir: string;
+	include_favorites: boolean;
+	experimental: boolean;
+	id?: string;
+}
+export interface SparkMoeConnectionPreview {
+	connector: string;
+	model_id: string;
+	files: { name: string; content: string }[];
+	arguments: string[];
+	warnings: string[];
+	launch_supported: boolean;
+	connection?: SparkMoeConnection;
+}
 
 export interface SparkMoeRouterConfig {
 	model_directory: string;
@@ -14,6 +107,8 @@ export interface SparkMoeRouterConfig {
 }
 
 export interface SparkMoeManagerStatus {
+	configuration_warning?: string;
+	pending?: boolean;
 	config: SparkMoeRouterConfig;
 	last_error: string;
 	last_exit_code: number | null;
@@ -28,6 +123,9 @@ export interface SparkMoeManagerStatus {
 }
 
 export interface SparkMoeModelProfile {
+	context_mode: 'auto' | 'manual';
+	memory_mode: 'auto' | 'manual';
+	gpu_layers: number;
 	batch_size: number;
 	cache: number;
 	cache_policy: 'lru' | 'hybrid';
@@ -65,6 +163,10 @@ export interface SparkMoeProfileResponse {
 	is_override: boolean;
 	model: string;
 	profile: SparkMoeModelProfile;
+	revision: number;
+	applied_profile?: SparkMoeModelProfile | null;
+	pending?: boolean;
+	recommendation?: Record<string, unknown>;
 }
 
 export interface SparkMoeLogSession {
@@ -87,12 +189,24 @@ export interface SparkMoeLogChunk {
 	truncated: boolean;
 }
 
+export class SparkMoeRequestError extends Error {
+	constructor(
+		message: string,
+		readonly status: number
+	) {
+		super(message);
+	}
+}
+
 async function managerFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(MANAGER_URL + path, init);
+	const response = await fetch((await discoverManager()) + path, init);
 	const payload = (await response.json()) as T & { error?: string };
 
 	if (!response.ok) {
-		throw new Error(payload.error || 'SparkMoE manager returned HTTP ' + response.status);
+		throw new SparkMoeRequestError(
+			payload.error || 'SparkMoE manager returned HTTP ' + response.status,
+			response.status
+		);
 	}
 
 	return payload;
@@ -117,14 +231,132 @@ async function routerFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export class SparkMoeService {
-	static readonly managerUrl = MANAGER_URL;
+	static async chooseModelFile(): Promise<{ cancelled: boolean; path?: string }> {
+		return managerFetch('/api/browse-model-file', { method: 'POST' });
+	}
+	static async downloads(): Promise<{ jobs: SparkMoeDownload[]; directory: string }> {
+		return managerFetch('/api/downloads');
+	}
+	static async download(url: string): Promise<unknown> {
+		return managerFetch('/api/downloads', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ url })
+		});
+	}
+	static async downloadAction(action: 'pause' | 'resume', id: string): Promise<unknown> {
+		return managerFetch('/api/downloads/' + action, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ id })
+		});
+	}
+	static async downloadCatalog(
+		repo: string
+	): Promise<{ repo: string; files: { name: string; url: string; size_bytes: number }[] }> {
+		return managerFetch('/api/downloads/catalog?repo=' + encodeURIComponent(repo));
+	}
+	static async searchDownloads(
+		query: string
+	): Promise<{ models: { id: string; downloads: number }[] }> {
+		return managerFetch('/api/downloads/search?q=' + encodeURIComponent(query));
+	}
+	static get managerUrl(): string {
+		return managerUrl();
+	}
+
+	static async library(
+		rescan = false
+	): Promise<{ models: SparkMoeLibraryModel[]; revision: number }> {
+		return managerFetch('/api/library' + (rescan ? '?rescan=1' : ''));
+	}
+
+	static async importModel(path: string): Promise<unknown> {
+		return managerFetch('/api/library', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ path })
+		});
+	}
+
+	static async updateLibraryModel(
+		id: string,
+		changes: Partial<Pick<SparkMoeLibraryModel, 'display_name' | 'favorite' | 'path'>>
+	): Promise<unknown> {
+		return managerFetch('/api/library', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ id, ...changes })
+		});
+	}
+
+	static async removeLibraryModel(id: string): Promise<unknown> {
+		return managerFetch('/api/library?id=' + encodeURIComponent(id), { method: 'DELETE' });
+	}
+
+	static async application(): Promise<SparkMoeApplication> {
+		return managerFetch('/api/application');
+	}
+
+	static async saveApplication(
+		settings: Partial<SparkMoeApplication>
+	): Promise<SparkMoeApplication> {
+		return managerFetch('/api/application', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(settings)
+		});
+	}
+
+	static async applyModel(model: string): Promise<unknown> {
+		return managerFetch('/api/model-apply', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ model })
+		});
+	}
+
+	static async connections(): Promise<{
+		connectors: SparkMoeConnector[];
+		connections: SparkMoeConnection[];
+	}> {
+		return managerFetch('/api/connections');
+	}
+
+	static async previewConnection(
+		input: SparkMoeConnectionInput
+	): Promise<SparkMoeConnectionPreview> {
+		return managerFetch('/api/connections/preview', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(input)
+		});
+	}
+
+	static async configureConnection(
+		input: SparkMoeConnectionInput
+	): Promise<SparkMoeConnectionPreview> {
+		return managerFetch('/api/connections/configure', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(input)
+		});
+	}
+
+	static async connectionAction(action: 'launch' | 'remove', id: string): Promise<unknown> {
+		return managerFetch('/api/connections/' + action, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ id })
+		});
+	}
 
 	static async chooseModelsDirectory(): Promise<{ cancelled: boolean; directory?: string }> {
 		return managerFetch('/api/browse-model-directory', { method: 'POST' });
 	}
 
 	static diagnosticsUrl(): string {
-		return MANAGER_URL + '/api/diagnostics';
+		return managerUrl() + '/api/diagnostics';
 	}
 
 	static async logChunk(session: string, offset?: number): Promise<SparkMoeLogChunk> {
@@ -136,7 +368,7 @@ export class SparkMoeService {
 	}
 
 	static logDownloadUrl(session: string): string {
-		return MANAGER_URL + '/api/logs/download?session=' + encodeURIComponent(session);
+		return managerUrl() + '/api/logs/download?session=' + encodeURIComponent(session);
 	}
 
 	static async logSessions(): Promise<SparkMoeLogSessionsResponse> {
@@ -195,11 +427,17 @@ export class SparkMoeService {
 	}
 
 	static async resetModelProfile(
-		model: string
-	): Promise<{ ok: boolean; router_reloaded: boolean }> {
-		return managerFetch('/api/model-profile?model=' + encodeURIComponent(model), {
-			method: 'DELETE'
-		});
+		model: string,
+		revision?: number
+	): Promise<SparkMoeProfileResponse> {
+		return managerFetch(
+			'/api/model-profile?model=' +
+				encodeURIComponent(model) +
+				(revision === undefined ? '' : '&revision=' + revision),
+			{
+				method: 'DELETE'
+			}
+		);
 	}
 
 	static async resizeCache(model: string, cacheMib: number): Promise<Record<string, unknown>> {
@@ -226,17 +464,18 @@ export class SparkMoeService {
 
 	static async saveModelProfile(
 		model: string,
-		profile: SparkMoeModelProfile
-	): Promise<{ ok: boolean; router_reloaded: boolean }> {
+		profile: Partial<SparkMoeModelProfile>,
+		revision?: number
+	): Promise<SparkMoeProfileResponse> {
 		return managerFetch('/api/model-profile', {
-			body: JSON.stringify({ model, profile }),
+			body: JSON.stringify({ model, profile, revision }),
 			headers: { 'content-type': 'application/json' },
 			method: 'POST'
 		});
 	}
 
 	static async saveRouterConfig(
-		config: SparkMoeRouterConfig
+		config: Partial<SparkMoeRouterConfig>
 	): Promise<{ ok: boolean; port: number; status: SparkMoeManagerStatus }> {
 		return managerFetch('/api/config', {
 			body: JSON.stringify(config),

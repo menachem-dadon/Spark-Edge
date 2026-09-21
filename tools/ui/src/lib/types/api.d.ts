@@ -78,6 +78,7 @@ export interface ApiModelStatus {
  * Based on actual API response structure
  */
 export interface ApiModelDataEntry {
+	sparkmoe?: { favorite: boolean; is_default: boolean };
 	/** Model identifier (e.g., "ggml-org/Qwen2.5-Omni-7B-GGUF:latest") */
 	id: string;
 	/** Model name (optional, usually same as id - not always returned by API) */

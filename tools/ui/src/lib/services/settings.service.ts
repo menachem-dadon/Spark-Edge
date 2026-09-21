@@ -63,14 +63,35 @@ export class SettingsService {
 	/**
 	 * Persist the config and user overrides to localStorage.
 	 */
-	static saveConfig(config: Record<string, unknown>, userOverrides: string[]): void {
-		if (!browser) return;
+	static saveConfig(config: Record<string, unknown>, userOverrides: string[]): boolean {
+		if (!browser) return true;
+		let previous: [string | null, string | null] | undefined;
 
 		try {
+			previous = [
+				localStorage.getItem(CONFIG_LOCALSTORAGE_KEY),
+				localStorage.getItem(USER_OVERRIDES_LOCALSTORAGE_KEY)
+			];
 			localStorage.setItem(CONFIG_LOCALSTORAGE_KEY, JSON.stringify(config));
 			localStorage.setItem(USER_OVERRIDES_LOCALSTORAGE_KEY, JSON.stringify(userOverrides));
+			return true;
 		} catch (error) {
+			if (previous) {
+				try {
+					for (const [index, key] of [
+						CONFIG_LOCALSTORAGE_KEY,
+						USER_OVERRIDES_LOCALSTORAGE_KEY
+					].entries()) {
+						const value = previous[index];
+						if (value === null) localStorage.removeItem(key);
+						else localStorage.setItem(key, value);
+					}
+				} catch {
+					/* The caller keeps the draft if storage remains unavailable. */
+				}
+			}
 			console.error('Failed to save config to localStorage:', error);
+			return false;
 		}
 	}
 }

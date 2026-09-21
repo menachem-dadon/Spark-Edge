@@ -373,6 +373,8 @@ class SettingsStore {
 	 * @param updates - Object containing the configuration updates
 	 */
 	updateMultipleConfig(updates: Partial<SettingsConfigType>) {
+		const previousConfig = { ...this.config };
+		const previousOverrides = new Set(this.userOverrides);
 		Object.assign(this.config, updates);
 
 		const propsDefaults = this.getServerDefaults();
@@ -394,7 +396,12 @@ class SettingsStore {
 			}
 		}
 
-		this.saveConfig();
+		if (this.saveConfig() === false) {
+			this.config = previousConfig;
+			this.userOverrides = previousOverrides;
+			return false;
+		}
+		return true;
 	}
 
 	/**
@@ -479,9 +486,9 @@ class SettingsStore {
 	 * Save the current configuration to localStorage via the persistence service.
 	 */
 	private saveConfig() {
-		if (!browser) return;
+		if (!browser) return true;
 
-		SettingsService.saveConfig(this.config, Array.from(this.userOverrides));
+		return SettingsService.saveConfig(this.config, Array.from(this.userOverrides));
 	}
 }
 
