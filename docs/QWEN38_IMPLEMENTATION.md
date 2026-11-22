@@ -1,4 +1,4 @@
-# Qwen3.8-Flash-Next in SparkMoE
+# Qwen3.8-Flash-Next in Spark Edge
 
 Status: implemented and validated with deterministic tiny GGUF fixtures. The published full-size model has not been downloaded or benchmarked on this machine. The 4 generated tokens/s target is therefore still an acceptance gate, not a measured result.
 
@@ -12,13 +12,13 @@ Keep at least 110 GB free for the `UD-IQ4_XS` shards, the MTP sidecar and downlo
 
 ## What the integration does
 
-- Imports the pinned `qwen4exp` architecture and graph-split support recorded in `config/qwen38-integration.json`. This is a selective backport; it does not claim that SparkMoE is synchronized with current llama.cpp.
+- Imports the pinned `qwen4exp` architecture and graph-split support recorded in `config/qwen38-integration.json`. This is a selective backport; it does not claim that Spark Edge is synchronized with current llama.cpp.
 - Leaves all routed and shared experts intact. Routing, top-k, tensor quantization and reduction order are unchanged.
-- Keeps `per_layer_token_embd.weight` out of mmap and resident model buffers. SparkMoE computes the exact 64-bit n-gram hashes, reads the required IQ4_NL or Q5_0 rows through a bounded 4 KiB page cache, dequantizes only those rows to F32 and uploads the gathered input.
+- Keeps `per_layer_token_embd.weight` out of mmap and resident model buffers. Spark Edge computes the exact 64-bit n-gram hashes, reads the required IQ4_NL or Q5_0 rows through a bounded 4 KiB page cache, dequantizes only those rows to F32 and uploads the gathered input.
 - Uses a global hybrid expert budget. Only the active layer must retain its routed top-k floor; inactive layers can be reclaimed. This removes the previous requirement to retain a top-k floor in every routed layer.
 - Loads the Qwen MTP block from a separate GGUF, validates architecture, hidden width, one-head layout and vocabulary, and keeps its expert cache separate from the target cache.
 - Checkpoints the complete attention, recurrent, indexer, PLE token-history and MTP draft state when rollback is required. Context shifting is disabled for PLE state because an exact shift implementation is not available.
-- Accepts a Unicode model path and exposes PLE/MTP budgets plus the sidecar path through the SparkMoE manager and chat settings.
+- Accepts a Unicode model path and exposes PLE/MTP budgets plus the sidecar path through the Spark Edge manager and chat settings.
 
 The conversion script handles the target architecture only. It does not export the Qwen MTP head; use a published sidecar.
 
@@ -33,14 +33,14 @@ The helper does not download or modify a model. Pass the first split shard, the 
   -Server 'C:\path\to\bin\llama-server.exe'
 ```
 
-The conservative baseline is CPU-only, one parallel slot, a 3 GiB global expert cache, a 64 MiB PLE page cache, a 512 MiB MTP expert cache, context 4096, microbatch 2 and MTP width 1. Start with buffered I/O and no overlap or prefetch. This isolates correctness and actual memory use before tuning. The manager exposes the same PLE and MTP settings; set the sidecar path under `SparkMoE -> MTP & reasoning`.
+The conservative baseline is CPU-only, one parallel slot, a 3 GiB global expert cache, a 64 MiB PLE page cache, a 512 MiB MTP expert cache, context 4096, microbatch 2 and MTP width 1. Start with buffered I/O and no overlap or prefetch. This isolates correctness and actual memory use before tuning. The manager exposes the same PLE and MTP settings; set the sidecar path under `Spark Edge -> MTP & reasoning`.
 
 ## Required full-model gates
 
 Do not call the integration production-ready until all of these pass with the exact target and sidecar files:
 
 1. Verify every shard is present and record its hash, free disk space and model metadata.
-2. Run prompt-logit parity without MTP between ordinary mmap on a machine that can hold it and SparkMoE paging, including prompts that cross EOS and several microbatches.
+2. Run prompt-logit parity without MTP between ordinary mmap on a machine that can hold it and Spark Edge paging, including prompts that cross EOS and several microbatches.
 3. Compare greedy generated token IDs with MTP off and on for widths 1 and 2. Cover full acceptance, partial rejection, zero acceptance, EOS and a request immediately after EOS.
 4. Measure peak process working set and committed memory through prefill and at least 512 generated tokens. The process must remain within the available RAM without sustained paging-file pressure.
 5. Record target generation tokens/s, draft generation count, accepted count, target verification cost, physical SSD bytes, PLE page-cache hits and expert cache misses. Use at least three rotating prompts and a warm repeated prompt.
@@ -50,6 +50,6 @@ If memory fits but throughput misses the target, tune one variable at a time: I/
 
 ## Current validation
 
-The Windows Release build and deterministic fixtures cover IQ4_NL and Q5_0 PLE rows across page and file-tail boundaries, bounded cache eviction, 64-bit offsets, buffered and direct I/O, full-logit parity, full hybrid/recurrent/indexer state replay, native MTP forward, accepted and rejected MTP drafts, EOS recovery, Unicode paths, manager sidecar validation and diagnostic path redaction. Existing SparkMoE dense, sharded, direct-I/O, hybrid, overlap, prefetch and resident-loading HTTP cases also pass.
+The Windows Release build and deterministic fixtures cover IQ4_NL and Q5_0 PLE rows across page and file-tail boundaries, bounded cache eviction, 64-bit offsets, buffered and direct I/O, full-logit parity, full hybrid/recurrent/indexer state replay, native MTP forward, accepted and rejected MTP drafts, EOS recovery, Unicode paths, manager sidecar validation and diagnostic path redaction. Existing Spark Edge dense, sharded, direct-I/O, hybrid, overlap, prefetch and resident-loading HTTP cases also pass.
 
-This development build does not include HTTPS because OpenSSL was not available. The local chat UI was rebuilt into `tools/ui/dist` for embedding. Local ZIP and installer artifacts can be produced from this worktree, but they remain unsigned and do not replace an installed SparkMoE release unless the installer is run explicitly.
+This development build does not include HTTPS because OpenSSL was not available. The local chat UI was rebuilt into `tools/ui/dist` for embedding. Local ZIP and installer artifacts can be produced from this worktree, but they remain unsigned and do not replace an installed Spark Edge release unless the installer is run explicitly.

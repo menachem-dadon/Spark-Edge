@@ -502,7 +502,7 @@ def run_manager(binary_dir, root, log_dir):
                         request(base, "/api/application", {"background_mode": True})
                         raise AssertionError("newer settings schema was overwritten")
                     except RuntimeError as error:
-                        assert "newer SparkMoE" in str(error)
+                        assert "newer Spark Edge" in str(error)
                     assert json.loads(config_path.read_text(encoding="utf-8"))["version"] == 999
                 request(base, "/api/shutdown", {})
                 proc.wait(timeout=10)

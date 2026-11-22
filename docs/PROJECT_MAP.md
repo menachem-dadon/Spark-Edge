@@ -1,4 +1,4 @@
-# מפת הפרויקט SparkMoE
+# מפת הפרויקט Spark Edge
 
 להמשך עבודה בשיחה חדשה, התחילו ב-[NEXT_SESSION.md](NEXT_SESSION.md).
 סיכום השדרוג נמצא ב-[REFRESH_REPORT.md](REFRESH_REPORT.md), ואבחון ההמתנה
@@ -8,18 +8,18 @@
 רשימת נקודות החיבור והשלבים המעודכנים נמצאת ב־[UPSTREAM_INTEGRATION.md](UPSTREAM_INTEGRATION.md),
 והבדיקה האוטומטית שלהן משתמשת ב־`config/upstream-integration.json`.
 
-המסמך הזה מיועד גם למי שאינו מכיר C או C++ ואינו מכיר את מבנה llama.cpp. אין צורך להבין את אלפי הקבצים כדי לתחזק את SparkMoE.
+המסמך הזה מיועד גם למי שאינו מכיר C או C++ ואינו מכיר את מבנה llama.cpp. אין צורך להבין את אלפי הקבצים כדי לתחזק את Spark Edge.
 
 ## תשובה קצרה: מהו הפרויקט?
 
-SparkMoE הוא fork מלא של llama.cpp ולא תוכנה קטנה שמותקנת לידו.
+Spark Edge הוא fork מלא של llama.cpp ולא תוכנה קטנה שמותקנת לידו.
 
 כלומר:
 
 - רוב המאגר הוא קוד המקור המקורי של llama.cpp.
-- SparkMoE מוסיף מנגנון טעינת מומחי MoE לפי דרישה מהכונן, ממשק ניהול, הגדרות MTP והקשר, כלי בדיקה, אריזה ומתקין.
+- Spark Edge מוסיף מנגנון טעינת מומחי MoE לפי דרישה מהכונן, ממשק ניהול, הגדרות MTP והקשר, כלי בדיקה, אריזה ומתקין.
 - `llama-server`, ממשק הצ'אט, תמיכת GGUF, ארכיטקטורות המודלים, sampling, GPU backends וכלי ההמרה מגיעים בעיקר מ-llama.cpp.
-- SparkMoE משנה מספר נקודות חיבור בתוך llama.cpp כדי שהמנגנון החדש ישתלב בטעינת המודל, בבניית גרף החישוב ובשרת.
+- Spark Edge משנה מספר נקודות חיבור בתוך llama.cpp כדי שהמנגנון החדש ישתלב בטעינת המודל, בבניית גרף החישוב ובשרת.
 - הפרויקט מכיל את תכונות llama.cpp שהיו קיימות בגרסת upstream שעליה הוא מבוסס. הוא אינו מקבל אוטומטית תכונות שנוספו ל-upstream לאחר אותה נקודה.
 
 ## התמונה הגדולה
@@ -27,7 +27,7 @@ SparkMoE הוא fork מלא של llama.cpp ולא תוכנה קטנה שמותק
 ```mermaid
 flowchart LR
     A["SparkMoE.exe<br/>מנהל רקע ללא CMD"] --> B["llama-server.exe<br/>Router של llama.cpp"]
-    C["ממשק llama.cpp בדפדפן<br/>כולל קטגוריית SparkMoE"] --> B
+    C["ממשק llama.cpp בדפדפן<br/>כולל קטגוריית Spark Edge"] --> B
     C --> A
     A --> D["פרופילי מודל, לוגים והגדרות Router"]
     D --> B
@@ -40,9 +40,9 @@ flowchart LR
 בעת הפעלה רגילה:
 
 1. המשתמש מפעיל `SparkMoE.exe`.
-2. מנהל SparkMoE מפעיל Router של `llama-server.exe` ללא חלון שורת פקודה.
+2. מנהל Spark Edge מפעיל Router של `llama-server.exe` ללא חלון שורת פקודה.
 3. הדפדפן נפתח ישירות לממשק ה-WEB המובנה של llama.cpp.
-4. המשתמש מנהל את כל תכונות SparkMoE בקטגוריה ייעודית בממשק הזה.
+4. המשתמש מנהל את כל תכונות Spark Edge בקטגוריה ייעודית בממשק הזה.
 5. ה-Router טוען תהליך נפרד לכל מודל נדרש לפי הפרופיל השמור שלו ומגבלת `models-max`.
 6. כאשר מופעל MoE paging, המשקלים הרגילים נטענים בדרך הרגילה, אבל משקלי המומחים המנותבים נקראים מה-GGUF לתוך מטמון מוגבל.
 7. ממשק הצ'אט המובנה מדבר ישירות עם `llama-server` דרך API תואם OpenAI.
@@ -53,11 +53,11 @@ flowchart LR
 | --- | --- | --- | --- |
 | ליבת llama.cpp | טעינת GGUF, מודלים, CPU/GPU, sampling, שרת, צ'אט וכלי פיתוח | upstream llama.cpp | MIT |
 | נקודות החיבור | פרמטרים וקריאות שמחברות את MoE paging לתוך model, context, graph ו-server | שינויים בקבצי upstream | MIT, כדי לא לערבב רישיונות בתוך אותו קובץ |
-| רכיבי SparkMoE העצמאיים | אלגוריתם paging, מנהל רקע, מסך WEB, כלי I/O, presets, packaging ומסמכים | הקוד המקורי של הפרויקט | PolyForm Noncommercial 1.0.0 |
+| רכיבי Spark Edge העצמאיים | אלגוריתם paging, מנהל רקע, מסך WEB, כלי I/O, presets, packaging ומסמכים | הקוד המקורי של הפרויקט | PolyForm Noncommercial 1.0.0 |
 
 המיפוי המשפטי המחייב נמצא ב-`LICENSING.md`. קובץ `LICENSE` נשאר רישיון MIT של llama.cpp. קובץ `LICENSE-SPARKMOE-NONCOMMERCIAL.md` חל רק על הרכיבים שמפורטים בו וב-`LICENSING.md`.
 
-## איפה נמצאים החלקים הייחודיים של SparkMoE?
+## איפה נמצאים החלקים הייחודיים של Spark Edge?
 
 ### 1. מנגנון MoE paging
 
@@ -90,11 +90,11 @@ tools/sparkmoe/
 | --- | --- |
 | `sparkmoe.cpp` | יישום `SparkMoE.exe`: Router נסתר, הגדרות מתמידות, פרופילים לפי מודל, לכידת לוג מלאה ו-API מקומי. |
 | `CMakeLists.txt` | בונה את `SparkMoE.exe` כיישום GUI ב-Windows ומטמיע בו את אייקון התוכנה. |
-| `sparkmoe.rc.in` | קישור `assets/branding/SparkMoE.ico` לתוך קובץ ה-EXE ב-Windows. |
+| `sparkmoe.rc.in` | קישור `assets/branding/spark-edge.ico` לתוך קובץ ה-EXE ב-Windows. |
 
 המנהל אינו מבצע inference ואינו מציג HTML משלו. הוא מפעיל את `llama-server` במצב Router, פותח את הדפדפן, וכותב `config.json`, `model-profiles.ini` ולוגים תחת תיקיית נתוני המשתמש.
 
-### 3. הגדרות SparkMoE בתוך ממשק הצ'אט של llama.cpp
+### 3. הגדרות Spark Edge בתוך ממשק הצ'אט של llama.cpp
 
 המסך וה-service החדשים נמצאים כאן:
 
@@ -111,7 +111,7 @@ tools/ui/src/lib/constants/ui.constants.ts
 tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte
 ```
 
-הקטגוריה מדברת עם מנהל SparkMoE ב-`127.0.0.1:18080` עבור תצורה ולוגים, ועם ה-Router הרגיל עבור מודלים ומדדי runtime. הגדרות llama.cpp הרגילות נשארות במבנה upstream.
+הקטגוריה מדברת עם מנהל Spark Edge ב-`127.0.0.1:18080` עבור תצורה ולוגים, ועם ה-Router הרגיל עבור מודלים ומדדי runtime. הגדרות llama.cpp הרגילות נשארות במבנה upstream.
 
 ### 4. כלי בדיקת ביצועי הכונן
 
@@ -143,7 +143,7 @@ packaging/windows/SparkMoE.iss
 
 | שלב | פלט |
 | --- | --- |
-| `build-windows.ps1` | יוצר את SparkMoE, llama-server, llama-cli, llama-bench, כלי I/O והבדיקות. |
+| `build-windows.ps1` | יוצר את Spark Edge, llama-server, llama-cli, llama-bench, כלי I/O והבדיקות. |
 | `package-windows.ps1` | יוצר תיקייה portable, DLLs, מסמכים, נכסי מיתוג ו-ZIP. |
 | `build-installer.ps1` | מפעיל Inno Setup ויוצר מתקין `*-setup.exe`. |
 | `SparkMoE.iss` | מגדיר התקנה קבועה, Start menu, קיצור דרך, PATH, uninstall ואייקון. |
@@ -151,8 +151,8 @@ packaging/windows/SparkMoE.iss
 ### 7. מיתוג
 
 ```text
-assets/branding/SparkMoE.png
-assets/branding/SparkMoE.ico
+assets/branding/spark-edge.png
+assets/branding/spark-edge.ico
 ```
 
 - ה-PNG מוצג בממשק הצ'אט ומשמש מקור לנכסי PWA ו-favicon.
@@ -168,7 +168,7 @@ tests/test-moe-paging.cpp
 
 הבדיקה בודקת זיהוי tensor names, מיפוי מומחים, טעינה מדויקת, cache behavior ופריסות נתמכות. יתר תיקיית `tests/` מגיעה מ-llama.cpp.
 
-## איפה SparkMoE נוגע בתוך llama.cpp?
+## איפה Spark Edge נוגע בתוך llama.cpp?
 
 אלה קבצי upstream ששונו כדי לחבר את המנגנון החדש. הם אינם האלגוריתם עצמו:
 
@@ -180,7 +180,7 @@ tests/test-moe-paging.cpp
 | context | `src/llama-context.*`, `src/llama-cparams.h` | יצירת מנהל paging לכל context, כולל context נפרד של MTP. |
 | graph | `src/llama-graph.*` | החלפת expert IDs ב-cache slots לפני פעולות MoE. |
 | ארכיטקטורות | `src/models/qwen35moe.cpp` וקוד כללי ב-model loader | העברת פרטי tensor layout. התמיכה החדשה הכללית אינה מוגבלת לשם Qwen בלבד. |
-| server | `tools/server/server*.{cpp,h}` | endpoints של סטטיסטיקה והגדרות SparkMoE. |
+| server | `tools/server/server*.{cpp,h}` | endpoints של סטטיסטיקה והגדרות Spark Edge. |
 | benchmark | `tools/llama-bench/llama-bench.cpp` | flags ומדדי paging ב-llama-bench. |
 | build | `src/CMakeLists.txt`, `tools/CMakeLists.txt`, `tests/CMakeLists.txt` | הכנסת הקבצים והיעדים החדשים לבנייה. |
 
@@ -202,7 +202,7 @@ tests/test-moe-paging.cpp
 ## מסלול קריאה מומלץ למתחילים
 
 1. `README_HE.md`: מה התוכנה עושה ואיך מפעילים אותה.
-2. `docs/USER_GUIDE.md`: שימוש בקטגוריית SparkMoE שבממשק ה-WEB.
+2. `docs/USER_GUIDE.md`: שימוש בקטגוריית Spark Edge שבממשק ה-WEB.
 3. המסמך הזה: איפה נמצא כל רכיב.
 4. `docs/MOE_PAGING.md`: איך מנגנון המומחים עובד במילים פשוטות.
 5. `docs/SUPPORTED_MODELS.md`: מה נתמך ומה תלוי ב-layout של GGUF.
@@ -237,12 +237,12 @@ tools/ui/dist/
 ## מה נמצא בחבילת Windows
 
 - `SparkMoE.exe`: מנהל רקע ללא חלון CMD.
-- `llama-server.exe`: שרת inference של llama.cpp עם תוספות SparkMoE.
+- `llama-server.exe`: שרת inference של llama.cpp עם תוספות Spark Edge.
 - `llama-cli.exe`: שימוש בשורת פקודה.
 - `llama-bench.exe`: benchmark למודל.
 - `sparkmoe-iobench.exe`: בדיקת כונן.
 - DLLs של llama/GGML וה-runtime הנדרש לבנייה (MSVC בבנייה המקומית הנוכחית).
-- ממשק SparkMoE המוטמע ב-`llama-server.exe` ונכסי המיתוג.
+- ממשק Spark Edge המוטמע ב-`llama-server.exe` ונכסי המיתוג.
 - presets, מסמכי שימוש, רישיונות ו-third-party notices.
 
 ## בדיקת פרסום קצרה

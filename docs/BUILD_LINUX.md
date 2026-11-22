@@ -7,4 +7,4 @@
 
 Install a C++17 compiler, CMake, Ninja or Make, Node.js 22 with npm, and standard development tools. The script uses CMake Release mode, disables native-CPU tuning, builds the customized chat UI, CLI/server/bench/I/O bench/launcher/tests, and runs the paging test. `pread` is used for expert reads. The launcher expects `llama-server` on `PATH` on POSIX in this alpha; direct CLI/server use is fully supported.
 
-The SparkMoE page is part of the embedded llama.cpp Web UI; there is no separate dashboard file.
+The Spark Edge page is part of the embedded llama.cpp Web UI; there is no separate dashboard file.

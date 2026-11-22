@@ -1,12 +1,12 @@
-SparkMoE v0.2.0-alpha
+Spark Edge
 
 Based on llama.cpp, Copyright (c) 2023-2026 The ggml authors, MIT License.
 Upstream-derived files and their integration changes remain under the MIT License.
-Original SparkMoE components listed in LICENSING.md are licensed under
+Original Spark Edge components listed in LICENSING.md are licensed under
 PolyForm Noncommercial 1.0.0.
 
 Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
-SparkMoE is an independent community project and is not affiliated with or endorsed by Qwen, Alibaba Cloud, Google, Gemma, ggml-org, or the Colibri authors.
+Spark Edge is an independent community project and is not affiliated with or endorsed by Qwen, Alibaba Cloud, Google, Gemma, ggml-org, or the Colibri authors.
 
 Model weights are not part of this software distribution.

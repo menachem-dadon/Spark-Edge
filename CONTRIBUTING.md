@@ -1,8 +1,8 @@
 # Contributing
 
-SparkMoE tracks a pinned llama.cpp base and periodically synchronizes it. Keep changes focused, modular, and easy to rebase. Read `AGENTS.md`, `LICENSING.md`, and preserve upstream code style and licensing.
+Spark Edge tracks a pinned llama.cpp base and periodically synchronizes it. Keep changes focused, modular, and easy to rebase. Read `AGENTS.md`, `LICENSING.md`, and preserve upstream code style and licensing.
 
-New standalone SparkMoE files use `SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0` and the required notice. Changes made directly inside upstream-derived files remain MIT.
+New standalone Spark Edge files use `SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0` and the required notice. Changes made directly inside upstream-derived files remain MIT.
 
 For paging changes:
 

@@ -7,7 +7,7 @@ variant="${1:-avx2}"
 case "$variant" in avx2|generic) ;; *) echo "usage: $0 [avx2|generic]" >&2; exit 2;; esac
 root="$(cd "$(dirname "$0")/.." && pwd)"
 build="${2:-$root/build-linux-$variant}"
-command -v npm >/dev/null || { echo "Node.js 22 and npm are required to build the SparkMoE chat UI" >&2; exit 1; }
+command -v npm >/dev/null || { echo "Node.js 22 and npm are required to build the Spark Edge chat UI" >&2; exit 1; }
 unset NODE_TLS_REJECT_UNAUTHORIZED
 export NODE_USE_SYSTEM_CA=1
 (cd "$root/tools/ui" && npm ci && npm run check && npm run build)

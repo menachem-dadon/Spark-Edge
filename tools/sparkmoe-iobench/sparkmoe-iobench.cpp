@@ -246,7 +246,7 @@ void print_results(const options & opts, const results & value) {
             value.write_mib_s, value.sequential_read_mib_s, value.random_read_iops,
             value.random_p50_us, value.random_p95_us);
     } else {
-        std::printf("SparkMoE buffered file I/O benchmark\n");
+        std::printf("Spark Edge buffered file I/O benchmark\n");
         std::printf("File size:              %llu MiB\n", static_cast<unsigned long long>(opts.size_mib));
         std::printf("Write:                  %.3f MiB/s\n", value.write_mib_s);
         std::printf("Sequential read:        %.3f MiB/s\n", value.sequential_read_mib_s);

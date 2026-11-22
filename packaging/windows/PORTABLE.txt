@@ -1,10 +1,10 @@
-SparkMoE for Windows
+Spark Edge for Windows
 
 Extract the whole ZIP before starting SparkMoE.exe. Keep WebView2Loader.dll beside
 the executable. The desktop window uses Microsoft's shared Evergreen WebView2
 Runtime; the full browser runtime is not included in this package.
 
-If the Runtime is missing or the window cannot initialize, SparkMoE opens its
+If the Runtime is missing or the window cannot initialize, Spark Edge opens its
 local interface in your default browser. The manager and inference keep working.
 Get the Runtime from https://developer.microsoft.com/microsoft-edge/webview2/
 

@@ -68,7 +68,7 @@ void get_https(const std::string & url, const std::string & headers,
     if (!WinHttpCrackUrl(address.c_str(), static_cast<DWORD>(address.size()), 0, &parts) || parts.nScheme != INTERNET_SCHEME_HTTPS) throw std::runtime_error("An HTTPS download URL is required.");
     const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
     const std::wstring path = std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) + std::wstring(parts.lpszExtraInfo, parts.dwExtraInfoLength);
-    internet_handle session(WinHttpOpen(L"SparkMoE", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    internet_handle session(WinHttpOpen(L"Spark Edge", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     WinHttpSetTimeouts(session.value, 10000, 10000, 10000, 10000);
     internet_handle connection(WinHttpConnect(session.value, host.c_str(), parts.nPort, 0));
     internet_handle request(WinHttpOpenRequest(connection.value, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));

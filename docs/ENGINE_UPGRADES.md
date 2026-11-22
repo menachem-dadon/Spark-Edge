@@ -1,6 +1,6 @@
-# SparkMoE engine checkpoints
+# Spark Edge engine checkpoints
 
-One SparkMoE engine, no BigMoeOnEdge dependency or copied implementation. Default
+One Spark Edge engine, no BigMoeOnEdge dependency or copied implementation. Default
 routing, top-k and expert weights are unchanged. The existing research report is
 reference evidence; architecture-specific Qwen3.8 work remains out of scope.
 
@@ -99,7 +99,7 @@ Logs: `build-upstream-refresh/e2-real-parity.log`, `e2-benchmark.json` and
 `--moe-overlap on` submits independent expert/projection reads, publishes the
 unchanged routing-to-slot mapping, and lets the CPU start each expert as soon as
 its weights are ready. A small GGML CPU callback precedes each used expert in
-MUL_MAT_ID. The SparkMoE-owned readiness registry is keyed by tensor, not a global
+MUL_MAT_ID. The Spark Edge readiness registry is keyed by tensor, not a global
 current-model pointer, so separate contexts do not share cache state. Queued and
 running reads are drained before their destination is released or reused.
 

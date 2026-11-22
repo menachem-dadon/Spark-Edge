@@ -1,6 +1,6 @@
 # Troubleshooting
 
-## SparkMoE opens in a browser instead of its own window
+## Spark Edge opens in a browser instead of its own window
 
 Keep `WebView2Loader.dll` beside `SparkMoE.exe` when extracting a desktop ZIP. The desktop window requires Microsoft's shared [Evergreen WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). The Windows installer offers an optional Runtime installation task. Missing Runtime or native-window initialization failure opens browser fallback while the manager remains available. Check the session log for the `desktop:` stage and HRESULT.
 
@@ -24,9 +24,9 @@ Explicit mode recognizes standard routed gate, up, down, and fused gate-up `.wei
 
 The GGUF probably does not contain a compatible MTP head, or its MTP tensors do not match the target model. Disable MTP and confirm normal inference first. MTP is optional and can be slower even when it initializes correctly.
 
-## The SparkMoE page cannot reach the manager
+## The Spark Edge page cannot reach the manager
 
-Start `SparkMoE.exe` rather than `llama-server.exe` directly. The SparkMoE page connects only to `127.0.0.1:18080` and only from the configured loopback Web UI origin. A server started directly from the CLI has no manager process, persistent profile store, or session-log API.
+Start `SparkMoE.exe` rather than `llama-server.exe` directly. The Spark Edge page connects only to `127.0.0.1:18080` and only from the configured loopback Web UI origin. A server started directly from the CLI has no manager process, persistent profile store, or session-log API.
 
 ## Cache budget is too small
 
@@ -44,7 +44,7 @@ retune the user's settings or claim a latency speedup.
 
 Current builds automatically reduce the effective physical microbatch so that the maximum number of active experts fits in the per-layer slot cache. The adjustment is reported in the server log and as `effective_ubatch_size` from `GET /sparkmoe/v1/config`.
 
-If this message appears with an older binary, install the latest build or start the server with a smaller `--ubatch-size` value. `--ubatch-size 1` is the safest diagnostic setting, although prompt processing will be slower. Increasing the cache budget can also create more slots. SparkMoE never evicts a slot reserved by the same routing request.
+If this message appears with an older binary, install the latest build or start the server with a smaller `--ubatch-size` value. `--ubatch-size 1` is the safest diagnostic setting, although prompt processing will be slower. Increasing the cache budget can also create more slots. Spark Edge never evicts a slot reserved by the same routing request.
 
 ## Read timeout or short read
 
@@ -56,8 +56,8 @@ Keep `SparkMoE.exe` and `llama-server.exe` in the same folder. On MinGW packages
 
 ## No CMD window appears
 
-This is expected. The Windows launcher is a GUI process and starts the Router and model children with no console window. Open **SparkMoE -> Logs & diagnostics** in the Web UI for the same complete output. Full session files are stored under `%LOCALAPPDATA%\SparkMoE\logs`.
+This is expected. The Windows launcher is a GUI process and starts the Router and model children with no console window. Open **Spark Edge -> Logs & diagnostics** in the Web UI for the same complete output. Full session files are stored under `%LOCALAPPDATA%\SparkMoE\logs`.
 
 ## WebUI build fails in a Unicode path
 
-Use an ASCII drive alias for the build directory. SparkMoE release builds require the customized source UI and should not publish an upstream prebuilt fallback. Runtime GGUF paths may still be Unicode.
+Use an ASCII drive alias for the build directory. Spark Edge release builds require the customized source UI and should not publish an upstream prebuilt fallback. Runtime GGUF paths may still be Unicode.

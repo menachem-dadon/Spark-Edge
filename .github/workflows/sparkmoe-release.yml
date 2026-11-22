@@ -45,10 +45,11 @@ jobs:
       - name: Archive
         run: |
           version="${GITHUB_REF_NAME#v}"
-          stage="sparkmoe-${version}-linux-x64-${{ matrix.variant }}"
+          stage="spark-edge-${version}-linux-x64-${{ matrix.variant }}"
           mkdir -p "$stage/assets" "$stage/config" "$stage/docs" "$stage/licenses"
           cp build-linux-${{ matrix.variant }}/bin/{SparkMoE,llama-cli,llama-server,llama-bench,sparkmoe-iobench} "$stage/"
-          cp -r assets/branding "$stage/assets/"
+          mkdir -p "$stage/assets/branding"
+          cp assets/branding/README.md assets/branding/spark-edge* "$stage/assets/branding/"
           cp -r config/presets "$stage/config/"
           cp LICENSE LICENSE-SPARKMOE-NONCOMMERCIAL.md LICENSING.md NOTICE THIRD_PARTY_NOTICES.md VERSION "$stage/licenses/"
           cp README.md README_HE.md "$stage/"

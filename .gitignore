@@ -22,7 +22,7 @@
 *.tmp
 *.DS_Store
 
-# Local SparkMoE release outputs
+# Local Spark Edge release outputs
 /artifacts/release/
 /artifacts/validation/
 

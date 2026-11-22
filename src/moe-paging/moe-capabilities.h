@@ -9,6 +9,6 @@ struct architecture_capability {
     bool full_logit_tested;
 };
 
-// Evidence describes SparkMoE paging, not upstream model support.
+// Evidence describes Spark Edge expert paging rather than general model compatibility.
 const architecture_capability & capability_for(const char * architecture);
 }

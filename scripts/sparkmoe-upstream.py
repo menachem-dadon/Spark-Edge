@@ -71,7 +71,7 @@ def target_revision(repo, target):
     if target == "latest":
         request = urllib.request.Request(
             "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
-            headers={"Accept": "application/vnd.github+json", "User-Agent": "SparkMoE-updater"})
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "Spark-Edge-updater"})
         with urllib.request.urlopen(request, timeout=30) as response:
             release = json.load(response)
         if release["draft"] or release["prerelease"]:
@@ -79,7 +79,7 @@ def target_revision(repo, target):
         target = "refs/tags/" + release["tag_name"]
     elif target == "master":
         target = "refs/heads/master"
-    # Private refs avoid collisions with SparkMoE release tags.
+    # Private refs avoid collisions with Spark Edge release tags.
     git(repo, "fetch", "--no-tags", "upstream", f"+{target}:refs/sparkmoe/upstream-target")
     return commit(repo, "refs/sparkmoe/upstream-target")
 

@@ -45,7 +45,7 @@ if ($env:OS -eq 'Windows_NT') {
 
 if (-not $EngineOnly) {
     $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-    if (-not $npm) { throw 'Node.js 22 and npm are required to build the SparkMoE chat UI' }
+    if (-not $npm) { throw 'Node.js 22 and npm are required to build the Spark Edge chat UI' }
     $npmPath = $npm.Source
     if ($env:NODE_TLS_REJECT_UNAUTHORIZED -eq '0') { Remove-Item Env:NODE_TLS_REJECT_UNAUTHORIZED }
     $env:NODE_USE_SYSTEM_CA = '1'

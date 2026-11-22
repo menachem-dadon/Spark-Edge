@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
-name: SparkMoE CI
+name: Spark Edge CI
 
 on:
   push:
@@ -34,6 +34,8 @@ jobs:
           & "$bin/sparkmoe-iobench.exe" --size-mib 8 --random-reads 128 --format json
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $env:SPARKMOE_NO_BROWSER = '1'
+          $env:SPARKMOE_NO_TRAY = '1'
+          $env:SPARKMOE_DATA_DIR = Join-Path $env:RUNNER_TEMP "spark-edge-smoke-${{ matrix.variant }}"
           $manager = Start-Process -FilePath "$bin/SparkMoE.exe" -WorkingDirectory $bin -WindowStyle Hidden -PassThru
           try {
             for ($i = 0; $i -lt 30; $i++) {
@@ -44,11 +46,14 @@ jobs:
                 Start-Sleep -Milliseconds 250
               }
             }
-            if (-not $status -or $status.phase -ne 'stopped') { throw 'Manager status smoke failed' }
+            if (-not $status) { throw 'Manager status smoke failed' }
             $config = Invoke-RestMethod http://127.0.0.1:18080/api/config
-            if ($config.ctx_size -ne 0 -or $config.mtp_enabled) { throw 'Manager config defaults are invalid' }
-            $html = Invoke-WebRequest http://127.0.0.1:18080/ -UseBasicParsing
-            if ($html.Content -notmatch 'SparkMoE Control Center') { throw 'Dashboard asset was not served' }
+            if ($config.models_max -ne 1 -or -not $config.models_autoload) { throw 'Manager config defaults are invalid' }
+            Invoke-RestMethod http://127.0.0.1:18080/api/stop -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
+            $status = Invoke-RestMethod http://127.0.0.1:18080/api/status
+            if ($status.running) { throw 'Router did not stop' }
+            $html = Invoke-WebRequest http://127.0.0.1:18080/ -Headers @{ 'Accept-Encoding' = 'gzip' } -UseBasicParsing
+            if ($html.Content -notmatch 'id="spark-edge-boot"') { throw 'Spark Edge UI was not served' }
           } finally {
             Stop-Process -Id $manager.Id -Force -ErrorAction SilentlyContinue
           }
@@ -87,9 +92,9 @@ jobs:
           test -f docs/SUPPORTED_MODELS.md
           test -f LICENSING.md
           test -f LICENSE-SPARKMOE-NONCOMMERCIAL.md
-          test -f assets/branding/SparkMoE.png
-          test -f assets/branding/SparkMoE.ico
-          test -f tools/sparkmoe/dashboard.html
+          test -f assets/branding/spark-edge.png
+          test -f assets/branding/spark-edge.ico
+          test -f tools/ui/src/routes/sparkmoe/+page.svelte
           ! git grep -nE 'hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}'
           ! git ls-files | grep -E '(^|/)(build[^/]*/|node_modules/|artifacts/release/)'
           git diff --check

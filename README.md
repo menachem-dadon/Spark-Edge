@@ -19,7 +19,7 @@ The Windows release candidate integrates the official llama.cpp revision recorde
 - Supports built-in MTP draft contexts together with bounded expert paging.
 - Supports a compatible separate MTP GGUF and bounded PLE page cache for Qwen3.8-Flash-Next.
 - Uses hardware-aware safe defaults and an automatic loading mode that falls back to standard mmap for dense or incompatible models.
-- Keeps all SparkMoE controls in a dedicated page inside the original llama.cpp Web UI: Router limits, model profiles, loading, expert paging, context, MTP, RAM, logs, and diagnostics.
+- Keeps all Spark Edge controls in a dedicated page inside the original llama.cpp Web UI: Router limits, model profiles, loading, expert paging, context, MTP, RAM, logs, and diagnostics.
 - Runs the launcher and every managed model process without a console window on Windows, while preserving complete per-session logs under the user's local application data.
 
 Buffered per-layer paging remains the default. Explicit mode validates tensor names, shapes, strides, shard bounds, and active expert capacity. GPU paged expert support needs validation for each backend and device. See the [Windows build and validation guide](docs/SPARK_EDGE_WINDOWS.md).
@@ -38,24 +38,24 @@ Permanent Windows installation:
 1. Use `spark-edge-0.5.0-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
 2. Run the installer. It installs for the current user, creates an uninstall entry, and can create desktop and Start menu shortcuts.
 3. Run Spark Edge from the Start menu.
-4. While SparkMoE is running, its notification-area icon provides Open, Router status, Start, Stop, and Exit actions without a command window.
+4. While Spark Edge is running, its notification-area icon provides Open, Router status, Start, Stop, and Exit actions without a command window.
 
 Portable Windows package:
 
 1. Extract the ZIP to a writable folder.
 2. Run `SparkMoE.exe`.
-3. The llama.cpp Web UI opens directly. Open **SparkMoE** in its sidebar and choose the folder that contains your GGUF models.
-4. Select a model using the normal llama.cpp model picker or the SparkMoE model profile selector.
-5. Keep **Automatic** loading unless you are testing a specific mode. Context length, MTP, loading, cache, logs, and diagnostics are all under **SparkMoE**.
-6. Use the SparkMoE icon in the Windows notification area to reopen the UI, inspect Router state, start or stop the Router, or exit the complete application.
+3. The llama.cpp Web UI opens directly. Open **Spark Edge** in its sidebar and choose the folder that contains your GGUF models.
+4. Select a model using the normal llama.cpp model picker or the Spark Edge model profile selector.
+5. Keep **Automatic** loading unless you are testing a specific mode. Context length, MTP, loading, cache, logs, and diagnostics are all under **Spark Edge**.
+6. Use the Spark Edge icon in the Windows notification area to reopen the UI, inspect Router state, start or stop the Router, or exit the complete application.
 
 Dense and other non-MoE GGUF models use the normal llama.cpp path and are fully supported by the launcher. `models-max` is user configurable: use `1` for large models, a higher value for small models that fit together, or `0` for unlimited Router instances.
 
 Build from source on Windows:
 
 ```powershell
-git clone https://github.com/menachem-dadon/SparkMoE.git
-cd SparkMoE
+git clone https://github.com/menachem-dadon/Spark-Edge.git
+cd Spark-Edge
 pwsh scripts/build-windows.ps1 -Variant avx2 -RunTests
 .\build-windows-avx2\bin\SparkMoE.exe
 ```
@@ -83,14 +83,14 @@ $body = @{ model = "local"; messages = @(@{ role = "user"; content = "Hello" }) 
 Invoke-RestMethod http://127.0.0.1:8080/v1/chat/completions -Method Post -ContentType application/json -Body $body
 ```
 
-The Router loads the requested `model` with its saved SparkMoE process profile. Generation settings remain request-specific. A SmartiAI request can disable thinking without reloading the model by sending `reasoning_effort = "none"` and `chat_template_kwargs = @{ enable_thinking = $false }`.
+The Router loads the requested `model` with its saved Spark Edge process profile. Generation settings remain request-specific. A SmartiAI request can disable thinking without reloading the model by sending `reasoning_effort = "none"` and `chat_template_kwargs = @{ enable_thinking = $false }`.
 
 Paging modes:
 
 - `off`: normal resident loading.
 - `os`: normal `mmap` behavior and operating-system paging.
-- `explicit`: SparkMoE expert slot caches and file reads.
-- `auto`: chooses explicit when a cache/slot limit is supplied, otherwise OS paging. It is the SparkMoE profile default.
+- `explicit`: Spark Edge expert slot caches and file reads.
+- `auto`: chooses explicit when a cache/slot limit is supplied, otherwise OS paging. It is the Spark Edge profile default.
 
 Run `sparkmoe-iobench.exe --format json` to measure the buffered file path. OS caching can affect the result.
 
@@ -112,12 +112,12 @@ Run `sparkmoe-iobench.exe --format json` to measure the buffered file path. OS c
 
 ## Privacy and security
 
-SparkMoE has no telemetry, analytics, crash upload, or automatic model download. The launcher binds to `127.0.0.1`. If you expose `llama-server` beyond localhost, configure its API key and network controls. See [SECURITY.md](SECURITY.md).
+Spark Edge has no telemetry, analytics, crash upload, or automatic model download. The launcher binds to `127.0.0.1`. If you expose `llama-server` beyond localhost, configure its API key and network controls. See [SECURITY.md](SECURITY.md).
 
 ## Upstream and licensing
 
-This repository contains a pinned llama.cpp snapshot plus SparkMoE changes. It does not automatically contain upstream features added after the commit recorded in `UPSTREAM_BASE.txt`. See the [project map](docs/PROJECT_MAP.md) for the exact integration and synchronization model.
+This repository contains a pinned llama.cpp snapshot plus Spark Edge changes. It does not automatically contain upstream features added after the commit recorded in `UPSTREAM_BASE.txt`. See the [project map](docs/PROJECT_MAP.md) for the exact integration and synchronization model.
 
-Upstream llama.cpp code and changes made directly in upstream-derived files remain under MIT. Original SparkMoE components are licensed under PolyForm Noncommercial 1.0.0. See [LICENSING.md](LICENSING.md), [LICENSE-SPARKMOE-NONCOMMERCIAL.md](LICENSE-SPARKMOE-NONCOMMERCIAL.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the [model license guidance](docs/MODEL_LICENSES.md).
+Upstream llama.cpp code and changes made directly in upstream-derived files remain under MIT. Original Spark Edge components are licensed under PolyForm Noncommercial 1.0.0. See [LICENSING.md](LICENSING.md), [LICENSE-SPARKMOE-NONCOMMERCIAL.md](LICENSE-SPARKMOE-NONCOMMERCIAL.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the [model license guidance](docs/MODEL_LICENSES.md).
 
-SparkMoE is an independent community project and is not affiliated with or endorsed by Qwen, Alibaba Cloud, Google, Gemma, ggml-org, or the Colibri authors.
+Spark Edge is an independent community project and is not affiliated with or endorsed by Qwen, Alibaba Cloud, Google, Gemma, ggml-org, or the Colibri authors.

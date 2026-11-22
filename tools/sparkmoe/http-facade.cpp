@@ -109,7 +109,7 @@ void proxy_request(const httplib::Request & incoming, httplib::Response & outgoi
         }
         if (!state->headers_ready) {
             outgoing.status = 503;
-            outgoing.set_content(R"({"error":{"message":"The model server is unavailable. Open SparkMoE to start it.","type":"server_unavailable"}})", "application/json");
+            outgoing.set_content(R"({"error":{"message":"The model server is unavailable. Open Spark Edge to start it.","type":"server_unavailable"}})", "application/json");
             return;
         }
         outgoing.status = state->head.status;

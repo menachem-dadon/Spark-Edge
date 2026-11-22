@@ -5,8 +5,8 @@
 param([string]$Output = '')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-if (-not $Output) { $Output = Join-Path $repo 'artifacts/sparkmoe-diagnostics.zip' }
-$temp = Join-Path ([IO.Path]::GetTempPath()) ("sparkmoe-diagnostics-" + [guid]::NewGuid().ToString('N'))
+if (-not $Output) { $Output = Join-Path $repo 'artifacts/spark-edge-diagnostics.zip' }
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("spark-edge-diagnostics-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temp | Out-Null
 try {
     $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name, NumberOfCores, NumberOfLogicalProcessors

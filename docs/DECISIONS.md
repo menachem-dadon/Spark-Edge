@@ -10,7 +10,7 @@ The current subsystem follows modern Qwen graph and model-loader interfaces. It 
 
 ## Exactness over fallback
 
-Missing experts, invalid IDs, incompatible layouts, insufficient slots, I/O errors, and unsupported direct I/O are fatal configuration/runtime errors. SparkMoE does not continue with approximate weights.
+Missing experts, invalid IDs, incompatible layouts, insufficient slots, I/O errors, and unsupported direct I/O are fatal configuration/runtime errors. Spark Edge does not continue with approximate weights.
 
 ## Buffered I/O first
 

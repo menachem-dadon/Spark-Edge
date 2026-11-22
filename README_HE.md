@@ -18,27 +18,27 @@ Spark Edge מבוססת על fork עצמאי של `llama.cpp` שמיועד לה�
 2. הפעילו את המתקין.
 3. המתקין מתקין לתיקיית המשתמש, מוסיף אפשרות הסרה ב-Windows ויוצר קיצור דרך בתפריט Start. אפשר לבחור גם קיצור דרך לשולחן העבודה והוספה ל-PATH.
 4. הפעילו את Spark Edge מתפריט Start.
-5. כל עוד SparkMoE פועל, האייקון שלו באזור ההתראות מאפשר לפתוח את הממשק, לראות את מצב ה-Router, להפעיל או לעצור אותו ולצאת מהתוכנה ללא חלון CMD.
+5. כל עוד Spark Edge פועל, האייקון שלו באזור ההתראות מאפשר לפתוח את הממשק, לראות את מצב ה-Router, להפעיל או לעצור אותו ולצאת מהתוכנה ללא חלון CMD.
 
 ## הפעלה ללא התקנה
 
 1. חלצו את חבילת ה-ZIP לתיקייה עם הרשאת כתיבה.
 2. הפעילו `SparkMoE.exe`.
 3. ממשק ה-WEB המקורי של llama.cpp ייפתח ישירות בדפדפן, ללא חלון CMD.
-4. פתחו את הקטגוריה **SparkMoE** בתפריט הצד ובחרו את תיקיית המודלים.
-5. בחרו מודל דרך בורר המודלים הרגיל של llama.cpp או דרך בורר הפרופיל ב-SparkMoE.
-6. השאירו את שיטת הטעינה על **Automatic**. טעינה, מטמון, הקשר, MTP, מדדים ולוגים נמצאים כולם תחת **SparkMoE**.
-7. השתמשו באייקון SparkMoE באזור ההתראות של Windows כדי לפתוח מחדש את הממשק, לבדוק את מצב ה-Router, להפעיל או לעצור אותו, או לצאת מהתוכנה לחלוטין.
+4. פתחו את הקטגוריה **Spark Edge** בתפריט הצד ובחרו את תיקיית המודלים.
+5. בחרו מודל דרך בורר המודלים הרגיל של llama.cpp או דרך בורר הפרופיל ב-Spark Edge.
+6. השאירו את שיטת הטעינה על **Automatic**. טעינה, מטמון, הקשר, MTP, מדדים ולוגים נמצאים כולם תחת **Spark Edge**.
+7. השתמשו באייקון Spark Edge באזור ההתראות של Windows כדי לפתוח מחדש את הממשק, לבדוק את מצב ה-Router, להפעיל או לעצור אותו, או לצאת מהתוכנה לחלוטין.
 
 ## מה ניתן לשלוט מהממשק?
 
-- בקטגוריית SparkMoE: תיקיית מודלים, מגבלת מודלים טעונים במקביל ושיטת הטעינה.
+- בקטגוריית Spark Edge: תיקיית מודלים, מגבלת מודלים טעונים במקביל ושיטת הטעינה.
 - לכל מודל: גודל מטמון המומחים, מספר slots ומספר תהליכי קריאה מה-SSD.
 - תחת הגדרות מתקדמות: מספר תהליכי חישוב ושליטה במצב CPU repack לצורכי ביצועים ותאימות.
 - סטטוס השרת, לוגים מלאים לפי session, שימוש RAM אמיתי ומדדי paging חיים.
 - בהגדרות המנוע: Direct I/O עם fallback, מטמון hybrid, חפיפה בין קריאה לחישוב ו-temporal prefetch. האפשרויות החדשות כבויות כברירת מחדל ויש למדוד את התועלת בכל מחשב ומודל.
 - שינוי תקציב מטמון hybrid בזמן ריצה, מדיניות זיכרון למשקלים dense/shared ובחירת מספר שכבות ל-paging.
-- מסך SparkMoE מחולק לשבע קטגוריות: Overview, Models, SparkMoE engine, Context & caches, MTP & reasoning, Metrics, ו-Logs & diagnostics.
+- מסך Spark Edge מחולק לשבע קטגוריות: Overview, Models, Spark Edge engine, Context & caches, MTP & reasoning, Metrics, ו-Logs & diagnostics.
 - ב-Context & caches נמצאים אורך ההקשר, context shift, batch ומטמוני KV; ב-MTP & reasoning נמצאים ברירת המחדל לחשיבה וכל הגדרות ה-MTP.
 - תחת הגדרות הקשר מתקדמות: batch, microbatch, סוגי KV cache ומטמון prompts.
 - הורדת קובץ אבחון ואיפוס סטטיסטיקות.
@@ -47,13 +47,13 @@ Spark Edge מבוססת על fork עצמאי של `llama.cpp` שמיועד לה�
 
 `models-max` נתון לבחירת המשתמש: `1` מתאים למודל גדול, ערך גבוה יותר מאפשר להחזיק כמה מודלים קטנים במקביל, ו-`0` מבטל את המגבלה. כשיש מגבלה, ה-Router מפנה מודל idle לפי LRU לפני טעינת מודל אחר.
 
-תוכנה חיצונית משתמשת ב-API הרגיל של llama.cpp ושולחת את מזהה המודל בשדה `model`. המודל נטען לפי פרופיל SparkMoE השמור שלו, אבל פרמטרי generation נקבעים בכל בקשה. כדי להשבית חשיבה בבקשת SmartiAI מסוימת אפשר לשלוח `reasoning_effort: "none"` וגם `chat_template_kwargs: {"enable_thinking": false}` בלי לטעון את המודל מחדש.
+תוכנה חיצונית משתמשת ב-API הרגיל של llama.cpp ושולחת את מזהה המודל בשדה `model`. המודל נטען לפי פרופיל Spark Edge השמור שלו, אבל פרמטרי generation נקבעים בכל בקשה. כדי להשבית חשיבה בבקשת SmartiAI מסוימת אפשר לשלוח `reasoning_effort: "none"` וגם `chat_template_kwargs: {"enable_thinking": false}` בלי לטעון את המודל מחדש.
 
-SparkMoE מתאימה גם למודלים רגילים שאינם MoE ומריצה אותם במסלול הרגיל של llama.cpp. מצב `auto` הוא ברירת המחדל: הוא מנסה טעינת מומחים כאשר הוגדר מטמון והמודל תואם, ובמודל dense או לא תואם הוא חוזר אוטומטית לטעינת mmap רגילה.
+Spark Edge מתאימה גם למודלים רגילים שאינם MoE ומריצה אותם במסלול הרגיל של llama.cpp. מצב `auto` הוא ברירת המחדל: הוא מנסה טעינת מומחים כאשר הוגדר מטמון והמודל תואם, ובמודל dense או לא תואם הוא חוזר אוטומטית לטעינת mmap רגילה.
 
 ## מצבי טעינה
 
-- `off`: טעינה רגילה של llama.cpp ללא מנגנון SparkMoE.
+- `off`: טעינה רגילה של llama.cpp ללא מנגנון Spark Edge.
 - `os`: שימוש רגיל ב-`mmap` ובמנהל הזיכרון של מערכת ההפעלה.
 - `explicit`: טעינת מומחים מדויקת מהכונן למטמוני slots מוגבלים.
 - `auto`: ברירת המחדל המומלצת. בוחר explicit כאשר הוגדר תקציב cache או slots והמודל תואם; אחרת חוזר ל-OS paging רגיל.
@@ -65,8 +65,8 @@ SSD מומלץ מאוד. מנגנון paging אינו מבטל את הזיכרו
 ## בנייה מקוד המקור
 
 ```powershell
-git clone https://github.com/menachem-dadon/SparkMoE.git
-cd SparkMoE
+git clone https://github.com/menachem-dadon/Spark-Edge.git
+cd Spark-Edge
 pwsh scripts/build-windows.ps1 -Variant avx2 -RunTests
 .\build-windows-avx2\bin\SparkMoE.exe
 ```
@@ -78,12 +78,12 @@ pwsh scripts/build-windows.ps1 -Variant avx2 -RunTests
 .\scripts\build-installer.ps1
 ```
 
-## איפה נמצא הקוד של SparkMoE?
+## איפה נמצא הקוד של Spark Edge?
 
 - `src/moe-paging/`: האלגוריתם, המטמון, קריאת הקבצים והסטטיסטיקות.
 - `tools/sparkmoe/`: מנהל הרקע, Router, פרופילים ולוגים.
 - `tools/sparkmoe-iobench/`: כלי בדיקת הכונן.
-- `tools/ui/src/routes/sparkmoe/`: קטגוריית SparkMoE בתוך ממשק llama.cpp.
+- `tools/ui/src/routes/sparkmoe/`: קטגוריית Spark Edge בתוך ממשק llama.cpp.
 - `scripts/` ו-`packaging/`: בנייה, חבילות ומתקין.
 - `assets/branding/`: אייקון התוכנה, הצ'אט ונכסי ה-PWA.
 
@@ -91,18 +91,18 @@ pwsh scripts/build-windows.ps1 -Variant avx2 -RunTests
 
 ## הקשר ל-llama.cpp
 
-SparkMoE כולל snapshot מלא של llama.cpp ולא תלות חיצונית. לכן קיימות בו התכונות שהיו בגרסת upstream הרשומה ב-`UPSTREAM_BASE.txt`, בתוספת יכולות SparkMoE. תכונות חדשות שנוספו מאוחר יותר ל-llama.cpp אינן מגיעות אוטומטית ודורשות merge מבוקר ובדיקות חוזרות.
+Spark Edge כולל snapshot מלא של llama.cpp ולא תלות חיצונית. לכן קיימות בו התכונות שהיו בגרסת upstream הרשומה ב-`UPSTREAM_BASE.txt`, בתוספת יכולות Spark Edge. תכונות חדשות שנוספו מאוחר יותר ל-llama.cpp אינן מגיעות אוטומטית ודורשות merge מבוקר ובדיקות חוזרות.
 
 ## פרטיות
 
-אין telemetry, analytics, העלאת קריסות או הורדת מודלים אוטומטית. מנהל SparkMoE מאזין רק ב-`127.0.0.1`. חשיפת `llama-server` לרשת דורשת API key והגדרות אבטחה מתאימות.
+אין telemetry, analytics, העלאת קריסות או הורדת מודלים אוטומטית. מנהל Spark Edge מאזין רק ב-`127.0.0.1`. חשיפת `llama-server` לרשת דורשת API key והגדרות אבטחה מתאימות.
 
 ## רישוי
 
-קוד upstream של llama.cpp והשינויים שבתוך קבצי upstream נשארים תחת MIT. הרכיבים המקוריים והעצמאיים של SparkMoE נמצאים תחת PolyForm Noncommercial 1.0.0. הגבול המדויק מפורט ב-[LICENSING.md](LICENSING.md).
+קוד upstream של llama.cpp והשינויים שבתוך קבצי upstream נשארים תחת MIT. הרכיבים המקוריים והעצמאיים של Spark Edge נמצאים תחת PolyForm Noncommercial 1.0.0. הגבול המדויק מפורט ב-[LICENSING.md](LICENSING.md).
 
 מודלים אינם כלולים. כל מודל כפוף לרישיון של מאגר המודל שממנו הורד.
 
-SparkMoE הוא פרויקט קהילתי עצמאי ואינו משויך או מאושר על ידי ggml-org, Qwen, Alibaba Cloud, Google, Gemma או מחברי Colibri.
+Spark Edge הוא פרויקט קהילתי עצמאי ואינו משויך או מאושר על ידי ggml-org, Qwen, Alibaba Cloud, Google, Gemma או מחברי Colibri.
 
 </div>

@@ -24,8 +24,8 @@ namespace {
 
 constexpr uint64_t manifest_limit = 256 * 1024;
 constexpr uint64_t binary_limit = uint64_t(2) * 1024 * 1024 * 1024;
-constexpr const char * release_api = "https://api.github.com/repos/menachem-dadon/SparkMoE/releases?per_page=25";
-constexpr const char * asset_url = "https://github.com/menachem-dadon/SparkMoE/releases/download/";
+constexpr const char * release_api = "https://api.github.com/repos/menachem-dadon/Spark-Edge/releases?per_page=25";
+constexpr const char * asset_url = "https://github.com/menachem-dadon/Spark-Edge/releases/download/";
 
 bool valid_sha256(const std::string & value) {
     static const std::regex pattern("[0-9a-f]{64}");

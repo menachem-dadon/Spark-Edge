@@ -1,4 +1,4 @@
-# SparkMoE: start here in a new conversation
+# Spark Edge: start here in a new conversation
 
 Updated 2026-08-31. This document replaces the need to reload the long research
 and implementation conversation. Verify `git status` before doing new work.
@@ -9,7 +9,7 @@ earlier findings and open questions without prescribing the new design.
 
 ## Decisions that must persist
 
-- SparkMoE remains the product and the only paging engine. BigMoeOnEdge is a
+- Spark Edge remains the product and the only paging engine. BigMoeOnEdge is a
   source of measured ideas, not a dependency, alternate backend or copied engine.
 - Default inference is lossless relative to the selected quantized weights:
   no dropped/substituted experts, changed routing or reduced top-k.

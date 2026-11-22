@@ -234,7 +234,7 @@ json connector_info(const std::string & id) {
     else if (id == "codex-desktop") {
         return {{"id", id}, {"name", "Codex Desktop"}, {"installed", false}, {"executable", ""}, {"version", ""},
             {"support", "manual"}, {"launch_supported", false},
-            {"description", "Custom model availability depends on the installed desktop version. Use the isolated Codex CLI connection; SparkMoE does not change the running desktop app or its model picker."}};
+            {"description", "Custom model availability depends on the installed desktop version. Use the isolated Codex CLI connection; Spark Edge does not change the running desktop app or its model picker."}};
     } else { throw std::runtime_error("Unknown connector"); }
     auto executable = find_program(binary);
     bool version_two = false;
@@ -282,7 +282,7 @@ json make_preview(const json & input, const connection_context & context) {
     check_text(context.api_base_url, "API URL");
     if (context.api_base_url.rfind("http://127.0.0.1:", 0) != 0 || context.api_base_url.size() < 4 ||
         context.api_base_url.substr(context.api_base_url.size() - 3) != "/v1") {
-        throw std::runtime_error("Connections require the local SparkMoE API endpoint");
+        throw std::runtime_error("Connections require the local Spark Edge API endpoint");
     }
     const auto port = context.api_base_url.substr(17, context.api_base_url.size() - 20);
     if (port.empty() || port.size() > 5 || !std::all_of(port.begin(), port.end(), [](char c) { return c >= '0' && c <= '9'; }) ||
@@ -293,7 +293,7 @@ json make_preview(const json & input, const connection_context & context) {
     json files = json::array(), arguments = json::array(), environment = json::object(), warnings = json::array();
     auto add_file = [&](const std::string & name, const std::string & content) { files.push_back({{"name", name}, {"content", content}}); };
     if (connector == "codex") {
-        const std::string provider = "{name=\"SparkMoE\",base_url=" + json(context.api_base_url).dump() +
+        const std::string provider = "{name=\"Spark Edge\",base_url=" + json(context.api_base_url).dump() +
             ",env_key=\"SPARKMOE_API_KEY\",requires_openai_auth=false,wire_api=\"responses\"}";
         arguments = {"-c", "model_provider=\"sparkmoe\"", "-c", "model_providers.sparkmoe=" + provider, "--model", id};
         if (context_length(models[0]) > 0) {
@@ -301,10 +301,10 @@ json make_preview(const json & input, const connection_context & context) {
             arguments.push_back("model_context_window=" + std::to_string(context_length(models[0])));
         }
         if (!project.empty()) { arguments.push_back("--cd"); arguments.push_back(project); }
-        add_file("provider.toml", "model = " + json(id).dump() + "\nmodel_provider = \"sparkmoe\"\n\n[model_providers.sparkmoe]\nname = \"SparkMoE\"\nbase_url = " +
+        add_file("provider.toml", "model = " + json(id).dump() + "\nmodel_provider = \"sparkmoe\"\n\n[model_providers.sparkmoe]\nname = \"Spark Edge\"\nbase_url = " +
             json(context.api_base_url).dump() + "\nenv_key = \"SPARKMOE_API_KEY\"\nrequires_openai_auth = false\nwire_api = \"responses\"\n");
         warnings.push_back("Codex CLI requires the Responses API. The selected model uses its own ID; the desktop model picker is unchanged.");
-        if (models.size() > 1) { warnings.push_back("Each favourite is exported in models.json. Select another model in SparkMoE to create its Codex launcher."); }
+        if (models.size() > 1) { warnings.push_back("Each favourite is exported in models.json. Select another model in Spark Edge to create its Codex launcher."); }
     } else if (connector == "opencode") {
         json entries = json::object();
         for (const auto & model : models) {
@@ -316,19 +316,19 @@ json make_preview(const json & input, const connection_context & context) {
         json config = {{"$schema", "https://opencode.ai/config.json"}, {"model", "sparkmoe/" + id}};
         if (info.value("version_two", false)) {
             config["providers"]["sparkmoe"] = {
-                {"name", "SparkMoE"}, {"env", {"SPARKMOE_API_KEY"}}, {"package", "@opencode/ai/providers/openai-compatible"},
+                {"name", "Spark Edge"}, {"env", {"SPARKMOE_API_KEY"}}, {"package", "@opencode/ai/providers/openai-compatible"},
                 {"settings", {{"baseURL", context.api_base_url}}}, {"models", entries}};
         } else {
             config["small_model"] = "sparkmoe/" + id;
             config["provider"]["sparkmoe"] = {
-                {"npm", "@ai-sdk/openai-compatible"}, {"name", "SparkMoE"}, {"options", {{"baseURL", context.api_base_url}, {"apiKey", "{env:SPARKMOE_API_KEY}"}}},
+                {"npm", "@ai-sdk/openai-compatible"}, {"name", "Spark Edge"}, {"options", {{"baseURL", context.api_base_url}, {"apiKey", "{env:SPARKMOE_API_KEY}"}}},
                 {"models", entries}};
             environment["OPENCODE_CONFIG_CONTENT"] = config.dump();
         }
         arguments = {"--model", "sparkmoe/" + id};
         add_file("opencode.json", config.dump(2) + "\n");
     } else if (connector == "continue") {
-        std::string yaml = "name: SparkMoE\nversion: 1.0.0\nschema: v1\nmodels:\n";
+        std::string yaml = "name: Spark Edge\nversion: 1.0.0\nschema: v1\nmodels:\n";
         for (const auto & model : models) {
             yaml += "  - name: " + json(model.value("display_name", model.at("id").get<std::string>())).dump() + "\n    provider: openai\n    model: " +
                 model.at("id").dump() + "\n    apiBase: " + json(context.api_base_url).dump() +
@@ -346,7 +346,7 @@ json make_preview(const json & input, const connection_context & context) {
         if (!input.value("experimental", false)) { warnings.push_back("Explicit experimental opt-in is required before configuration or launch."); }
         environment = {{"ANTHROPIC_BASE_URL", context.api_base_url.substr(0, context.api_base_url.size() - 3)},
             {"ANTHROPIC_CUSTOM_MODEL_OPTION", id}, {"ANTHROPIC_CUSTOM_MODEL_OPTION_NAME", models[0].value("display_name", id)},
-            {"ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION", "Experimental local SparkMoE model"},
+            {"ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION", "Experimental local Spark Edge model"},
             {"ANTHROPIC_DEFAULT_OPUS_MODEL", id}, {"ANTHROPIC_DEFAULT_SONNET_MODEL", id}, {"ANTHROPIC_DEFAULT_HAIKU_MODEL", id},
             {"CLAUDE_CODE_SUBAGENT_MODEL", id}};
         arguments = {"--model", id};
@@ -354,7 +354,7 @@ json make_preview(const json & input, const connection_context & context) {
         warnings.push_back("Experimental: Anthropic does not support non-Claude models. Tool calling, compaction and model-specific behaviour need validation with the selected model.");
     }
     add_file("models.json", json{{"models", models}}.dump(2) + "\n");
-    if (!info.value("installed", false) && connector != "continue") { warnings.push_back("The application is not installed or its executable is not on PATH. SparkMoE does not install external applications."); }
+    if (!info.value("installed", false) && connector != "continue") { warnings.push_back("The application is not installed or its executable is not on PATH. Spark Edge does not install external applications."); }
     if (info.value("installed", false) && !info.value("launch_supported", false) && connector != "continue") {
         warnings.push_back("Automatic launch needs a supported native Windows executable. Use the exported configuration for this installation.");
     }
@@ -368,7 +368,7 @@ json make_preview(const json & input, const connection_context & context) {
 json saved_record(const fs::path & root, const std::string & id) {
     if (!safe_id(id)) { throw std::runtime_error("Invalid connection ID"); }
     auto record = read_json(root / id / "connection.json");
-    if (record.value("id", "") != id || record.value("owner", "") != "SparkMoE") { throw std::runtime_error("Not a SparkMoE connection"); }
+    if (record.value("id", "") != id || record.value("owner", "") != "SparkMoE") { throw std::runtime_error("Not a Spark Edge connection"); }
     return record;
 }
 
@@ -414,7 +414,7 @@ json launch_connection(const json & record, const connection_context & context) 
     if (record.value("connector", "") == "claude-code" && !record.value("experimental", false)) { throw std::runtime_error("Experimental connector was not enabled"); }
     const auto project = record.value("project_dir", "");
     if (project.empty()) { throw std::runtime_error("Choose a project directory before launching an agent"); }
-    if (context.api_key.empty()) { throw std::runtime_error("A local SparkMoE API key is required for launch"); }
+    if (context.api_key.empty()) { throw std::runtime_error("A local Spark Edge API key is required for launch"); }
     check_text(context.api_key, "local API key");
     if (!context.ensure_model_ready) { throw std::runtime_error("Model readiness check is unavailable"); }
     context.ensure_model_ready(record.at("model_id").get<std::string>());

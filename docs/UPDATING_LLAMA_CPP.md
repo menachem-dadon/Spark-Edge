@@ -1,6 +1,6 @@
 # Updating llama.cpp safely
 
-SparkMoE remains the product and the only paging engine. BigMoeOnEdge is a
+Spark Edge remains the product and the only paging engine. BigMoeOnEdge is a
 reference, not a dependency. New storage/cache features must preserve all routed
 experts and the original top-k. Architecture-specific Flash-Next work is separate.
 
@@ -27,7 +27,7 @@ The script checks cleanliness before fetching, resolves the target into a privat
 Git ref, prints the old/new commits and count, creates a backup branch AND tag,
 and creates a separate `codex/upstream-*` branch in a sibling worktree. It performs
 a normal merge with `--no-commit --no-ff`; it never rewrites existing history.
-Local SparkMoE and upstream release tags can have the same name, so the updater
+Local Spark Edge and upstream release tags can have the same name, so the updater
 does not fetch upstream tags over your local tags.
 
 Validation checks integration markers, builds the product UI and all native
@@ -57,7 +57,7 @@ The resumable state is Git metadata (`git rev-parse --git-path sparkmoe-update.j
 
 The updater enables `git config rerere.enabled true` and keeps
 `rerere.autoupdate false`. Git remembers resolutions but does not stage reused
-resolutions automatically. Inspect both SparkMoE behavior and the new upstream
+resolutions automatically. Inspect both Spark Edge behavior and the new upstream
 API; never accept all "ours" or "theirs". Stage reviewed resolutions with
 `git add <files>`, then rerun every gate before committing:
 
@@ -90,7 +90,7 @@ python scripts/sparkmoe-upstream.py drift --fetch
 files and which of those changed upstream. Without `--fetch` it uses local refs
 and does not access the network. It compares commits, not ambiguous release tags.
 
-When adding a hook, put the implementation in a SparkMoE-owned module, add its
+When adding a hook, put the implementation in a Spark Edge module, add its
 file and stable symbol to `config/upstream-integration.json`, and add every newly
 patched upstream file to `patched_upstream_files`. Explain its responsibility in
 `UPSTREAM_INTEGRATION.md`, add a behavioral regression and run `check`.

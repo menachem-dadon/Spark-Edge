@@ -238,7 +238,7 @@ export class SparkMoeProfileStore {
 		} catch {
 			if (this.dirty(draft))
 				draft.error =
-					'This draft cannot be preserved when the window closes. Keep SparkMoE open and retry saving.';
+					'This draft cannot be preserved when the window closes. Keep Spark Edge open and retry saving.';
 		}
 	}
 

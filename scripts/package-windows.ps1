@@ -44,7 +44,7 @@ if ($webviewEnabled) {
     }
     $loaderHash = ($webviewManifest.files | Where-Object { $_.name -eq 'build/native/x64/WebView2Loader.dll' }).sha256
     if ((Get-FileHash -LiteralPath (Join-Path $bin 'WebView2Loader.dll') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $loaderHash) {
-        throw 'The built WebView2 loader differs from the restored SDK; rebuild SparkMoE before packaging'
+        throw 'The built WebView2 loader differs from the restored SDK; rebuild Spark Edge before packaging'
     }
 }
 

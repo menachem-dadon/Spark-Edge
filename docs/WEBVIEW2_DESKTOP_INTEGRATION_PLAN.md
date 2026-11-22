@@ -4,7 +4,7 @@ Status: implemented in source for local validation. The complete release matrix 
 
 ## Architecture
 
-SparkMoE uses a direct Win32 WebView2 host in `tools/sparkmoe/desktop-window.cpp`. The Svelte chat and management interface remain shared with browser mode. No Electron, CEF, Tauri, or external browser window embedding is involved.
+Spark Edge uses a direct Win32 WebView2 host in `tools/sparkmoe/desktop-window.cpp`. The Svelte chat and management interface remain shared with browser mode. No Electron, CEF, Tauri, or external browser window embedding is involved.
 
 The stable application origin is `http://127.0.0.1:18080/`, or the manager port selected through `SPARKMOE_MANAGER_PORT`. The manager serves the embedded UI and forwards inference requests to its Router. Stopping the Router does not remove the application's UI or model-management APIs.
 
@@ -49,15 +49,15 @@ Set `SPARKMOE_BROWSER_ONLY=1` for a recovery launch that bypasses WebView2 initi
 
 ## Window behavior and storage
 
-The real top-level window provides the SparkMoE icon, normal taskbar presence, resize, minimize, restore, focus, and Windows title-bar theme. Its minimum size scales with DPI and fits the current monitor. Saved normal bounds and maximized state are restored within the available monitor work area, with size adjusted for changed DPI.
+The real top-level window provides the Spark Edge icon, normal taskbar presence, resize, minimize, restore, focus, and Windows title-bar theme. Its minimum size scales with DPI and fits the current monitor. Saved normal bounds and maximized state are restored within the available monitor work area, with size adjusted for changed DPI.
 
-Closing exits SparkMoE by default. If background operation is enabled, close hides the window and leaves the notification-area controls. Closing with an active proxied generation requests confirmation. Notification-area Exit and manager shutdown use the unconditional close path.
+Closing exits Spark Edge by default. If background operation is enabled, close hides the window and leaves the notification-area controls. Closing with an active proxied generation requests confirmation. Notification-area Exit and manager shutdown use the unconditional close path.
 
 The existing single-instance manager endpoint `/api/open` activates the native window when available, otherwise it opens browser fallback. No additional local port or broad native bridge is introduced.
 
 The WebView profile is stored under `%LOCALAPPDATA%\\SparkMoE\\WebView2` by default. `SPARKMOE_DATA_DIR` can select a separate application-data root. Window placement is stored beside that profile. Installed and portable packages use the same explicit data policy; extraction does not silently place personal data beside the executable.
 
-Browser and desktop storage are separate. Use the chat UI's export/import controls to transfer conversations; SparkMoE does not read another browser's profile database. Upgrades, fallback, and uninstall preserve local application data.
+Browser and desktop storage are separate. Use the chat UI's export/import controls to transfer conversations; Spark Edge does not read another browser's profile database. Upgrades, fallback, and uninstall preserve local application data.
 
 ## Navigation, permissions, and downloads
 
@@ -102,7 +102,7 @@ Record evidence separately for each category:
 | Package | Installed and extracted ZIP; Windows 10/11; standard user; Unicode paths; no bundled user data; required files and all manifest hashes |
 | Installer | Install/upgrade/uninstall; Runtime present/missing; optional task declined/failed/succeeded; exact PATH addition/removal; signature status |
 
-PowerShell parser and Inno Setup syntax-fixture checks establish syntax only. They do not install SparkMoE, run the Runtime bootstrapper, or validate the real packaged application. Record live native checks and clean-machine installer checks before release.
+PowerShell parser and Inno Setup syntax-fixture checks establish syntax only. They do not install Spark Edge, run the Runtime bootstrapper, or validate the real packaged application. Record live native checks and clean-machine installer checks before release.
 
 ## Official references
 

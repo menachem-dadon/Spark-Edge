@@ -1,6 +1,6 @@
 # Architecture
 
-SparkMoE keeps the upstream execution path intact unless explicit paging is requested for a model with a validated standard routed-expert tensor layout.
+Spark Edge keeps the upstream execution path intact unless explicit paging is requested for a model with a validated standard routed-expert tensor layout.
 
 ## Load path
 
@@ -26,9 +26,9 @@ The model loader pages only standard gate, up, down, and fused gate-up routed ex
 
 ## Control plane
 
-The hidden local manager listens on `127.0.0.1:18080` and launches the sibling `llama-server` as a Router on the user-selected stable Web/API port. The Router owns one child process per loaded model and enforces the user-selected `models-max` limit with idle LRU eviction. SparkMoE writes a global default and per-model overrides to an INI preset consumed by the existing llama.cpp Router.
+The hidden local manager listens on `127.0.0.1:18080` and launches the sibling `llama-server` as a Router on the user-selected stable Web/API port. The Router owns one child process per loaded model and enforces the user-selected `models-max` limit with idle LRU eviction. Spark Edge writes a global default and per-model overrides to an INI preset consumed by the existing llama.cpp Router.
 
-On Windows, the manager and all child processes are created without console windows. The manager captures the Router's combined stdout/stderr; the Router already folds each model child's output into that stream. Every start/restart creates a persistent session log under the user's local application data. The embedded SparkMoE page reads management state and logs from port 18080, while inference, model lifecycle, and SparkMoE runtime metrics use the normal Router port.
+On Windows, the manager and all child processes are created without console windows. The manager captures the Router's combined stdout/stderr; the Router already folds each model child's output into that stream. Every start/restart creates a persistent session log under the user's local application data. The embedded Spark Edge page reads management state and logs from port 18080, while inference, model lifecycle, and Spark Edge runtime metrics use the normal Router port.
 
 Loading, paging, context, KV cache, MTP, and default reasoning are process-profile settings. OpenAI-compatible messages, tools, sampling, output length, and thinking controls remain request-level inputs and are proxied unchanged to the selected model.
 

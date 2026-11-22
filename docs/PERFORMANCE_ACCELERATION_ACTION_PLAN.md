@@ -1,4 +1,4 @@
-# SparkMoE Performance Acceleration Action Plan
+# Spark Edge Performance Acceleration Action Plan
 
 Date: 2026-09-01
 
@@ -23,12 +23,12 @@ This is an investigation and implementation plan, not an implementation. No mode
 The highest-value sequence is:
 
 1. Fix measurement and build provenance before changing algorithms. Current server MoE counters are cumulative, the existing benchmark driver covers only a narrow decode case, and the available Release binary reports commit `061e8657d` rather than the current source revision `4977a2838`.
-2. Land the low-risk prompt wins first: backport the current Qwen3.8 indexer reduction, expose separate prefill and decode thread controls, sweep batch and microbatch independently, and test the upstream AVX2 IQ prompt kernel without bypassing SparkMoE expert-readiness waits.
+2. Land the low-risk prompt wins first: backport the current Qwen3.8 indexer reduction, expose separate prefill and decode thread controls, sweep batch and microbatch independently, and test the upstream AVX2 IQ prompt kernel without bypassing Spark Edge expert-readiness waits.
 3. Remove hot-path allocation and kernel-object churn: reuse PLE scratch buffers, expert-routing maps, I/O jobs, Windows events, and direct-I/O bounce buffers.
 4. Replace global hybrid-cache scans and repeated page decommit/commit operations with constant-time bookkeeping and retained physical slots where safe.
 5. Add phase-aware expert placement. Prompt processing and decode have different routing locality, arithmetic intensity, and useful I/O policy. They should not share one fixed policy by assumption.
 6. Make speculation cost-aware. MTP should adapt from measured wall time and extra bytes, not acceptance rate alone. N-gram speculation must remain disabled until its cross-request state bug is fixed and validated.
-7. Treat the Intel Iris Xe backend as a separate experiment after the CPU baseline. The machine has an Xe-LP iGPU and upstream has new Xe-LP OpenCL tuning, but the current build is CPU-only and SparkMoE advanced paging modes are not validated with GPU offload.
+7. Treat the Intel Iris Xe backend as a separate experiment after the CPU baseline. The machine has an Xe-LP iGPU and upstream has new Xe-LP OpenCL tuning, but the current build is CPU-only and Spark Edge advanced paging modes are not validated with GPU offload.
 
 The current full-size Qwen3.8 performance gate cannot be closed on this machine yet. The target model and MTP sidecar are not present, and drive C has only about 12.36 GiB free. The project documentation expects roughly 93.7 GB for the target model and about 2.62 GB for the sidecar, plus safe build, temporary, and page-file headroom.
 
@@ -42,12 +42,12 @@ The review covered the complete tracked-file inventory and then inspected the ex
 - `src/moe-paging/`: expert index, cache, global budget, readiness, row streaming, I/O scheduler, platform readers, counters, and llama integration.
 - `src/models/qwen4exp.cpp`: Qwen3.8 QSA, PLE, recurrent state, and MTP graph input.
 - `common/speculative.cpp`: MTP and n-gram drafting, prompt catch-up, verification hidden-state handling, and rollback interaction.
-- `tools/server/`: request scheduling, prompt cache, context checkpoints, per-slot timings, cumulative metrics, and SparkMoE endpoints.
+- `tools/server/`: request scheduling, prompt cache, context checkpoints, per-slot timings, cumulative metrics, and Spark Edge endpoints.
 - `tools/sparkmoe/`: manager defaults, automatic recommendation logic, and server command construction.
 - `tools/llama-bench/`, `scripts/benchmark-paging.py`, benchmark configurations, raw local JSON results, and performance documentation.
 - Build configuration, current binaries, integration manifests, upstream delta, model inventory, and current machine state.
 
-This was a repository-wide structural scan plus a line-level hot-path review. It was not a claim that every vendored or unrelated backend source line is a SparkMoE performance bottleneck.
+This was a repository-wide structural scan plus a line-level hot-path review. It was not a claim that every vendored or unrelated backend source line is a Spark Edge performance bottleneck.
 
 ### 3.2 Current machine
 
@@ -153,7 +153,7 @@ Expected value: high for both prompt and generation, low implementation risk.
 
 ### 6.2 Prompt RAM cache is disabled by the manager
 
-Upstream server defaults include prompt caching, but SparkMoE forces `--cache-ram 0`. This disables cross-slot saved prompt states and idle-slot saving. Same-slot prefix reuse can still occur, but a repeated system/tool prefix is not preserved in the RAM prompt cache.
+Upstream server defaults include prompt caching, but Spark Edge forces `--cache-ram 0`. This disables cross-slot saved prompt states and idle-slot saving. Same-slot prefix reuse can still occur, but a repeated system/tool prefix is not preserved in the RAM prompt cache.
 
 Actions:
 
@@ -297,7 +297,7 @@ Expected value: high confidence, prompt-only, low risk.
 
 Upstream commit [`85c55223c`](https://github.com/ggml-org/llama.cpp/commit/85c55223c) adds a batched AVX2 GEMM path for grid IQ quantizations and a `MUL_MAT_ID` fast path. This is relevant to the local Qwen3.6 IQ4_NL model and potentially to Qwen3.8 IQ builds.
 
-Risk: SparkMoE currently waits for an expert at the normal CPU `MUL_MAT_ID` path. A new dispatch path must not consume a paged expert before its read completes, and CPU repack must not assume a stable resident source buffer if the slot is remapped.
+Risk: Spark Edge currently waits for an expert at the normal CPU `MUL_MAT_ID` path. A new dispatch path must not consume a paged expert before its read completes, and CPU repack must not assume a stable resident source buffer if the slot is remapped.
 
 Actions:
 
@@ -382,7 +382,7 @@ Expected value: unknown; medium research value, high product-integration risk.
 | Source | Reusable lesson | What not to copy blindly |
 | --- | --- | --- |
 | [Colibri](https://github.com/JustVugg/colibri) | Treat storage, RAM, and VRAM as tiers; learn routing heat; use pinned hot experts plus adaptive LRU; keep route telemetry; preserve model semantics by default | Hot-expert learning can overfit and some balanced routers are nearly flat; O_DIRECT and lookahead are host dependent |
-| [BigMoeOnEdge](https://github.com/Helldez/BigMoeOnEdge) | Per-token I/O/cache/compute telemetry, conditional cooling between runs, 256-token steady windows, overlap A/B, pressure and fault metrics | Phone defaults and direct-I/O results do not transfer to this Windows laptop; its lossy expert dropping is not a lossless SparkMoE default |
+| [BigMoeOnEdge](https://github.com/Helldez/BigMoeOnEdge) | Per-token I/O/cache/compute telemetry, conditional cooling between runs, 256-token steady windows, overlap A/B, pressure and fault metrics | Phone defaults and direct-I/O results do not transfer to this Windows laptop; its lossy expert dropping is not a lossless Spark Edge default |
 | [MoE-Infinity](https://github.com/EfficientMoE/MoE-Infinity) | Request-level activation traces, activation-aware caching, prefetch, dedicated I/O workers, continuous batching | It targets GPU/host/SSD serving and a different runtime; reported paper factors are not local predictions |
 | [KTransformers](https://github.com/kvcache-ai/ktransformers) | Phase-specific kernels, cache-aware weight layout, fused expert tasks, dynamic load balancing | The host and current build do not provide its AMX/AVX-512 path; its BF16/INT8 layouts also differ from this fork |
 | [llama.cpp speculative docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md) | Record implementation-level draft statistics and use SPEED-Bench for varied end-to-end comparisons | Acceptance rate is not throughput, and repeated-prompt cache paths can invalidate a benchmark |
@@ -727,7 +727,7 @@ Stop or revert an experiment when any of the following occurs:
 - Direct I/O reads more physical bytes and does not reduce page pressure enough to repay the cost.
 - Prefetch useful reads remain zero or wasted bytes exceed saved demand bytes.
 - Learned pinning loses on held-out prompts.
-- A proposed change requires a broad upstream refresh that overwrites SparkMoE Qwen3.8 paging/state work instead of a reviewed three-way integration.
+- A proposed change requires a broad upstream refresh that overwrites Spark Edge Qwen3.8 paging/state work instead of a reviewed three-way integration.
 
 ## 14. Documentation and maintenance debt
 
@@ -756,9 +756,9 @@ Before declaring a performance release:
 
 ## 16. Primary references
 
-- [SparkMoE Qwen3.8 implementation guide](QWEN38_IMPLEMENTATION.md)
-- [SparkMoE engine measurements](ENGINE_UPGRADES.md)
-- [SparkMoE benchmarking guide](BENCHMARKING.md)
+- [Spark Edge Qwen3.8 implementation guide](QWEN38_IMPLEMENTATION.md)
+- [Spark Edge engine measurements](ENGINE_UPGRADES.md)
+- [Spark Edge benchmarking guide](BENCHMARKING.md)
 - [Colibri repository and measured design principles](https://github.com/JustVugg/colibri)
 - [Colibri routing telemetry](https://github.com/JustVugg/colibri/blob/main/docs/routing-telemetry.md)
 - [BigMoeOnEdge repository](https://github.com/Helldez/BigMoeOnEdge)

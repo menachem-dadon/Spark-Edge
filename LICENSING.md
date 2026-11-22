@@ -1,8 +1,8 @@
 # Licensing map
 
-SparkMoE is a multi-license repository. The repository-level `LICENSE` is the upstream llama.cpp MIT license. It remains in force for upstream code and for modifications made directly inside upstream-derived files.
+Spark Edge is a multi-license repository. The repository-level `LICENSE` is the upstream llama.cpp MIT license. It remains in force for upstream code and for modifications made directly inside upstream-derived files.
 
-The original SparkMoE components listed below are offered under the PolyForm Noncommercial License 1.0.0 in `LICENSE-SPARKMOE-NONCOMMERCIAL.md`:
+The original Spark Edge components listed below are offered under the PolyForm Noncommercial License 1.0.0 in `LICENSE-SPARKMOE-NONCOMMERCIAL.md`:
 
 - `assets/branding/`
 - `config/presets/`
@@ -29,9 +29,9 @@ The original SparkMoE components listed below are offered under the PolyForm Non
 - `config/upstream-integration.json`
 - `tools/ui/src/lib/services/sparkmoe.service.ts`
 - `tools/ui/src/routes/sparkmoe/+page.svelte`
-- SparkMoE-specific documentation created in this fork, except text copied from upstream.
+- Spark Edge documentation created in this fork, except text copied from upstream.
 
-The following remain MIT even when they contain SparkMoE integration hooks, because they are upstream-derived files and separating a patch-level license inside them would be ambiguous:
+The following remain MIT even when they contain Spark Edge integration hooks, because they are upstream-derived files and separating a patch-level license inside them would be ambiguous:
 
 - `src/moe-paging/moe-integration.h` and `src/moe-paging/moe-integration.cpp`
 - `tools/sparkmoe/server-api.h` and `tools/sparkmoe/server-api.cpp`
@@ -44,4 +44,4 @@ The following remain MIT even when they contain SparkMoE integration hooks, beca
 
 Third-party components keep their own licenses as documented in `THIRD_PARTY_NOTICES.md`. Model files are not distributed and have separate terms described in `docs/MODEL_LICENSES.md`.
 
-Commercial use of the PolyForm-covered components requires a separate license from the SparkMoE copyright holders. This file is an engineering ownership map, not legal advice. Before public release, replace the generic required notice with the legal name or entity that actually owns the original work and have counsel review the boundary.
+Commercial use of the PolyForm-covered components requires a separate license from the Spark Edge copyright holders. This file is an engineering ownership map, not legal advice. Before public release, replace the generic required notice with the legal name or entity that actually owns the original work and have counsel review the boundary.

@@ -1,8 +1,8 @@
-# SparkMoE upstream integration
+# Spark Edge upstream integration
 
 ## Desktop manager ownership (2026-09-14)
 
-The stable manager UI origin, HTTP facade, model library, and native Windows shell live in SparkMoE-owned modules under `tools/sparkmoe/`. The desktop-manager manifest group checks the STA host, restricted navigation/download surface, CMake loader integration, pinned SDK restore, and installer Runtime/PATH behavior. Preserve these modules during an upstream refresh and keep shared chat changes scoped to existing UI integration points.
+The stable manager UI origin, HTTP facade, model library, and native Windows shell live in Spark Edge modules under `tools/sparkmoe/`. The desktop-manager manifest group checks the STA host, restricted navigation/download surface, CMake loader integration, pinned SDK restore, and installer Runtime/PATH behavior. Preserve these modules during an upstream refresh and keep shared chat changes scoped to existing UI integration points.
 
 The SDK pin is `packaging/windows/webview2-sdk.json`. SDK sources, loader hashes, notices, and package signature state are recorded by the Windows scripts. The current native and package validation requirements are in `WEBVIEW2_DESKTOP_INTEGRATION_PLAN.md`; historical refresh evidence below does not validate this new desktop implementation.
 
@@ -18,7 +18,7 @@ The SDK pin is `packaging/windows/webview2-sdk.json`. SDK sources, loader hashes
   the latest official stable release on 2026-08-31 (644 upstream commits).
   CPU Windows and Linux upstream checks passed. The optional Windows OpenBLAS
   job failed; this CPU build does not enable BLAS. Upstream master was another
-  90 commits ahead. No new architecture-specific SparkMoE support is in scope.
+  90 commits ahead. No new architecture-specific Spark Edge support is in scope.
 
 ## Ownership and pre-merge diff
 
@@ -31,18 +31,18 @@ Documentation replacements and branding account for much of this count.
 | CLI/options | `common/arg.cpp`, `common/common.cpp`, `common/common.h` | Flags, defaults, auto fallback, propagation to model/context |
 | Model loading | `src/llama-model-loader.cpp`, `src/llama-model-loader.h`, `src/llama-model.cpp`, `src/llama-model.h`, `src/models/qwen35moe.cpp` | Metadata-only expert tensors, file index ownership, layer selection |
 | Context/graph | `src/llama-context.cpp`, `src/llama-context.h`, `src/llama-cparams.h`, `src/llama-graph.cpp`, `src/llama-graph.h` | Per-context cache lifetime, safe microbatch, router-to-slot mapping, original IDs for scales/LoRA |
-| Server | `tools/server/server-context.cpp`, `tools/server/server-context.h`, `tools/server/server.cpp` | Four existing SparkMoE status/config/statistics routes |
+| Server | `tools/server/server-context.cpp`, `tools/server/server-context.h`, `tools/server/server.cpp` | Four existing Spark Edge status/config/statistics routes |
 | Benchmark | `tools/llama-bench/llama-bench.cpp` | Paging options and observable cache/I/O metrics |
-| CMake/build | `CMakeLists.txt`, `src/CMakeLists.txt`, `ggml/src/CMakeLists.txt`, `tools/CMakeLists.txt`, `tools/server/CMakeLists.txt`, `tests/CMakeLists.txt` | SparkMoE targets and Windows build compatibility |
+| CMake/build | `CMakeLists.txt`, `src/CMakeLists.txt`, `ggml/src/CMakeLists.txt`, `tools/CMakeLists.txt`, `tools/server/CMakeLists.txt`, `tests/CMakeLists.txt` | Spark Edge targets and Windows build compatibility |
 | CPU compatibility | `ggml/src/ggml-cpu/arch/x86/repack.cpp` | Avoid passing AVX vectors across the MinGW helper ABI |
-| Chat UI | `tools/ui/.env.example`, `tools/ui/package.json`, `tools/ui/package-lock.json`, PWA/branding files, `tools/ui/src/lib/constants/routes.constants.ts`, `tools/ui/src/lib/constants/ui.constants.ts`, `tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte`, `tools/ui/src/routes/search/+page.svelte` | Existing branding plus the SparkMoE sidebar integration |
+| Chat UI | `tools/ui/.env.example`, `tools/ui/package.json`, `tools/ui/package-lock.json`, PWA/branding files, `tools/ui/src/lib/constants/routes.constants.ts`, `tools/ui/src/lib/constants/ui.constants.ts`, `tools/ui/src/lib/components/app/navigation/SidebarNavigation/SidebarNavigation.svelte`, `tools/ui/src/routes/search/+page.svelte` | Existing branding plus the Spark Edge sidebar integration |
 | Other | `.gitignore`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md` | Fork documentation and generated-artifact hygiene |
 
-SparkMoE core is `src/moe-paging/`: the model index, file readers, bounded
+Spark Edge core is `src/moe-paging/`: the model index, file readers, bounded
 per-layer cache, paging manager and statistics. These algorithms are independent
 of the integration hooks. The hidden launcher/Router supervisor (`tools/sparkmoe/`), I/O tool,
-branding, presets, packaging, scripts, paging tests and dedicated SparkMoE Web page are
-also SparkMoE-owned. Preserve their existing behavior and licensing.
+branding, presets, packaging, scripts, paging tests and dedicated Web page are
+also part of Spark Edge. Preserve their existing behavior and licensing.
 
 ## Refresh strategy
 
@@ -56,7 +56,7 @@ owned modules, not textual copies of upstream algorithms.
 The maintenance manifest and final validation report will record the resulting
 integration points, conflict resolutions, remaining patched files and evidence.
 
-## Revised execution plan: one SparkMoE engine
+## Revised execution plan: one Spark Edge engine
 
 The user's decision supersedes the backend recommendation in the existing
 `C:/codex-output/sparkmoe-bmoe-research-20260831/DECISION_REPORT.md`.
@@ -110,7 +110,7 @@ loading, server routing, CMake and the reorganized UI settings/PWA files.
 MSVC validation additionally fixed legacy manager UI string limits, Unicode resource
 paths, private unit-test linkage and benchmark paging parameter initialization.
 
-The local SparkMoE tag `v0.3.0` names a different commit from upstream's tag of
+The local Spark Edge tag `v0.3.0` names a different commit from upstream's tag of
 the same name. Always use the full upstream SHA or a private fetched ref; never
 infer the upstream base from an unqualified local release tag.
 
@@ -141,7 +141,7 @@ The maintained inventory now contains 47 upstream files. E3 adds only 17 lines
 across `ggml/include/ggml-cpu.h`, `ggml/src/ggml-cpu/ggml-cpu.cpp` and
 `ggml/src/ggml-cpu/ggml-cpu.c`: a callback declaration/dispatch and one wait before
 each used expert in MUL_MAT_ID. Its readiness tables, scheduling, cache leases
-and error handling are SparkMoE-owned. Public parameter/stat fields, benchmark
+and error handling belong to Spark Edge. Public parameter/stat fields, benchmark
 flags and Windows server memory linking account for the other justified growth.
 
 The Desktop group also tracks the one-line `common/log.cpp` change from `fopen`

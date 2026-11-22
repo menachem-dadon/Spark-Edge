@@ -221,7 +221,7 @@ async function managerFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 	if (!response.ok) {
 		throw new SparkMoeRequestError(
-			payload.error || 'SparkMoE manager returned HTTP ' + response.status,
+			payload.error || 'Spark Edge manager returned HTTP ' + response.status,
 			response.status
 		);
 	}
