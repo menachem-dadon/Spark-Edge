@@ -352,7 +352,22 @@ void server_model_meta::update_args(common_preset_context & ctx_preset, std::str
         bin_path = worker;
     }
     child.unset_option("SPARK_EDGE_ENGINE");
+    std::string fallbacks;
+    child.get_option("SPARK_EDGE_ENGINE_FALLBACK", fallbacks);
+    child.unset_option("SPARK_EDGE_ENGINE_FALLBACK");
     args = child.to_args(bin_path);
+    fallback_args.clear();
+    std::istringstream paths(fallbacks);
+    std::string candidate;
+    while (fallback_args.size() < 2 && std::getline(paths, candidate, '|')) {
+        const auto path = std::filesystem::u8path(candidate);
+        std::error_code error;
+        if (candidate == bin_path || !path.is_absolute() || path.filename() != "llama-server.exe" ||
+                !std::filesystem::is_regular_file(path, error)) {
+            continue;
+        }
+        fallback_args.emplace_back(child.to_args(candidate));
+    }
 
     // unified binary dispatches by subcommand, re-inject it right after the
     // binary path so the child starts as 'llama serve ...' not 'llama ...'
@@ -1305,7 +1320,8 @@ void server_models::load(const std::string & name, const load_options & opts) {
 
         // the child writes its commands to stdout and its logs to stderr
         int options = subprocess_option_no_window;
-        if (!inst.subproc->sproc.create(child_args, options, child_env)) {
+        if (!inst.subproc->sproc.create(child_args, options, child_env) &&
+                (opts.role != SERVER_ROLE_INSTANCE || !spawn_fallback(inst))) {
             throw std::runtime_error("failed to spawn server instance");
         }
     }
@@ -1351,6 +1367,24 @@ void server_models::watch_child(const std::string & name, std::shared_ptr<server
     monitor->watch(name, std::move(proc), role, port, kill_after);
 }
 
+bool server_models::spawn_fallback(instance_t & inst) {
+    std::vector<std::string> env = base_env;
+    env.push_back(std::string(SERVER_ENV_ROUTER_PORT) + "=" + std::to_string(base_params.port));
+    while (!inst.meta.fallback_args.empty()) {
+        auto args = std::move(inst.meta.fallback_args.front());
+        inst.meta.fallback_args.pop_front();
+        auto proc = std::make_shared<server_subproc>();
+        SRV_WRN("trying fallback worker for model '%s' using '%s'\n", inst.meta.name.c_str(), args.front().c_str());
+        if (proc->sproc.create(args, subprocess_option_no_window, env)) {
+            inst.subproc = std::move(proc);
+            inst.meta.args = std::move(args);
+            inst.meta.progress = nullptr;
+            return true;
+        }
+    }
+    return false;
+}
+
 void server_models::on_child_exit(const std::string & name, const std::shared_ptr<server_subproc> & proc, server_role_type role, int exit_code) {
     if (role == SERVER_ROLE_MEASURE) {
         sched->on_measure_exit(name, proc, exit_code);
@@ -1362,6 +1396,12 @@ void server_models::on_child_exit(const std::string & name, const std::shared_pt
         if (it == mapping.end() || it->second.subproc != proc) {
             stopping_models.erase(name);
             return; // entry erased, or a newer instance took the name
+        }
+        auto & inst = it->second;
+        if (role == SERVER_ROLE_INSTANCE && inst.meta.status == SERVER_MODEL_STATUS_LOADING &&
+                !stopping_models.count(name) && spawn_fallback(inst)) {
+            monitor->watch(name, inst.subproc, role, inst.meta.port);
+            return;
         }
     }
     if (role == SERVER_ROLE_DOWNLOAD) {

@@ -120,6 +120,7 @@
 		},
 		{ label: 'Cache hit rate', value: (metricNumber('cache_hit_rate') * 100).toFixed(1) + '%' },
 		{ label: 'Cache hits', value: metricNumber('cache_hits').toLocaleString() },
+		{ label: 'GPU expert cache hits', value: metricNumber('device_cache_hits').toLocaleString() },
 		{ label: 'Cache misses', value: metricNumber('cache_misses').toLocaleString() },
 		{ label: 'Evictions', value: metricNumber('evictions').toLocaleString() },
 		{ label: 'Cache waits', value: metricNumber('waits').toLocaleString() },
@@ -133,6 +134,8 @@
 		{ label: 'Private process memory', value: formatBytes(metricNumber('process_private_bytes')) },
 		{ label: 'Cache committed', value: formatBytes(metricNumber('cache_committed_bytes')) },
 		{ label: 'Cache limit', value: formatBytes(metricNumber('cache_limit_bytes')) },
+		{ label: 'Expert GPU cache', value: formatBytes(metricNumber('device_committed_bytes')) },
+		{ label: 'Expert transfers to GPU', value: formatBytes(metricNumber('device_upload_bytes')) },
 		{ label: 'Logical SSD read', value: formatBytes(metricNumber('bytes_read')) },
 		{ label: 'Physical SSD read', value: formatBytes(metricNumber('physical_bytes')) },
 		{ label: 'Direct SSD read', value: formatBytes(metricNumber('direct_bytes')) },
@@ -181,7 +184,13 @@
 	function statusFor(id: string) {
 		return modelsStore.routerModels.find((model) => model.id === id)?.status.value ?? 'unloaded';
 	}
-	function selectSettingsModel(id: string) {
+	function statusLabel(status: string) {
+        const labels: Record<string, string> = {
+            loaded: 'Loaded', loading: 'Loading', unloaded: 'Unloaded', sleeping: 'Sleeping', failed: 'Failed'
+        };
+        return t(labels[status] ?? status);
+    }
+    function selectSettingsModel(id: string) {
 		selectedModel = id;
 		rename = library.find((model) => model.id === id)?.display_name ?? '';
 		metrics = null;
@@ -275,13 +284,31 @@
 			busy = '';
 		}
 	}
+	async function activateEngine(id: string) {
+		try {
+			await SparkMoeService.applyEngine(id);
+		} finally {
+			const current = await SparkMoeService.engines();
+			engineStatus = { ...engineStatus, ...current };
+			await refreshManager();
+			await refreshLibrary();
+		}
+	}
+
+	async function installEngine(id: string) {
+		await SparkMoeService.downloadEngine(id);
+		const current = await SparkMoeService.engines();
+		engineStatus = { ...engineStatus, ...current };
+		await activateEngine(id);
+	}
+
 	async function importModel(path: string) {
 		if (!path.trim()) return;
 		await SparkMoeService.importModel(path);
 		importPath = '';
 		importOpen = false;
 		await refreshLibrary();
-		notice = 'Model added to the library.';
+		notice = t('Model added to the library.');
 	}
 	async function chooseFile() {
 		const result = await SparkMoeService.chooseModelFile();
@@ -351,7 +378,7 @@
 			<div class="rounded-xl bg-primary/10 p-2.5 text-primary"><Sparkles class="h-5 w-5" /></div>
 			<div>
 				<h1 class="text-xl font-semibold tracking-tight">Spark Edge</h1>
-				<p class="mt-1 text-sm text-muted-foreground">Your local models, ready to use.</p>
+				<p class="mt-1 text-sm text-muted-foreground">{t("Your local models, ready to use.")}</p>
 			</div>
 		</div>
 		<div class="flex items-center gap-2">
@@ -361,10 +388,10 @@
 					: managerStatus?.running
 						? 'Starting...'
 						: managerStatus
-							? 'Server stopped'
+							? t('Server stopped')
 							: 'Manager unavailable'}</span
 			><Button
-				aria-label="Application settings"
+				aria-label={t("Application settings")}
 				href={RouterService.settings('general')}
 				size="icon"
 				variant="ghost"><Settings /></Button
@@ -377,7 +404,7 @@
 			>
 		</div>
 	</header>
-	<nav aria-label="Spark Edge sections" class="flex gap-1 rounded-lg bg-muted/50 p-1">
+	<nav aria-label={t("Spark Edge sections")} class="flex gap-1 rounded-lg bg-muted/50 p-1">
 		{#each [{ id: 'models', label: 'Models', icon: Library }, { id: 'connections', label: 'Connections', icon: Link }, { id: 'activity', label: 'Activity', icon: Activity }, { id: 'engines', label: 'Engines', icon: Settings }] as tab}<Button
 				aria-current={activeTab === tab.id ? 'page' : undefined}
 				class="flex-1 sm:flex-none"
@@ -409,7 +436,7 @@
 	{#if notice}<div class="rounded-lg bg-muted/50 p-3 text-sm" role="status">{notice}</div>{/if}
 	{#if !managerStatus}<Card.Root
 			><Card.Content class="space-y-3"
-				><p class="text-sm">Open Spark Edge from its shortcut to manage local models.</p>
+				><p class="text-sm">{t("Open Spark Edge from its shortcut to manage local models.")}</p>
 				<Button
 					disabled={busy !== ''}
 					onclick={() => void run('retry', initialize)}
@@ -451,11 +478,11 @@
 				><Card.Content class="space-y-4"
 					><div class="flex flex-wrap gap-2">
 						<Button disabled={busy !== ''} onclick={() => void run('import', chooseFile)}
-							><Plus />Choose GGUF file</Button
+							><Plus />{t("Choose GGUF file")}</Button
 						><Button
 							disabled={busy !== ''}
 							onclick={() => void run('import', chooseFolder)}
-							variant="outline"><FolderOpen />Import folder</Button
+							variant="outline"><FolderOpen />{t("Import folder")}</Button
 						>
 					</div>
 					<form
@@ -466,10 +493,10 @@
 						}}
 					>
 						<input
-							aria-label="Local model file or folder path"
+							aria-label={t("Local model file or folder path")}
 							class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
 							dir="ltr"
-							placeholder="Or paste a local file or folder path"
+							placeholder={t("Or paste a local file or folder path")}
 							bind:value={importPath}
 						/><Button disabled={!importPath.trim() || busy !== ''} type="submit" variant="outline"
 							>{t("Add")}</Button
@@ -478,7 +505,7 @@
 				></Card.Root
 			>{/if}
 		{#if downloadsOpen}<Card.Root
-				><Card.Header><Card.Title>Download models</Card.Title></Card.Header><Card.Content
+				><Card.Header><Card.Title>{t("Download models")}</Card.Title></Card.Header><Card.Content
 					><SparkMoeDownloads onComplete={() => refreshLibrary()} /></Card.Content
 				></Card.Root
 			>{/if}
@@ -487,14 +514,14 @@
 					<div class="flex gap-2">
 						<div class="relative min-w-0 flex-1">
 							<Search class="absolute top-3 left-3 h-4 w-4 text-muted-foreground" /><input
-								aria-label="Search model library"
+								aria-label={t("Search model library")}
 								class="w-full rounded-md border border-input bg-background py-2 pr-3 pl-9 text-sm"
-								placeholder="Find a model"
+								placeholder={t("Find a model")}
 								bind:value={search}
 							/>
 						</div>
 						<Button
-							aria-label="Show favorites only"
+							aria-label={t("Show favorites only")}
 							aria-pressed={favoritesOnly}
 							onclick={() => (favoritesOnly = !favoritesOnly)}
 							size="icon"
@@ -506,24 +533,24 @@
 						{#each filteredModels as model}<button
 								aria-pressed={selectedModel === model.id}
 								class={[
-									'w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50',
+									'w-full rounded-lg border p-3 text-start transition-colors hover:bg-muted/50',
 									selectedModel === model.id ? 'border-primary bg-primary/5' : 'border-border/60'
 								]}
 								onclick={() => selectSettingsModel(model.id)}
 								type="button"
 								><span class="block break-words text-sm font-medium"
 									>{#if model.favorite}<Star
-											class="mr-1 inline h-3 w-3 fill-current"
+											class="me-1 inline h-3 w-3 fill-current"
 										/>{/if}{model.display_name}</span
 								><span class="mt-2 block text-xs text-muted-foreground"
-									>{model.available ? statusFor(model.id) : 'File missing'} | {formatBytes(
+									>{model.available ? statusLabel(statusFor(model.id)) : t('File missing')} | {formatBytes(
 										model.size_bytes
 									)}</span
 								></button
 							>{/each}{#if !filteredModels.length}<p
 								class="py-6 text-center text-sm text-muted-foreground"
 							>
-								No matching models.
+								{t("No matching models.")}
 							</p>{/if}
 					</div>
 				</aside>
@@ -535,14 +562,14 @@
 										<Card.Title class="break-words">{selected.display_name}</Card.Title
 										><Card.Description class="mt-2"
 											>{selected.available
-												? selectedModelStatus
-												: 'File missing'}{modelsStore.selectedModelName === selectedModel
-												? ' | Selected for chat'
+												? statusLabel(selectedModelStatus)
+												: t('File missing')}{modelsStore.selectedModelName === selectedModel
+												? ' · ' + t('Selected for chat')
 												: ''}</Card.Description
 										>
 									</div>
 									<Button
-										aria-label={selected.favorite ? 'Remove favorite' : 'Add favorite'}
+										aria-label={t(selected.favorite ? 'Remove favorite' : 'Add favorite')}
 										disabled={busy !== ''}
 										onclick={() =>
 											void run('favorite', () => updateModel({ favorite: !selected!.favorite }))}
@@ -577,15 +604,15 @@
 													if (file.path && !file.cancelled) await updateModel({ path: file.path });
 												})}
 											size="sm"
-											variant="outline"><FolderOpen />Locate file</Button
+											variant="outline"><FolderOpen />{t("Locate file")}</Button
 										>
 									</div>{/if}
 								<details class="text-sm">
-									<summary class="cursor-pointer font-medium">Model information</summary>
+									<summary class="cursor-pointer font-medium">{t("Model information")}</summary>
 									<div class="mt-3 space-y-3">
 										<p class="break-all text-xs text-muted-foreground" dir="ltr">{selected.path}</p>
 										<dl class="grid grid-cols-2 gap-2 text-xs">
-											<dt class="text-muted-foreground">Size</dt>
+											<dt class="text-muted-foreground">{t("Size")}</dt>
 											<dd>{formatBytes(selected.size_bytes)}</dd>
 											{#each Object.entries(selected.metadata ?? {}) as [key, value]}{#if typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'}<dt
 														class="break-words text-muted-foreground"
@@ -602,7 +629,7 @@
 											}}
 										>
 											<input
-												aria-label="Model display name"
+												aria-label={t("Model display name")}
 												class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2"
 												bind:value={rename}
 											/><Button
@@ -615,7 +642,7 @@
 											disabled={busy !== ''}
 											onclick={() => (removeDialogOpen = true)}
 											size="sm"
-											variant="ghost"><Trash2 />Remove from library</Button
+											variant="ghost"><Trash2 />{t("Remove from library")}</Button
 										>
 									</div>
 								</details></Card.Content
@@ -629,13 +656,13 @@
 				</div>
 			</div>{/if}
 		<details class="rounded-lg border border-border/60 p-4">
-			<summary class="cursor-pointer text-sm font-medium">Library folder</summary>
+			<summary class="cursor-pointer text-sm font-medium">{t("Library folder")}</summary>
 			<p class="my-3 text-xs text-muted-foreground">
 				Save a discovery folder, then rescan to update the library.
 			</p>
 			<div class="flex gap-2">
 				<input
-					aria-label="Model discovery folder"
+					aria-label={t("Model discovery folder")}
 					class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
 					dir="ltr"
 					bind:value={routerConfig.model_directory}
@@ -663,12 +690,12 @@
 							notice = 'Folder saved. Rescan when ready.';
 						})}
 					size="sm"
-					variant="outline">Save folder</Button
+					variant="outline">{t("Save folder")}</Button
 				><Button
 					disabled={routerConfigDirty || busy !== ''}
 					onclick={() => void run('rescan', () => refreshLibrary(true))}
 					size="sm"
-					variant="outline"><RefreshCw />Rescan saved folder</Button
+					variant="outline"><RefreshCw />{t("Rescan saved folder")}</Button
 				>
 			</div>
 		</details>
@@ -687,22 +714,22 @@
 					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
 						<span><bdi>{engine.backend}</bdi>{#if engine.id}<bdi class="ms-2 text-xs">{engine.id.slice(engine.backend.length + 1, engine.backend.length + 9)}</bdi>{/if}</span>
 						<Button disabled={busy !== '' || (engineStatus?.active ?? '') === engine.id}
-							onclick={() => void run('engine-apply', async () => {
-								try { await SparkMoeService.applyEngine(engine.id); }
-								finally { engineStatus = await SparkMoeService.engines(); }
-								await refreshManager();
-								await refreshLibrary();
-							})}>{t('Apply engine')}</Button>
+							onclick={() => void run('engine-apply', () => activateEngine(engine.id))}>{t('Apply engine')}</Button>
 					</div>
 				{/each}
-				{#if engineStatus?.available?.length === 0}<p class="text-sm text-muted-foreground">{t('No engine packages are available.')}</p>{/if}
+				{#if busy === 'engine-download'}
+				<p class="text-sm text-muted-foreground" role="status">{t('Downloading and activating engine…')}</p>
+			{/if}
+			{#if engineStatus?.available?.length === 0}<p class="text-sm text-muted-foreground">{t('No engine packages are available.')}</p>{/if}
 				{#each engineStatus?.available?.filter((engine) => !engineStatus?.installed.some((row) => row.id === engine.id)) ?? [] as engine (engine.id)}
 					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
-						<span><bdi>{engine.id}</bdi></span>
-						<Button disabled={busy !== ''} variant="outline" onclick={() => void run('engine-download', async () => {
-							await SparkMoeService.downloadEngine(engine.id);
-							engineStatus = await SparkMoeService.engines(true);
-						})}>{t('Install engine')}</Button>
+						<span>
+							<bdi>{engine.backend}</bdi>
+							<bdi class="ms-2 text-xs">{engine.id.slice(engine.backend.length + 1, engine.backend.length + 9)}</bdi>
+							{#if engine.bytes}<bdi class="ms-2 text-xs text-muted-foreground">{Math.ceil(engine.bytes / 1048576)} MiB</bdi>{/if}
+						</span>
+						<Button disabled={busy !== ''} variant="outline"
+							onclick={() => void run('engine-download', () => installEngine(engine.id))}>{t('Install and activate')}</Button>
 					</div>
 				{/each}
 			</Card.Content>
@@ -710,12 +737,12 @@
 	{:else}
 		<Card.Root
 			><Card.Header
-				><Card.Title>Server activity</Card.Title><Card.Description
+				><Card.Title>{t("Server activity")}</Card.Title><Card.Description
 					>{managerStatus?.server_ready
-						? 'Ready for requests'
+						? t('Ready for requests')
 						: managerStatus?.running
-							? 'Starting the server'
-							: 'Server stopped'}</Card.Description
+							? t('Starting the server')
+							: t('Server stopped')}</Card.Description
 				></Card.Header
 			><Card.Content class="space-y-4"
 				>{#if managerStatus?.last_error}<p class="text-sm text-destructive">
@@ -725,15 +752,15 @@
 					{#if managerStatus?.running}<Button
 							disabled={busy !== ''}
 							onclick={() => void run('restart', () => lifecycle('restart'))}
-							variant="outline"><RefreshCw />Restart server</Button
+							variant="outline"><RefreshCw />{t("Restart server")}</Button
 						><Button
 							disabled={busy !== ''}
 							onclick={() => void run('stop', () => lifecycle('stop'))}
-							variant="outline"><CircleStop />Stop server</Button
+							variant="outline"><CircleStop />{t("Stop server")}</Button
 						>{:else}<Button
 							disabled={!managerStatus || busy !== ''}
 							onclick={() => void run('start', () => lifecycle('start'))}
-							><Play />Start server</Button
+							><Play />{t("Start server")}</Button
 						>{/if}<Button
 						disabled={!managerStatus || busy !== ''}
 						onclick={() => (exitDialogOpen = true)}
@@ -747,7 +774,7 @@
 			></Card.Root
 		>
 		<Card.Root
-			><Card.Header><Card.Title>Model activity</Card.Title></Card.Header><Card.Content
+			><Card.Header><Card.Title>{t("Model activity")}</Card.Title></Card.Header><Card.Content
 				class="space-y-4"
 				><label class="grid gap-2 text-sm"
 					><span>{t("Model")}</span><select
@@ -757,28 +784,30 @@
 							void refreshRuntime();
 						}}
 						value={selectedModel}
-						>{#each library as model}<option value={model.id}
-								>{model.display_name} ({statusFor(model.id)})</option
+						>
+                        <option value="" disabled>{t("Choose a model")}</option>
+                        {#each library as model}<option value={model.id}
+								>{model.display_name} ({statusLabel(statusFor(model.id))})</option
 							>{/each}</select
 					></label
 				>{#if selectedModelLoaded && metrics}<div class="grid gap-3 sm:grid-cols-3">
 						{#each [cacheMetrics[0], memoryMetrics[0], cacheMetrics[1]] as metric}<div
 								class="rounded-lg bg-muted/50 p-3"
 							>
-								<span class="text-xs text-muted-foreground">{metric.label}</span><strong
+								<span class="text-xs text-muted-foreground">{t(metric.label)}</span><strong
 									class="mt-1 block">{metric.value}</strong
 								>
 							</div>{/each}
 					</div>
 					<details>
-						<summary class="cursor-pointer text-sm font-medium">Detailed counters</summary>
+						<summary class="cursor-pointer text-sm font-medium">{t("Detailed counters")}</summary>
 						<div class="mt-4 space-y-5">
 							{#each [{ title: 'Cache and experts', items: cacheMetrics }, { title: 'Memory and storage', items: memoryMetrics }, { title: 'I/O pipeline', items: pipelineMetrics }, { title: 'Prefetch and PLE', items: prefetchMetrics }] as group}<section
 								>
-									<h3 class="mb-2 text-sm font-medium">{group.title}</h3>
+									<h3 class="mb-2 text-sm font-medium">{t(group.title)}</h3>
 									<dl class="grid grid-cols-2 gap-3">
 										{#each group.items as metric}<div class="rounded-lg bg-muted/30 p-3">
-												<dt class="text-xs text-muted-foreground">{metric.label}</dt>
+												<dt class="text-xs text-muted-foreground">{t(metric.label)}</dt>
 												<dd class="mt-1 text-sm">{metric.value}</dd>
 											</div>{/each}
 									</dl>
@@ -793,16 +822,16 @@
 									await refreshRuntime();
 								})}
 							size="sm"
-							variant="ghost">Reset counters</Button
+							variant="ghost">{t("Reset counters")}</Button
 						>
 					</details>{:else}<p class="text-sm text-muted-foreground">
-						Load a model to see its runtime measurements.
+						{t("Load a model to see its runtime measurements.")}
 					</p>{/if}{#if metricsError}<p class="text-xs text-muted-foreground">
 						{metricsError}
 					</p>{/if}
 				<details>
 					<summary class="cursor-pointer text-sm font-medium"
-						>Effective runtime and hardware</summary
+						>{t("Effective runtime and hardware")}</summary
 					>
 					<pre
 						class="mt-3 max-h-80 overflow-auto rounded-md bg-muted/50 p-3 text-xs"
@@ -812,18 +841,18 @@
 		>
 		<Card.Root
 			><Card.Header
-				><Card.Title>Logs and diagnostics</Card.Title><Card.Description
-					>Inspect the current session or download logs for troubleshooting.</Card.Description
+				><Card.Title>{t("Logs and diagnostics")}</Card.Title><Card.Description
+					>{t("Inspect the current session or download logs for troubleshooting.")}</Card.Description
 				></Card.Header
 			><Card.Content class="space-y-4"
 				><div class="flex flex-wrap gap-2">
 					<select
-						aria-label="Log session"
+						aria-label={t("Log session")}
 						class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
 						onchange={() => void refreshLogs()}
 						bind:value={selectedLogSession}
 						>{#each logSessions as session}<option value={session.name}
-								>{session.name}{session.current ? ' (current)' : ''}</option
+								>{session.name}{session.current ? ' · ' + t('Current session') : ''}</option
 							>{/each}</select
 					><Button
 						disabled={!selectedLogSession}
@@ -831,15 +860,15 @@
 							? SparkMoeService.logDownloadUrl(selectedLogSession)
 							: undefined}
 						size="sm"
-						variant="outline"><Download />Log</Button
+						variant="outline"><Download />{t("Log")}</Button
 					><Button href={SparkMoeService.diagnosticsUrl()} size="sm" variant="outline"
-						><Download />Diagnostics</Button
+						><Download />{t("Diagnostics")}</Button
 					>
 				</div>
 				{#if logsError}<p class="text-sm text-destructive">{logsError}</p>{/if}
 				<pre
 					class="max-h-[32rem] min-h-40 overflow-auto rounded-lg border border-border bg-muted/30 p-4 text-xs"
-					dir="ltr">{logContent || 'No log output yet.'}</pre>
+					dir="ltr">{logContent || t('No log output yet.')}</pre>
 				<p class="break-all text-xs text-muted-foreground">{logDirectory}</p></Card.Content
 			></Card.Root
 		>
@@ -849,12 +878,12 @@
 <DialogConfirmation
 	bind:open={removeDialogOpen}
 	cancelText="Cancel"
-	confirmText="Remove from library"
+	confirmText={t("Remove from library")}
 	description="Remove this library entry and keep the model files on disk."
 	icon={Trash2}
 	onCancel={() => (removeDialogOpen = false)}
 	onConfirm={() => void run('remove', removeModel)}
-	title="Remove model from library"
+	title={t("Remove model from library")}
 	variant="destructive"
 />
 <DialogConfirmation

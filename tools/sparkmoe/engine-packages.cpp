@@ -16,6 +16,7 @@ extern "C" {
 #include <regex>
 #include <stdexcept>
 #include <unordered_set>
+#include <vector>
 
 namespace sparkmoe {
 using json = nlohmann::ordered_json;
@@ -143,7 +144,8 @@ json available_packages() {
                 total_bytes += binary_asset.size;
             }
             if (!names.count("llama-server.exe")) throw std::runtime_error("The engine executable is missing.");
-            result.push_back({{"id", id}, {"backend", id.substr(0, id.find('-'))}, {"bytes", total_bytes}, {"files", files}});
+            result.push_back({{"id", id}, {"backend", id.substr(0, id.find('-'))}, {"bytes", total_bytes},
+                {"router_api", metadata.value("router_api", 1)}, {"files", files}});
             seen.insert(id);
         }
     }
@@ -161,16 +163,34 @@ json engine_packages::catalog() const {
 }
 
 json engine_packages::installed() const {
-    auto result = json::array();
+    using installed_entry = std::pair<std::filesystem::file_time_type, std::string>;
+    std::vector<installed_entry> entries;
     std::error_code error;
     std::filesystem::directory_iterator entry(root, error);
     for (const auto & node : entry) {
         const auto id = node.path().filename().u8string();
-        if (valid_id(id) && node.is_directory(error) && std::filesystem::is_regular_file(node.path() / "engine.json", error)) {
-            result.push_back({{"id", id}, {"backend", id.substr(0, id.find('-'))}});
+        const auto receipt = node.path() / "engine.json";
+        if (valid_id(id) && node.is_directory(error) && std::filesystem::is_regular_file(receipt, error)) {
+            entries.emplace_back(std::filesystem::last_write_time(receipt, error), id);
         }
     }
+    std::sort(entries.rbegin(), entries.rend());
+    auto result = json::array();
+    for (const auto & entry : entries) {
+        const auto & id = entry.second;
+        result.push_back({{"id", id}, {"backend", id.substr(0, id.find('-'))}});
+    }
     return result;
+}
+
+bool engine_packages::supports_worker_fallback(const std::string & id) const {
+    if (id.empty()) return true;
+    if (!valid_id(id)) return false;
+    std::ifstream receipt(root / id / "engine.json", std::ios::binary);
+    if (!receipt) return false;
+    const auto package = json::parse(receipt, nullptr, false);
+    return package.is_object() && package.contains("router_api") && package["router_api"].is_number_integer() &&
+           package["router_api"] >= 2;
 }
 
 std::filesystem::path engine_packages::executable(const std::string & id) const {

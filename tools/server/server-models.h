@@ -80,7 +80,8 @@ struct server_model_meta {
     int port = 0;
     server_model_status status = SERVER_MODEL_STATUS_UNLOADED;
     int64_t last_used = 0; // for LRU unloading
-    std::vector<std::string> args; // args passed to the model instance, will be populated by render_args()
+    std::vector<std::string> args; // args passed to the model instance
+    std::deque<std::vector<std::string>> fallback_args;
     json loaded_info; // info to be reflected via /v1/models endpoint ; if in DOWNLOADING state, it should contain download progress info
     json progress; // reflect load or download progress info, if any
     int exit_code = 0; // exit code of the model instance process (only valid if status == FAILED)
@@ -275,6 +276,9 @@ private:
 
     // let the monitor watch a child; kill_after > 0 force-kills it after that many seconds
     void watch_child(const std::string & name, std::shared_ptr<server_subproc> proc, server_role_type role, int port, int kill_after = 0);
+
+    // caller must hold mutex and the prior worker must have exited
+    bool spawn_fallback(instance_t & inst);
 
     // called by the monitor once a child exited and was reaped
     void on_child_exit(const std::string & name, const std::shared_ptr<server_subproc> & proc, server_role_type role, int exit_code);

@@ -134,6 +134,11 @@ std::vector<common_arg> sparkmoe_options() {
         "Spark Edge managed model-worker executable",
         [](common_params &, const std::string &) {}
     ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("SPARK_EDGE_ENGINE"));
+    options.push_back(common_arg(
+        {"--spark-edge-engine-fallback"}, "PATHS",
+        "Spark Edge managed model-worker fallback executables",
+        [](common_params &, const std::string &) {}
+    ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("SPARK_EDGE_ENGINE_FALLBACK"));
     return options;
 }
 

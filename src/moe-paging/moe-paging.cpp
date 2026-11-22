@@ -262,6 +262,9 @@ stats_snapshot paging_manager::snapshot() const {
         total.prefetch_promoted += value.prefetch_promoted;
         total.prefetch_skipped += value.prefetch_skipped;
         total.cache_committed_bytes += item.second->committed_bytes();
+        total.device_committed_bytes += item.second->device_committed_bytes();
+        total.device_cache_hits += value.device_cache_hits;
+        total.device_upload_bytes += value.device_upload_bytes;
         total.resident_experts += item.second->resident_count();
         total.pinned_experts += item.second->pinned_count();
     }

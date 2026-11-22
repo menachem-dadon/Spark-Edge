@@ -206,6 +206,9 @@ bool llama_context::moe_paging_get_stats(llama_moe_paging_stats * stats) const {
         ple.rows_read,
         ple.bytes_read,
         ple.evictions,
+        snapshot.device_committed_bytes,
+        snapshot.device_cache_hits,
+        snapshot.device_upload_bytes,
     };
     return true;
 }

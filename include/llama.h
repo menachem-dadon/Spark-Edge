@@ -392,6 +392,9 @@ extern "C" {
         uint64_t ple_pages_read;
         uint64_t ple_bytes_read;
         uint64_t ple_evictions;
+        uint64_t device_committed_bytes;
+        uint64_t device_cache_hits;
+        uint64_t device_upload_bytes;
     };
 
     struct llama_moe_paging_capabilities {

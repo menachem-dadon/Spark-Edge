@@ -48,5 +48,5 @@ $entries = foreach ($file in $files) {
         size = $file.Length
     }
 }
-$manifest = @{ schema = 1; id = $id; files = @($entries) } | ConvertTo-Json -Depth 4
+$manifest = @{ schema = 1; router_api = 2; id = $id; files = @($entries) } | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText((Join-Path (Resolve-Path -LiteralPath $OutputDir) "$prefix.json"), $manifest + [Environment]::NewLine)

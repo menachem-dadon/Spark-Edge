@@ -160,6 +160,7 @@ export interface SparkMoeModelProfile {
 	mtp_cache_mib: number;
 	mtp_draft_tokens: number;
 	speculative_types?: string;
+	ngram_options?: Record<string, number>;
 	mtp_enabled: boolean;
 	mtp_min_tokens: number;
 	mtp_model: string;

@@ -35,6 +35,23 @@
     ];
     let speculation = $derived((draft?.value.speculative_types || (draft?.value.mtp_enabled ? 'draft-mtp' : 'none')).split(','));
 
+    const ngramMethods = ['ngram-simple', 'ngram-map-k', 'ngram-map-k4v', 'ngram-mod'];
+    const ngramMapFields = [
+        { key: 'size-n', label: 'Lookup length', min: 1, max: 1024, initial: 12 },
+        { key: 'size-m', label: 'Draft length', min: 1, max: 1024, initial: 48 },
+        { key: 'min-hits', label: 'Minimum matches', min: 1, max: 65535, initial: 1 }
+    ];
+    const ngramModFields = [
+        { key: 'n-match', label: 'Lookup length', min: 1, max: 1024, initial: 24 },
+        { key: 'n-min', label: 'Minimum draft length', min: 0, max: 1024, initial: 48 },
+        { key: 'n-max', label: 'Maximum draft length', min: 0, max: 1024, initial: 64 }
+    ];
+
+    function changeNgram(key: string, value: number) {
+        if (!draft || !Number.isInteger(value)) return;
+        change('ngram_options', { ...draft.value.ngram_options, [key]: value });
+    }
+
     function toggleSpeculation(method: string, selected: boolean) {
         const remaining = speculation.filter((type) => type !== 'none' && type !== method);
         const compatible = selected && method.startsWith('draft-') ? remaining.filter((type) => !type.startsWith('draft-')) : remaining;
@@ -211,7 +228,7 @@
 					value={draft.value[field.key] as string | number}
 				/>
 			{/if}
-			{#if field.help}<span class="text-xs text-muted-foreground">{field.help}</span>{/if}
+			{#if field.help}<span class="text-xs text-muted-foreground">{t(field.help)}</span>{/if}
 		</label>
 	{/if}
 {/snippet}
@@ -219,8 +236,7 @@
 <Card.Root>
 	<Card.Header
 		><Card.Title>{t("Model settings")}</Card.Title><Card.Description
-			>Changes save automatically for this model. Apply them when you are ready to load or reload
-			it.</Card.Description
+			>{t("Changes save automatically for this model. Apply them when you are ready to load or reload it.")}</Card.Description
 		></Card.Header
 	>
 	<Card.Content class="space-y-5">
@@ -233,7 +249,7 @@
 				variant="outline">{t("Retry")}</Button
 			>
 		{:else if !draft}<p class="flex items-center gap-2 text-sm text-muted-foreground">
-				<LoaderCircle class="h-4 w-4 animate-spin" />Loading model settings...
+				<LoaderCircle class="h-4 w-4 animate-spin" />{t("Loading model settings...")}
 			</p>
 		{:else}
 			<div
@@ -243,9 +259,9 @@
 				<span class={draft.error ? 'text-destructive' : 'text-muted-foreground'}
 					>{#if draft.saving}<LoaderCircle
 							class="mr-1 inline h-4 w-4 animate-spin"
-						/>Saving...{:else if draft.error}Not saved: {draft.error}{:else if dirty}Unsaved changes{:else}<Check
+						/>{t('Saving...')}{:else if draft.error}{t('Not saved')} · {draft.error}{:else if dirty}{t('Unsaved changes')}{:else}<Check
 							class="mr-1 inline h-4 w-4"
-						/>Saved{/if}</span
+						/>{t('Saved')}{/if}</span
 				>
 				<label class="flex flex-wrap items-center justify-between gap-2 text-sm">
 				<span>{t('Engine')}</span>
@@ -320,16 +336,35 @@
                                 </label>
                             {/each}
                         </fieldset>
+                        {#each ngramMethods.filter((method) => speculation.includes(method)) as method (method)}
+                            <fieldset class="mt-3 grid gap-3 rounded-lg border p-3 sm:grid-cols-3">
+                                <legend class="px-1 text-xs" dir="ltr">{method}</legend>
+                                {#each method === 'ngram-mod' ? ngramModFields : ngramMapFields as parameter (parameter.key)}
+                                    {@const key = method + '-' + parameter.key}
+                                    <label class="grid gap-1 text-xs">
+                                        {t(parameter.label)}
+                                        <input class="w-full rounded-md border border-input bg-background px-2 py-1"
+                                            type="number" min={parameter.min} max={parameter.max}
+                                            value={draft.value.ngram_options?.[key] ?? parameter.initial}
+                                            onchange={(event) => {
+                                                if (event.currentTarget.validity.valid) changeNgram(key, event.currentTarget.valueAsNumber);
+                                            }} />
+                                    </label>
+                                {/each}
+                            </fieldset>
+                        {/each}
                     {/if}
                     {#if group.title === 'Speculative decoding' && speculation.includes('draft-mtp') && supportsMtp !== true}<p
 								class="mt-2 text-xs text-amber-600 dark:text-amber-400"
 							>
 								{supportsMtp === false
-									? 'This model does not report MTP support.'
-									: 'MTP capability has not been confirmed for this model.'}
+									? t('This model does not report MTP support.')
+									: t('MTP capability has not been confirmed for this model.')}
 							</p>{/if}
 						<div class="mt-4 grid gap-4 sm:grid-cols-2">
-							{#each group.fields as field}{@render fieldControl(field)}{/each}
+							{#if group.title !== 'Speculative decoding' || speculation.some((method) => method.startsWith('draft-'))}
+                                {#each group.fields as field}{@render fieldControl(field)}{/each}
+                            {/if}
 						</div>
 						{#if group.title === 'Memory and expert loading'}<Button
 								class="mt-4"
@@ -341,7 +376,7 @@
 								onclick={() =>
 									void run('cache', async (id) => {
 										await SparkMoeService.resizeCache(id, draft!.value.cache);
-										actionMessage = 'Cache resize accepted; it applies before the next decode.';
+										actionMessage = t('Cache resize accepted; it applies before the next decode.');
 									})}
 								size="sm"
 								variant="outline">{t("Apply hybrid cache now")}</Button
@@ -349,10 +384,9 @@
 					</details>
 				{/each}
 				{#if !supportsReasoning}<details class="rounded-lg border border-border/60 p-4">
-						<summary class="cursor-pointer text-sm font-medium">Reasoning compatibility</summary>
+						<summary class="cursor-pointer text-sm font-medium">{t("Reasoning compatibility")}</summary>
 						<p class="my-3 text-xs text-muted-foreground">
-							Reasoning support has not been confirmed. Keep the model default unless its template
-							supports these controls.
+							{t("Reasoning support has not been confirmed. Keep the model default unless its template supports these controls.")}
 						</p>
 						{@render fieldControl(reasoning)}
 					</details>{/if}
@@ -360,10 +394,10 @@
 			<div class="rounded-lg border border-border/60 p-3 text-sm">
 				<p class="font-medium">
 					{draft.pending
-						? 'Saved changes are waiting to be applied'
+						? t('Saved changes are waiting to be applied')
 						: loaded
-							? 'Settings match the loaded model'
-							: 'Settings will be used on the next load'}
+							? t('Settings match the loaded model')
+							: t('Settings will be used on the next load')}
 				</p>
 				{#if draft.applied}<p class="mt-1 text-xs text-muted-foreground">
 						Applied context: {draft.applied.ctx_size.toLocaleString()} tokens. Applied cache: {draft.applied.cache.toLocaleString()}
@@ -378,19 +412,19 @@
 				disabled={!draft.isOverride || draft.saving || action !== ''}
 				onclick={() => void run('reset', (id) => sparkMoeProfileStore.reset(id))}
 				size="sm"
-				variant="ghost"><RotateCcw />Use defaults</Button
+				variant="ghost"><RotateCcw />{t("Use defaults")}</Button
 			>
 			<div class="flex gap-2">
 				{#if draft.error}<Button
 						disabled={draft.saving}
 						onclick={() => void sparkMoeProfileStore.save(model)}
-						variant="outline">Retry saving</Button
+						variant="outline">{t("Retry saving")}</Button
 					>{/if}<Button
 					disabled={!available || draft.saving || action !== '' || Boolean(draft.error)}
 					onclick={() => void run('apply', apply)}
 					><RefreshCw class={action === 'apply' ? 'animate-spin' : ''} />{loaded
-						? 'Apply and reload model'
-						: 'Apply and load model'}</Button
+						? t('Apply and reload model')
+						: t('Apply and load model')}</Button
 				>
 			</div>
 		</Card.Footer>{/if}

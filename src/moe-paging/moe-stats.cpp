@@ -45,6 +45,8 @@ stats_snapshot stats::snapshot() const {
     result.prefetch_wasted = extra[static_cast<size_t>(metric::prefetch_wasted)].load();
     result.prefetch_promoted = extra[static_cast<size_t>(metric::prefetch_promoted)].load();
     result.prefetch_skipped = extra[static_cast<size_t>(metric::prefetch_skipped)].load();
+    result.device_cache_hits = extra[static_cast<size_t>(metric::device_cache_hits)].load();
+    result.device_upload_bytes = extra[static_cast<size_t>(metric::device_upload_bytes)].load();
     return result;
 }
 

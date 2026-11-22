@@ -16,7 +16,11 @@ After building and validating the target backend, run scripts/package-engine-win
 
 Publish those files together as assets of a release in menachem-dadon/SparkMoE. An engine release does not require a new Spark Edge installer. The manager reads GitHub's metadata over HTTPS, accepts only matching assets from that repository and verifies their SHA-256 digests against the release and package manifest before placing a copy in the installed engines directory. The local catalog does not depend on an existing running engine.
 
-In Spark Edge, open Engines to check for downloads, install a package or switch the default engine. Each model profile can use an installed engine independently. A switch waits for active requests, restarts the engine process and checks health before saving the configuration. The application and its data stay open.
+In Spark Edge, open Engines, check for updates and choose Install and activate. The manager verifies and installs the package, then switches the default engine. If a generation request is active, the package stays installed and you can activate it when the request finishes. The desktop window stays open during activation. The manager checks the new router and tries to restore the most recently loaded model. On failure it tries previously working engines and the bundled engine.
+
+Each model profile can use an installed engine independently. With a router that supports per-model fallback, a failed worker launch tries a locally installed package for the same backend and then the bundled worker. Other loaded workers keep their own processes during that model's retry.
+
+Use `-EngineOnly` to compile a runtime for a given backend without rebuilding the desktop UI. Real GPU coverage requires a matching adapter and driver. Run `scripts/test-sparkmoe-server.py --bin-dir <bin> --log-dir <logs> --gpu-device <device>` with a GPU build to exercise the expert pager. The test creates its own small GGUF fixture and checks that expert data was allocated and uploaded to the device.
 
 ## Expert cache settings
 

@@ -21,8 +21,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -114,6 +116,7 @@ struct model_profile {
     double mtp_p_min = 0.0;
     int mtp_threads = 0;
     bool mtp_backend_sampling = true;
+    json ngram_options = json::object();
 };
 
 struct app_state {
@@ -365,6 +368,7 @@ json profile_json(const model_profile & profile) {
         {"mtp_p_min", profile.mtp_p_min},
         {"mtp_threads", profile.mtp_threads},
         {"mtp_backend_sampling", profile.mtp_backend_sampling},
+        {"ngram_options", profile.ngram_options},
     };
 }
 
@@ -409,6 +413,7 @@ model_profile profile_from_json(const json & input, const model_profile & base) 
     profile.mtp_p_min = input.value("mtp_p_min", profile.mtp_p_min);
     profile.mtp_threads = input.value("mtp_threads", profile.mtp_threads);
     profile.mtp_backend_sampling = input.value("mtp_backend_sampling", profile.mtp_backend_sampling);
+    profile.ngram_options = input.value("ngram_options", profile.ngram_options);
     return profile;
 }
 
@@ -437,6 +442,24 @@ std::string speculative_types(const model_profile & profile) {
     return profile.speculative_types.empty() ? (profile.mtp_enabled ? "draft-mtp" : "none") : profile.speculative_types;
 }
 
+struct ngram_option {
+    const char * method;
+    const char * name;
+    int minimum;
+    int maximum;
+};
+
+constexpr ngram_option ngram_options[] = {
+    {"ngram-simple", "size-n", 1, 1024}, {"ngram-simple", "size-m", 1, 1024}, {"ngram-simple", "min-hits", 1, 65535},
+    {"ngram-map-k", "size-n", 1, 1024}, {"ngram-map-k", "size-m", 1, 1024}, {"ngram-map-k", "min-hits", 1, 65535},
+    {"ngram-map-k4v", "size-n", 1, 1024}, {"ngram-map-k4v", "size-m", 1, 1024}, {"ngram-map-k4v", "min-hits", 1, 65535},
+    {"ngram-mod", "n-match", 1, 1024}, {"ngram-mod", "n-min", 0, 1024}, {"ngram-mod", "n-max", 0, 1024},
+};
+
+std::string ngram_key(const ngram_option & option) {
+    return std::string(option.method) + "-" + option.name;
+}
+
 void validate_profile(const model_profile & profile, bool validate_files = true) {
     static const std::unordered_set<std::string> supported = {
         "none", "draft-simple", "draft-eagle3", "draft-mtp", "draft-dflash", "draft-dflash2", "draft-dspark", "draft-lilicorr",
@@ -461,6 +484,18 @@ void validate_profile(const model_profile & profile, bool validate_files = true)
     }
     if (drafts && !used.count("draft-mtp") && profile.mtp_model.empty()) {
         throw std::runtime_error("This speculative decoding method requires a compatible draft GGUF.");
+    }
+    if (!profile.ngram_options.is_object()) throw std::runtime_error("Invalid n-gram settings.");
+    for (auto it = profile.ngram_options.begin(); it != profile.ngram_options.end(); ++it) {
+        const auto option = std::find_if(std::begin(ngram_options), std::end(ngram_options),
+            [&](const ngram_option & entry) { return it.key() == ngram_key(entry); });
+        if (option == std::end(ngram_options) || !it.value().is_number_integer() ||
+                it.value() < option->minimum || it.value() > option->maximum) {
+            throw std::runtime_error("Invalid n-gram setting: " + it.key());
+        }
+    }
+    if (profile.ngram_options.value("ngram-mod-n-min", 48) > profile.ngram_options.value("ngram-mod-n-max", 64)) {
+        throw std::runtime_error("The minimum n-gram draft length must not exceed the maximum.");
     }
     static const std::unordered_set<std::string> cache_types = {
         "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1",
@@ -589,6 +624,13 @@ void write_profile(std::ostream & output, const model_profile & profile) {
     }
     const auto speculation = speculative_types(profile);
     output << "spec-type = " << speculation << '\n';
+    const std::string methods = "," + speculation + ",";
+    for (const auto & option : ngram_options) {
+        const auto key = ngram_key(option);
+        if (profile.ngram_options.contains(key) && methods.find(std::string(",") + option.method + ",") != std::string::npos) {
+            output << "spec-" << key << " = " << profile.ngram_options.at(key).get<int>() << '\n';
+        }
+    }
     if (speculation != "none") {
         if (speculation.find("draft-") != std::string::npos && !profile.mtp_model.empty()) {
             output << "model-draft = " << profile.mtp_model << '\n';
@@ -632,6 +674,22 @@ void write_preset_locked(app_state & state) {
 #if defined(_WIN32)
     const sparkmoe::engine_packages engines(state.data_directory / "engines");
     std::map<std::string, std::string> workers;
+    const auto installed = engines.installed();
+    const bool router_can_fallback = engines.supports_worker_fallback(state.engine_id);
+    const auto bundled = utf8_path(executable_directory() / L"llama-server.exe");
+    const auto resolve_engine = [&](const std::string & id) -> const std::string & {
+        auto [entry, first] = workers.try_emplace(id);
+        if (first) {
+            try {
+                entry->second = utf8_path(engines.executable(id));
+                validate_ini_value(entry->second);
+            } catch (const std::exception & error) {
+                entry->second.clear();
+                append_log(state, std::string("Cannot use engine ") + id + ": " + error.what());
+            }
+        }
+        return entry->second;
+    };
 #endif
     for (const auto & model : state.library) {
         if (!model.value("available", false)) continue;
@@ -656,18 +714,27 @@ void write_preset_locked(app_state & state) {
         const auto profile = applied == state.applied_profiles.end() ? resolved_profile(state, id) : applied->second;
         write_profile(output, profile);
 #if defined(_WIN32)
+        std::string primary = state.engine_id;
         if (!profile.worker_engine.empty()) {
-            auto [entry, first] = workers.try_emplace(profile.worker_engine);
-            if (first) {
-                try { entry->second = utf8_path(engines.executable(profile.worker_engine)); }
-                catch (const std::exception & error) {
-                    append_log(state, std::string("Using the default engine: ") + error.what());
-                }
+            const auto & worker = resolve_engine(profile.worker_engine);
+            if (!worker.empty()) {
+                output << "spark-edge-engine = " << worker << '\n';
+                primary = profile.worker_engine;
             }
-            if (!entry->second.empty()) {
-                validate_ini_value(entry->second);
-                output << "spark-edge-engine = " << entry->second << '\n';
+        }
+        if (router_can_fallback && !primary.empty()) {
+            const auto backend = primary.substr(0, primary.find('-'));
+            std::string fallbacks;
+            for (const auto & row : installed) {
+                const auto alternate = row.at("id").get<std::string>();
+                if (alternate == primary || row.at("backend") != backend) continue;
+                const auto & path = resolve_engine(alternate);
+                if (path.empty()) continue;
+                fallbacks = path + '|';
+                break;
             }
+            validate_ini_value(bundled);
+            output << "spark-edge-engine-fallback = " << fallbacks << bundled << '\n';
         }
 #endif
     }
@@ -1934,6 +2001,7 @@ int run_manager() {
             const auto id = json::parse(request.body).at("id").get<std::string>();
             if (!id.empty()) engines.executable(id);
             std::string previous;
+            std::string previous_successful;
             std::string last_model;
             auto boot = [&](const std::string & next) {
                 {
@@ -1971,6 +2039,7 @@ int run_manager() {
             {
                 std::lock_guard<std::mutex> lock(state.mutex);
                 previous = state.engine_id;
+                previous_successful = state.application.value("previous_engine_id", std::string{});
                 if (!state.loaded_models.empty()) {
                     last_model = state.application.value("last_loaded_model", std::string{});
                     if (!state.loaded_models.count(last_model)) last_model.clear();
@@ -1980,17 +2049,31 @@ int run_manager() {
                 boot(id);
                 std::lock_guard<std::mutex> lock(state.mutex);
                 state.application["engine_id"] = id;
+                if (id != previous) state.application["previous_engine_id"] = previous;
                 save_config_locked(state);
             } catch (const std::exception & original) {
-                std::string recovery = previous;
-                try { boot(previous); }
-                catch (...) { recovery.clear(); boot(""); }
+                std::optional<std::string> recovery;
+                std::unordered_set<std::string> attempted{id};
+                for (const auto & candidate : {previous, previous_successful, std::string{}}) {
+                    if (!attempted.insert(candidate).second) continue;
+                    try {
+                        boot(candidate);
+                        recovery = candidate;
+                        break;
+                    } catch (const std::exception & error) {
+                        append_log(state, std::string("Engine recovery failed: ") + error.what());
+                    }
+                }
+                if (!recovery) {
+                    throw std::runtime_error(std::string("Engine activation and recovery failed: ") + original.what());
+                }
                 {
                     std::lock_guard<std::mutex> lock(state.mutex);
-                    state.application["engine_id"] = recovery;
+                    state.application["engine_id"] = *recovery;
+                    state.application["previous_engine_id"] = previous_successful;
                     save_config_locked(state);
                 }
-                json_response(response, {{"error", original.what()}, {"active", recovery}, {"rolled_back", true}}, 409);
+                json_response(response, {{"error", original.what()}, {"active", *recovery}, {"rolled_back", true}}, 409);
                 return;
             }
             json_response(response, {{"active", id}});

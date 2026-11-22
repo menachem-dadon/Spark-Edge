@@ -18,7 +18,7 @@
 	let selectedRepo = $state('');
 	let refreshing = false;
 	function size(bytes: number) {
-		return bytes > 0 ? (bytes / 1024 ** 3).toFixed(2) + ' GiB' : 'Size unknown';
+		return bytes > 0 ? (bytes / 1024 ** 3).toFixed(2) + ' GiB' : t('Size unknown');
 	}
 	async function refresh() {
 		if (refreshing) return;
@@ -71,9 +71,9 @@
 		}}
 	>
 		<input
-			aria-label="Search Hugging Face models"
+			aria-label={t("Search Hugging Face models")}
 			class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-			placeholder="Search models"
+			placeholder={t("Search models")}
 			bind:value={query}
 		/><Button disabled={!query.trim() || busy !== ''} type="submit" variant="outline"
 			><Search />{t("Search")}</Button
@@ -123,7 +123,7 @@
 			</div>
 		</div>{/if}
 	<details>
-		<summary class="cursor-pointer text-sm font-medium">Download from a link</summary>
+		<summary class="cursor-pointer text-sm font-medium">{t("Download from a link")}</summary>
 		<form
 			class="mt-3 flex gap-2"
 			onsubmit={(event) => {
@@ -136,7 +136,7 @@
 			}}
 		>
 			<input
-				aria-label="GGUF file download link"
+				aria-label={t("GGUF file download link")}
 				class="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
 				dir="ltr"
 				placeholder="https://huggingface.co/.../resolve/main/model.gguf"
@@ -146,7 +146,7 @@
 		</form>
 	</details>
 	{#if busy}<p class="flex items-center gap-2 text-sm text-muted-foreground">
-			<LoaderCircle class="h-4 w-4 animate-spin" />Working...
+			<LoaderCircle class="h-4 w-4 animate-spin" />{t("Working...")}
 		</p>{/if}
 	{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 	{#each jobs as job}<div class="space-y-2 rounded-lg border border-border p-3">
@@ -171,8 +171,8 @@
 							})}
 						size="sm"
 						variant="outline"
-						>{#if job.status === 'downloading' || job.status === 'queued'}<Pause />Pause{:else}<Play
-							/>Resume{/if}</Button
+						>{#if job.status === 'downloading' || job.status === 'queued'}<Pause />{t('Pause')}{:else}<Play
+							/>{t('Resume')}{/if}</Button
 					>{/if}
 			</div>
 			{#if job.total_bytes > 0}<progress

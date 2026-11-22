@@ -4,9 +4,11 @@
 """Exercise the real HTTP server with tiny local GGUF fixtures, without downloads."""
 import argparse
 import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -26,7 +28,15 @@ def request(base, route, body=None, method=None, headers=None):
         raise RuntimeError(f"{route}: HTTP {error.code}: {error.read().decode(errors='replace')}") from error
 
 
-def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", extra=None):
+def generate_fixtures(binary_dir, root, option):
+    suffix = ".exe" if os.name == "nt" else ""
+    subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), option], cwd=root,
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    fixtures = list(root.glob("*.gguf"))
+    assert fixtures and all(file.stat().st_size <= 4 * 1024 * 1024 for file in fixtures), fixtures
+
+
+def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", extra=None, gpu_device=None):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -39,6 +49,8 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
     if mode == "explicit":
         args += ["--moe-slots", "4", "--moe-io-mode", io_mode, "--moe-io-threads", "4", "--moe-cache-policy", policy]
     args += extra or []
+    if gpu_device:
+        args += ["--device", gpu_device, "-ngl", "99", "--moe-cache-mib", "32"]
     env = {k: v for k, v in os.environ.items() if not k.startswith("LLAMA_ARG_")}
     log_path = log_dir / f"server-{mode}-{io_mode}-{policy}.log"
     with log_path.open("wb") as log:
@@ -86,6 +98,9 @@ def run_case(binary, model, mode, log_dir, io_mode="buffered", policy="lru", ext
             if mode == "explicit":
                 assert stats["bytes_read"] > 0 and stats["cache_misses"] > 0, "inactive paging"
                 assert stats["cache_committed_bytes"] > 0, "missing memory telemetry"
+            if gpu_device:
+                assert stats["device_committed_bytes"] > 0, "no expert cache was allocated on the GPU"
+                assert stats["device_upload_bytes"] > 0, "no experts were uploaded to the GPU"
             if policy == "hybrid":
                 assert request(base, "/sparkmoe/v1/paging/cache", {"cache_mib": 1})["accepted"]
                 assert request(base, "/sparkmoe/v1/paging")["resize_pending_bytes"] == 1048576
@@ -345,8 +360,7 @@ def run_manager(binary_dir, root, log_dir):
             log_data = request(base, "/api/logs?" + urllib.parse.urlencode({"session": current["name"]}))
             assert log_data["content"] and log_data["total_size"] >= len(log_data["content"])
 
-            subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
-                           cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            generate_fixtures(binary_dir, root, "--qwen-fixtures-only")
             request(base, "/api/library", {"path": str(root)})
             models = request(backend, "/models")["data"]
             qwen_id = next(model["id"] for model in models if model["id"] == "test-qwen38")
@@ -375,6 +389,34 @@ def run_manager(binary_dir, root, log_dir):
             active = request(backend, "/sparkmoe/v1/config?" + urllib.parse.urlencode({"model": qwen_id}))
             assert active["mtp_separate_model"] and active["mtp_cache_bytes"] == 1048576
             assert active["ple_cache_bytes"] == 1048576
+            if os.name == "nt":
+                # A valid package receipt can still point to an executable that Windows rejects.
+                engine_id = "cpu-" + "1" * 40
+                engine_dir = root / "manager-state" / "engines" / engine_id
+                engine_dir.mkdir(parents=True)
+                payload = b"intentional invalid test worker"
+                (engine_dir / "llama-server.exe").write_bytes(payload)
+                receipt = {"id": engine_id, "files": [{"name": "llama-server.exe",
+                           "sha256": hashlib.sha256(payload).hexdigest()}]}
+                (engine_dir / "engine.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+                # The second worker spawns and exits before reporting readiness.
+                crash_id = "cpu-" + "2" * 40
+                crash_dir = engine_dir.parent / crash_id
+                crash_dir.mkdir()
+                executable = crash_dir / "llama-server.exe"
+                shutil.copyfile(Path(os.environ["SystemRoot"]) / "System32" / "where.exe", executable)
+                receipt = {"id": crash_id, "files": [{"name": executable.name,
+                           "sha256": hashlib.sha256(executable.read_bytes()).hexdigest()}]}
+                (crash_dir / "engine.json").write_text(json.dumps(receipt), encoding="utf-8")
+                profile = request(base, "/api/model-profile?model=" + qwen_id)
+                request(base, "/api/model-profile", {"model": qwen_id,
+                        "revision": profile["revision"], "profile": {**profile["profile"], "worker_engine": crash_id}})
+                request(base, "/api/model-apply", {"model": qwen_id})
+                result = request(backend, "/completion", {"model": qwen_id, "prompt": "ABC", "n_predict": 4,
+                                 "temperature": 0, "ignore_eos": True})
+                assert result["tokens_predicted"] == 4, result
+                print("PASS Desktop worker fallback: bundled engine restored the synthetic model")
             request(base, "/api/stop", {})
             assert not request(base, "/api/status")["running"]
             ui_request = urllib.request.Request(base + "/", headers={"Accept-Encoding": "gzip"})
@@ -446,20 +488,24 @@ def main():
     parser.add_argument("--skip-manager", action="store_true", help="Skip the isolated Desktop manager checks")
     parser.add_argument("--manager-only", action="store_true", help="Run only the isolated desktop integration checks")
     parser.add_argument("--qwen", action="store_true", help="Run the Qwen PLE/MTP HTTP regression")
+    parser.add_argument("--gpu-device", help="Run just the tiny expert-cache smoke test on this engine device")
     args = parser.parse_args()
     binary_dir = args.bin_dir.resolve()
     args.log_dir.mkdir(parents=True, exist_ok=True)
     suffix = ".exe" if os.name == "nt" else ""
     with tempfile.TemporaryDirectory(prefix="sparkmoe-\u05de\u05d5\u05d3\u05dc-") as folder:
         root = Path(folder)
-        subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--fixtures-only"],
-                       cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.environ["LLAMA_CACHE"] = str(root / "hf-cache")
+        generate_fixtures(binary_dir, root, "--fixtures-only")
+        if args.gpu_device:
+            run_case(binary_dir / ("llama-server" + suffix), root / "test-moe-regression.gguf",
+                     "explicit", args.log_dir, gpu_device=args.gpu_device)
+            return
         if args.manager_only:
             run_manager(binary_dir, root, args.log_dir)
             return
         if args.qwen:
-            subprocess.run([str(binary_dir / ("test-moe-regression" + suffix)), "--qwen-fixtures-only"],
-                           cwd=root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            generate_fixtures(binary_dir, root, "--qwen-fixtures-only")
             reference = run_qwen(binary_dir / ("llama-server" + suffix), root, args.log_dir, 0)
             for width in (1, 2, 3):
                 assert run_qwen(binary_dir / ("llama-server" + suffix), root, args.log_dir, width) == reference, "MTP changed greedy output"

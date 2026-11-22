@@ -100,6 +100,7 @@ public:
     uint64_t resident_count() const;
     uint64_t pinned_count() const;
     uint64_t committed_bytes() const;
+    uint64_t device_committed_bytes() const;
     void prefetch_previous(size_t maximum);
     void after_resolve(std::function<void()> callback) { next_layer_prefetch = std::move(callback); }
 

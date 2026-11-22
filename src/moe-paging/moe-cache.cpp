@@ -314,6 +314,17 @@ void layer_cache::queue_slot(int32_t expert, int32_t slot, bool speculative) {
     }
 }
 
+uint64_t layer_cache::device_committed_bytes() const {
+    std::lock_guard<std::recursive_mutex> lock(cache_mutex());
+    uint64_t bytes = 0;
+    for (const auto & pool : pools) {
+        if (pool.device_buffer) {
+            bytes += ggml_backend_buffer_get_size(pool.device_buffer.get());
+        }
+    }
+    return bytes;
+}
+
 ggml_tensor * layer_cache::bind_device(const ggml_tensor * host, ggml_backend_t backend, uint64_t & bytes_left) {
     std::lock_guard<std::recursive_mutex> lock(cache_mutex());
     for (auto & pool : pools) {
@@ -426,7 +437,10 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
                 for (const auto expert : unique) {
                     const auto slot = mapped.at(expert);
                     const auto generation = entries[slot].generation;
-                    if (pool.device_generations[slot] == generation) continue;
+                    if (pool.device_generations[slot] == generation) {
+                        counters->add(metric::device_cache_hits);
+                        continue;
+                    }
                     if (!synchronized) {
                         ggml_backend_synchronize(device);
                         synchronized = true;
@@ -434,6 +448,7 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
                     const auto * data = static_cast<const char *>(pool.tensor->data) + slot * pool.tensor->nb[2];
                     ggml_backend_tensor_set(pool.device_tensor, data, slot * pool.device_tensor->nb[2], pool.descriptor->expert_stride);
                     pool.device_generations[slot] = generation;
+                    counters->add(metric::device_upload_bytes, pool.descriptor->expert_stride);
                 }
             }
         }

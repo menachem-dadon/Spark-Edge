@@ -12,7 +12,7 @@ namespace llama_moe {
 
 enum class metric { io_queue_us, remap_wait_us, compute_wait_us, async_experts,
     compute_with_io_pending, prefetch_reads, prefetch_hits, prefetch_wasted,
-    prefetch_promoted, prefetch_skipped, count };
+    prefetch_promoted, prefetch_skipped, device_cache_hits, device_upload_bytes, count };
 
 struct stats_snapshot {
     uint64_t cache_hits = 0;
@@ -42,6 +42,9 @@ struct stats_snapshot {
     uint64_t prefetch_wasted = 0;
     uint64_t prefetch_promoted = 0;
     uint64_t prefetch_skipped = 0;
+    uint64_t device_cache_hits = 0;
+    uint64_t device_upload_bytes = 0;
+    uint64_t device_committed_bytes = 0;
 };
 
 class stats {

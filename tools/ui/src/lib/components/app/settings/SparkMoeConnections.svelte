@@ -75,7 +75,7 @@
 
 <div class="space-y-6">
 	<div>
-		<h2 class="text-lg font-semibold">Connect your tools</h2>
+		<h2 class="text-lg font-semibold">{t("Connect your tools")}</h2>
 		<p class="mt-1 text-sm text-muted-foreground">
 			Choose a local model, preview the configuration, then save a connection for your project.
 		</p>
@@ -98,7 +98,7 @@
 				type="button"
 				><span class="font-medium">{item.name}</span><span
 					class="mt-2 block text-xs text-muted-foreground"
-					>{item.installed ? 'Detected on this computer' : 'Not detected'}</span
+					>{t(item.installed ? 'Detected on this computer' : 'Not detected')}</span
 				><span class="mt-1 block text-xs text-muted-foreground"
 					>{item.support}{item.version ? ' | ' + item.version : ''}</span
 				></button
@@ -107,22 +107,22 @@
 	{#if connector}
 		<Card.Root
 			><Card.Header
-				><Card.Title>{currentConnector?.name} connection</Card.Title><Card.Description
-					>Configuration is kept in SparkMoE. Your existing tool settings stay available.</Card.Description
+				><Card.Title>{t('Connection for {name}').replace('{name}', currentConnector?.name ?? '')}</Card.Title><Card.Description
+					>{t("Configuration is kept in Spark Edge.")}</Card.Description
 				></Card.Header
 			><Card.Content class="space-y-4">
 				<label class="grid gap-2 text-sm"
 					><span class="font-medium">{t("Model")}</span><select
 						class="rounded-md border border-input bg-background p-2"
 						bind:value={model}
-						><option value="">Choose a model</option
+						><option value="">{t("Choose a model")}</option
 						>{#each models.filter((item) => item.available) as item}<option value={item.id}
 								>{item.display_name}</option
 							>{/each}</select
 					></label
 				>
 				<label class="grid gap-2 text-sm"
-					><span class="font-medium">Project folder</span><input
+					><span class="font-medium">{t("Project folder")}</span><input
 						class="rounded-md border border-input bg-background p-2"
 						dir="ltr"
 						placeholder="C:\Projects\my-project"
@@ -130,7 +130,7 @@
 					/></label
 				>
 				<label class="flex items-center gap-3 text-sm"
-					><input bind:checked={favorites} type="checkbox" />Include favorite models where supported</label
+					><input bind:checked={favorites} type="checkbox" />{t("Include favorite models where supported")}</label
 				>
 				{#if connector === 'claude-code'}<label
 						class="flex items-start gap-3 rounded-lg border border-amber-500/40 p-3 text-sm"
@@ -148,7 +148,7 @@
 				<Button
 					disabled={!model || busy !== '' || (connector === 'claude-code' && !experimental)}
 					onclick={() => void run('preview', showPreview)}
-					variant="outline"><Eye />Preview configuration</Button
+					variant="outline"><Eye />{t("Preview configuration")}</Button
 				>
 				{#if preview && previewMatches}<div class="space-y-3 rounded-lg border border-border p-4">
 						{#each preview.warnings as warning}<p
@@ -172,7 +172,7 @@
 								>
 							</details>{/each}
 						{#if preview.arguments?.length}<details>
-								<summary class="cursor-pointer text-sm font-medium">Launch arguments</summary>
+								<summary class="cursor-pointer text-sm font-medium">{t("Launch arguments")}</summary>
 								<pre class="mt-3 overflow-auto text-xs">{preview.arguments.join('\n')}</pre>
 							</details>{/if}
 						<Button disabled={busy !== ''} onclick={() => void run('save', configure)}
@@ -184,7 +184,7 @@
 		>
 	{/if}
 	<Card.Root
-		><Card.Header><Card.Title>Saved connections</Card.Title></Card.Header><Card.Content
+		><Card.Header><Card.Title>{t("Saved connections")}</Card.Title></Card.Header><Card.Content
 			class="space-y-3"
 		>
 			{#if !connections.length}<p class="text-sm text-muted-foreground">
@@ -215,9 +215,9 @@
 									await SparkMoeService.connectionAction('launch', connection.id);
 									message = 'Connection launched.';
 								})}
-							size="sm"><Play />Launch</Button
+							size="sm"><Play />{t("Launch")}</Button
 						><Button
-							aria-label="Remove saved connection"
+							aria-label={t("Remove saved connection")}
 							disabled={busy !== ''}
 							onclick={() =>
 								void run('remove', async () => {

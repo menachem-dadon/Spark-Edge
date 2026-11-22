@@ -7,7 +7,9 @@ param(
     [ValidateSet('cpu', 'cuda', 'vulkan', 'hip', 'sycl')][string]$Backend = 'cpu',
     [string]$BuildRoot = '',
     [switch]$RunTests,
-    [switch]$BrowserOnly
+    [switch]$BrowserOnly,
+    [switch]$EngineOnly,
+    [ValidateRange(1, 64)][int]$Jobs = 2
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,21 +43,23 @@ if ($env:OS -eq 'Windows_NT') {
     if ($shortBuildRoot) { $cmakeBuildRoot = $shortBuildRoot }
 }
 
-$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if (-not $npm) { throw 'Node.js 22 and npm are required to build the SparkMoE chat UI' }
-$npmPath = $npm.Source
-if ($env:NODE_TLS_REJECT_UNAUTHORIZED -eq '0') { Remove-Item Env:NODE_TLS_REJECT_UNAUTHORIZED }
-$env:NODE_USE_SYSTEM_CA = '1'
-Push-Location (Join-Path $repo 'tools/ui')
-try {
-    & $npmPath ci
-    if ($LASTEXITCODE) { throw "npm ci failed with exit code $LASTEXITCODE" }
-    & $npmPath run check
-    if ($LASTEXITCODE) { throw "Chat UI check failed with exit code $LASTEXITCODE" }
-    & $npmPath run build
-    if ($LASTEXITCODE) { throw "Chat UI build failed with exit code $LASTEXITCODE" }
-} finally {
-    Pop-Location
+if (-not $EngineOnly) {
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npm) { throw 'Node.js 22 and npm are required to build the SparkMoE chat UI' }
+    $npmPath = $npm.Source
+    if ($env:NODE_TLS_REJECT_UNAUTHORIZED -eq '0') { Remove-Item Env:NODE_TLS_REJECT_UNAUTHORIZED }
+    $env:NODE_USE_SYSTEM_CA = '1'
+    Push-Location (Join-Path $repo 'tools/ui')
+    try {
+        & $npmPath ci
+        if ($LASTEXITCODE) { throw "npm ci failed with exit code $LASTEXITCODE" }
+        & $npmPath run check
+        if ($LASTEXITCODE) { throw "Chat UI check failed with exit code $LASTEXITCODE" }
+        & $npmPath run build
+        if ($LASTEXITCODE) { throw "Chat UI build failed with exit code $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
 }
 
 $cmakeArgs = @(
@@ -66,7 +70,9 @@ $cmakeArgs = @(
     '-DLLAMA_BUILD_SERVER=ON',
     '-DLLAMA_BUILD_TESTS=ON'
 )
-if ($BrowserOnly) {
+if ($EngineOnly) {
+    $cmakeArgs += @('-DLLAMA_BUILD_EXAMPLES=OFF', '-DLLAMA_BUILD_APP=OFF', '-DSPARKMOE_WEBVIEW2=OFF')
+} elseif ($BrowserOnly) {
     $cmakeArgs += '-DSPARKMOE_WEBVIEW2=OFF'
 } else {
     $webviewSdk = & (Join-Path $PSScriptRoot 'restore-webview2.ps1')
@@ -90,13 +96,20 @@ $cmakeArgs += "-DLLAMA_BUILD_COMMIT=$upstream"
 if (Get-Command ninja -ErrorAction SilentlyContinue) { $cmakeArgs += @('-G', 'Ninja') }
 & cmake @cmakeArgs
 if ($LASTEXITCODE) { throw "CMake configure failed with exit code $LASTEXITCODE" }
-& cmake --build $cmakeBuildRoot --config Release --parallel 4
+$buildArgs = @('--build', $cmakeBuildRoot, '--config', 'Release', '--parallel', $Jobs)
+if ($EngineOnly) {
+    $buildArgs += @('--target', 'llama-server')
+    if ($RunTests) { $buildArgs += @('test-moe-regression', 'test-moe-paging') }
+}
+& cmake @buildArgs
 if ($LASTEXITCODE) { throw "Build failed with exit code $LASTEXITCODE" }
 if ($RunTests) {
     & ctest --test-dir $cmakeBuildRoot -C Release --output-on-failure -R '^test-moe-'
     if ($LASTEXITCODE) { throw "Tests failed with exit code $LASTEXITCODE" }
     $bin = Join-Path $BuildRoot 'bin'
     if (Test-Path (Join-Path $bin 'Release')) { $bin = Join-Path $bin 'Release' }
-    & python (Join-Path $PSScriptRoot 'test-sparkmoe-server.py') --bin-dir $bin --log-dir (Join-Path $BuildRoot 'server-smoke')
+    $smokeArgs = @('--bin-dir', $bin, '--log-dir', (Join-Path $BuildRoot 'server-smoke'))
+    if ($EngineOnly) { $smokeArgs += '--skip-manager' }
+    & python (Join-Path $PSScriptRoot 'test-sparkmoe-server.py') @smokeArgs
     if ($LASTEXITCODE) { throw "Server regression failed with exit code $LASTEXITCODE" }
 }

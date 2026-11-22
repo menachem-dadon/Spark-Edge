@@ -13,6 +13,7 @@ public:
     nlohmann::ordered_json catalog() const;
     nlohmann::ordered_json installed() const;
     void download(const std::string & id) const;
+    bool supports_worker_fallback(const std::string & id) const;
     std::filesystem::path executable(const std::string & id) const;
 
 private:

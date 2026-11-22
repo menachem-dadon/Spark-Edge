@@ -142,7 +142,7 @@
 			<label class="flex items-start justify-between gap-4 text-sm"
 				><span
 					>{t("Keep Spark Edge in the background")}<span class="mt-1 block text-xs text-muted-foreground"
-						>Closing the window keeps the local server available. Exit from the tray to stop it.</span
+						>{t("Closing the window keeps the local server available. Exit from the tray to stop it.")}</span
 					></span
 				><input
 					class="mt-1"
@@ -172,9 +172,9 @@
 						void save();
 					}}
 					value={config.default_model}
-					><option value="">Choose when starting a chat</option>{#each models as model}<option
+					><option value="">{t("Choose when starting a chat")}</option>{#each models as model}<option
 							value={model.id}
-							>{model.display_name}{!model.available ? ' (file missing)' : ''}</option
+							>{model.display_name}{!model.available ? ' · ' + t('File missing') : ''}</option
 						>{/each}</select
 				></label
 			>
@@ -185,7 +185,7 @@
 		>
 			{#if saving}<LoaderCircle
 					class="mr-1 inline h-3 w-3 animate-spin"
-				/>Saving...{:else if error}Not saved: {error}
+				/>{t('Saving...')}{:else if error}{t('Not saved')} · {error}
 				<Button
 					onclick={() => {
 						if (routerDirty) void saveServer();
@@ -196,10 +196,10 @@
 				>{:else}{dirty ? 'Unsaved changes' : message || 'Saved'}{/if}
 		</div>
 		{#if router}<details class="border-t border-border/50 pt-4">
-				<summary class="cursor-pointer text-sm font-medium">Advanced server settings</summary>
+				<summary class="cursor-pointer text-sm font-medium">{t("Advanced server settings")}</summary>
 				<div class="mt-4 space-y-4">
 					<label class="grid gap-2 text-sm"
-						><span>Internal server port</span><input
+						><span>{t("Internal server port")}</span><input
 							class="rounded-md border border-input bg-background p-2"
 							max="65535"
 							min="1024"
@@ -213,7 +213,7 @@
 							value={router.port}
 						/></label
 					><label class="grid gap-2 text-sm"
-						><span>Maximum loaded models (0 = unlimited)</span><input
+						><span>{t("Maximum loaded models (0 = unlimited)")}</span><input
 							class="rounded-md border border-input bg-background p-2"
 							max="64"
 							min="0"
@@ -232,7 +232,7 @@
 							disabled={saving}
 							onchange={(event) => changeRouter('models_autoload', event.currentTarget.checked)}
 							type="checkbox"
-						/>Load models automatically for API requests</label
+						/>{t("Load models automatically for API requests")}</label
 					>
 					<p class="text-xs text-muted-foreground">
 						The Spark Edge application address stays the same. Restarting stops loaded models and
@@ -240,7 +240,7 @@
 					</p>
 					<div class="flex flex-wrap gap-2">
 						{#if routerDirty}<span class="text-xs text-muted-foreground"
-								>Unsaved server settings</span
+								>{t("Unsaved server settings")}</span
 							>{/if}<Button
 							disabled={saving || routerDirty || !routerPending}
 							onclick={() => {
@@ -254,7 +254,7 @@
 									.finally(() => (saving = false));
 							}}
 							size="sm"
-							variant="outline"><RefreshCw />Apply and restart server</Button
+							variant="outline"><RefreshCw />{t("Apply and restart server")}</Button
 						>
 					</div>
 				</div>
