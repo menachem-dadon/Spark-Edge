@@ -417,6 +417,43 @@ def run_manager(binary_dir, root, log_dir):
                                  "temperature": 0, "ignore_eos": True})
                 assert result["tokens_predicted"] == 4, result
                 print("PASS Desktop worker fallback: bundled engine restored the synthetic model")
+
+                valid_id = "cpu-" + "3" * 40
+                valid_dir = engine_dir.parent / valid_id
+                valid_dir.mkdir()
+                binaries = [binary_dir / "llama-server.exe"] + [
+                    file for file in binary_dir.glob("*.dll") if file.name != "WebView2Loader.dll"
+                ]
+                files = []
+                for source in binaries:
+                    target = valid_dir / source.name
+                    try:
+                        target.hardlink_to(source)
+                    except OSError:
+                        shutil.copyfile(source, target)
+                    with target.open("rb") as package_file:
+                        digest = hashlib.file_digest(package_file, "sha256").hexdigest()
+                    files.append({"name": target.name, "sha256": digest})
+                receipt = {"id": valid_id, "router_api": 2, "files": files}
+                (valid_dir / "engine.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+                profile = request(base, "/api/model-profile?model=" + qwen_id)
+                request(base, "/api/model-profile", {"model": qwen_id, "revision": profile["revision"],
+                        "profile": {**profile["profile"], "worker_engine": ""}})
+                request(base, "/v1/models")
+                old_router_pid = request(base, "/api/status")["pid"]
+                result = request(base, "/api/engines/apply", {"id": valid_id})
+                assert result["active"] == valid_id and proc.poll() is None
+                assert request(base, "/api/status")["pid"] != old_router_pid
+                try:
+                    request(base, "/api/engines/apply", {"id": engine_id})
+                    raise AssertionError("invalid router package was activated")
+                except RuntimeError as error:
+                    assert "HTTP 409" in str(error) and '"rolled_back":true' in str(error), error
+                assert request(base, "/api/engines")["active"] == valid_id and proc.poll() is None
+                assert request(base, "/api/status")["server_ready"]
+                assert request(base, "/api/engines/apply", {"id": ""})["active"] == ""
+                print("PASS Desktop engine change: activated an installed package and rolled back a failed activation")
             request(base, "/api/stop", {})
             assert not request(base, "/api/status")["running"]
             ui_request = urllib.request.Request(base + "/", headers={"Accept-Encoding": "gzip"})

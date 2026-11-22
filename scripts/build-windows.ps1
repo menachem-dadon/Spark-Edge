@@ -94,6 +94,9 @@ $upstream = (Get-Content -LiteralPath (Join-Path $repo 'UPSTREAM_BASE.txt') -Raw
 if ($upstream -notmatch '^[0-9a-f]{40}$') { throw 'UPSTREAM_BASE.txt does not contain a full commit SHA' }
 $cmakeArgs += "-DLLAMA_BUILD_COMMIT=$upstream"
 if (Get-Command ninja -ErrorAction SilentlyContinue) { $cmakeArgs += @('-G', 'Ninja') }
+if ($Backend -eq 'vulkan' -and -not $env:GGML_VULKAN_SHADER_JOBS) {
+    $env:GGML_VULKAN_SHADER_JOBS = [math]::Min($Jobs, 16).ToString()
+}
 & cmake @cmakeArgs
 if ($LASTEXITCODE) { throw "CMake configure failed with exit code $LASTEXITCODE" }
 $buildArgs = @('--build', $cmakeBuildRoot, '--config', 'Release', '--parallel', $Jobs)

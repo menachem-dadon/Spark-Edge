@@ -340,9 +340,21 @@ using compile_count_guard = std::unique_ptr<uint32_t, decltype(&decrement_compil
 compile_count_guard acquire_compile_slot() {
     // wait until fewer than N compiles are in progress.
     // 16 is an arbitrary limit, the goal is to avoid "failed to create pipe" errors.
-    uint32_t N = std::max(1u, std::min(16u, std::thread::hardware_concurrency()));
+    static const uint32_t max_compiles = [] {
+        const auto automatic = std::max(1u, std::min(16u, std::thread::hardware_concurrency()));
+        const char * value = std::getenv("GGML_VULKAN_SHADER_JOBS");
+        if (!value) {
+            return automatic;
+        }
+        char * end = nullptr;
+        const long jobs = std::strtol(value, &end, 10);
+        if (end == value || *end != '\0' || jobs < 1 || jobs > 16) {
+            throw std::invalid_argument("GGML_VULKAN_SHADER_JOBS must be between 1 and 16");
+        }
+        return static_cast<uint32_t>(jobs);
+    }();
     std::unique_lock<std::mutex> guard(compile_count_mutex);
-    compile_count_cond.wait(guard, [N] { return compile_count < N; });
+    compile_count_cond.wait(guard, [] { return compile_count < max_compiles; });
     compile_count++;
     return compile_count_guard(&compile_count, &decrement_compile_count);
 }

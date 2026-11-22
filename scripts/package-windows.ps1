@@ -64,25 +64,8 @@ $buildInfo = Join-Path $BuildDir 'common/build-info.cpp'
 $buildInfoText = if (Test-Path -LiteralPath $buildInfo) { Get-Content -LiteralPath $buildInfo -Raw } else { '' }
 $isMsvcBuild = $buildInfoText -match 'LLAMA_COMPILER = "MSVC'
 if ($isMsvcBuild) {
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    $vsInstall = if (Test-Path $vswhere) { & $vswhere -latest -products '*' -property installationPath }
-    if ($vsInstall) {
-        $redistRoot = Join-Path $vsInstall 'VC/Redist/MSVC'
-        $crt = Get-ChildItem -LiteralPath $redistRoot -Directory | Where-Object { $_.Name -match '^\d+\.' } |
-            Sort-Object { [version]$_.Name } -Descending | ForEach-Object {
-                Join-Path $_.FullName 'x64/Microsoft.VC143.CRT'
-            } | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if ($crt) {
-            Get-ChildItem -LiteralPath $crt -Filter '*.dll' -File | ForEach-Object {
-                Copy-Item -LiteralPath $_.FullName -Destination $stage
-            }
-            $openMp = Join-Path (Split-Path -Parent $crt) 'Microsoft.VC143.OpenMP'
-            if (Test-Path -LiteralPath $openMp) {
-                Get-ChildItem -LiteralPath $openMp -Filter '*.dll' -File | ForEach-Object {
-                    Copy-Item -LiteralPath $_.FullName -Destination $stage
-                }
-            }
-        }
+    & (Join-Path $PSScriptRoot 'find-windows-msvc-runtime.ps1') | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $stage
     }
     if (-not (Test-Path (Join-Path $stage 'vcruntime140.dll'))) {
         throw 'The MSVC runtime must be staged from the Visual Studio redistributable directory'

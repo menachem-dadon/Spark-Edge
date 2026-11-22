@@ -329,8 +329,8 @@ ggml_tensor * layer_cache::bind_device(const ggml_tensor * host, ggml_backend_t 
     std::lock_guard<std::recursive_mutex> lock(cache_mutex());
     for (auto & pool : pools) {
         if (pool.tensor != host) continue;
-        if (pool.device_tensor) return pool.device_tensor;
         if (device && device != backend) return nullptr;
+        if (pool.device_tensor) return pool.device_tensor;
         auto context = ggml_context_ptr(ggml_init({ggml_tensor_overhead() * 2, nullptr, true}));
         if (!context) return nullptr;
         auto * tensor = ggml_new_tensor_3d(context.get(), host->type, host->ne[0], host->ne[1], host->ne[2]);

@@ -31,6 +31,18 @@ if (-not (Test-Path -LiteralPath (Join-Path $bin 'llama-server.exe'))) { $bin = 
 $server = Get-Item -LiteralPath (Join-Path $bin 'llama-server.exe')
 $files = @($server) + @(Get-ChildItem -LiteralPath $bin -Filter '*.dll' -File | Where-Object Name -ne 'WebView2Loader.dll')
 foreach ($library in $RuntimeLibraries) { $files += Get-Item -LiteralPath $library }
+
+$buildInfo = Join-Path $BuildDir 'common/build-info.cpp'
+if ((Test-Path -LiteralPath $buildInfo) -and
+        (Get-Content -LiteralPath $buildInfo -Raw) -match 'LLAMA_COMPILER = "MSVC') {
+    $runtime = & (Join-Path $PSScriptRoot 'find-windows-msvc-runtime.ps1')
+    $files += @($runtime | Where-Object { $_ -and $_.Name -notin $files.Name })
+    if ('vcruntime140.dll' -notin $files.Name) { throw 'The MSVC runtime is required in the engine package' }
+    if ((Select-String -LiteralPath $cache -Pattern '^GGML_OPENMP:BOOL=ON$') -and
+            'vcomp140.dll' -notin $files.Name) {
+        throw 'The MSVC OpenMP runtime is required in the engine package'
+    }
+}
 if (($files.Name | Sort-Object -Unique).Count -ne $files.Count) { throw 'Duplicate runtime DLL names' }
 
 $id = "$Backend-$commit"
