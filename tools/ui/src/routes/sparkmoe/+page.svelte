@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 <!-- Required Notice: Copyright (c) 2026 SparkMoE contributors. -->
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import {
 		Activity,
 		CircleStop,
@@ -35,17 +36,19 @@
 		type SparkMoeLibraryModel,
 		type SparkMoeLogSession,
 		type SparkMoeManagerStatus,
-		type SparkMoeRouterConfig
+		type SparkMoeRouterConfig,
+		type EngineStatus
 	} from '$lib/services/sparkmoe.service';
 	import { modelsStore } from '$lib/stores';
 	import { sparkMoeProfileStore } from '$lib/stores/sparkmoe-profile.svelte';
 	import { onMount } from 'svelte';
 
-	type Tab = 'models' | 'connections' | 'activity';
+	type Tab = 'models' | 'connections' | 'activity' | 'engines';
 	type MetricItem = { label: string; value: string };
 	let activeTab = $state<Tab>('models');
 	let library = $state<SparkMoeLibraryModel[]>([]);
 	let selectedModel = $state('');
+	let engineStatus = $state<EngineStatus | null>(null);
 	let managerStatus = $state<SparkMoeManagerStatus | null>(null);
 	let routerConfig = $state<SparkMoeRouterConfig>({
 		model_directory: '',
@@ -196,12 +199,20 @@
 	async function refreshLibrary(rescan = false) {
 		const result = await SparkMoeService.library(rescan);
 		library = result.models;
-		if (!library.some((model) => model.id === selectedModel))
-			selectSettingsModel(library[0]?.id ?? '');
 		if (managerStatus?.server_ready) {
 			await modelsStore.fetch(true);
 			await modelsStore.fetchRouterModels();
 			modelsStore.status.subscribe();
+		}
+		if (!library.some((model) => model.id === selectedModel)) {
+			const active = modelsStore.selectedModelId;
+			const ready = modelsStore.routerModels.find((model) => model.status.value === ServerModelStatus.LOADED);
+			const recent = modelsStore.routerModels.find((model) => model.sparkmoe?.last_loaded);
+			const preferred = modelsStore.routerModels.find((model) => model.sparkmoe?.is_default);
+			const id = [active, ready?.id, recent?.id, preferred?.id].find((value) =>
+				library.some((model) => model.id === value)
+			);
+			selectSettingsModel(id ?? (library.length === 1 ? library[0].id : ''));
 		}
 	}
 	async function refreshRuntime() {
@@ -286,10 +297,10 @@
 		const draft = await sparkMoeProfileStore.load(id, true);
 		if (draft.saving || !(await sparkMoeProfileStore.save(id)))
 			throw new Error('Finish saving the model settings before starting a chat.');
-		if (!selectedModelLoaded || draft.pending) await SparkMoeService.applyModel(id);
-		await modelsStore.fetch(true);
-		await modelsStore.fetchRouterModels();
 		await modelsStore.selectModelById(id);
+		if (draft.pending) await SparkMoeService.applyModel(id);
+		await modelsStore.fetch(true);
+		if (!modelsStore.isModelLoaded(id)) await modelsStore.status.load(id);
 		await goto(ROUTES.START);
 	}
 	async function removeModel() {
@@ -332,14 +343,14 @@
 	});
 </script>
 
-<svelte:head><title>SparkMoE</title></svelte:head>
+<svelte:head><title>Spark Edge</title></svelte:head>
 
 <div class="mx-auto w-full max-w-6xl space-y-6 p-4 pb-24 md:p-8">
 	<header class="flex flex-wrap items-center justify-between gap-4 border-b border-border/40 pb-5">
 		<div class="flex items-center gap-3">
 			<div class="rounded-xl bg-primary/10 p-2.5 text-primary"><Sparkles class="h-5 w-5" /></div>
 			<div>
-				<h1 class="text-xl font-semibold tracking-tight">SparkMoE</h1>
+				<h1 class="text-xl font-semibold tracking-tight">Spark Edge</h1>
 				<p class="mt-1 text-sm text-muted-foreground">Your local models, ready to use.</p>
 			</div>
 		</div>
@@ -358,7 +369,7 @@
 				size="icon"
 				variant="ghost"><Settings /></Button
 			><Button
-				aria-label="Refresh SparkMoE"
+				aria-label={t("Refresh Spark Edge")}
 				disabled={busy !== ''}
 				onclick={() => void run('refresh', initialize)}
 				size="icon"
@@ -366,18 +377,21 @@
 			>
 		</div>
 	</header>
-	<nav aria-label="SparkMoE sections" class="flex gap-1 rounded-lg bg-muted/50 p-1">
-		{#each [{ id: 'models', label: 'Models', icon: Library }, { id: 'connections', label: 'Connections', icon: Link }, { id: 'activity', label: 'Activity', icon: Activity }] as tab}<Button
+	<nav aria-label="Spark Edge sections" class="flex gap-1 rounded-lg bg-muted/50 p-1">
+		{#each [{ id: 'models', label: 'Models', icon: Library }, { id: 'connections', label: 'Connections', icon: Link }, { id: 'activity', label: 'Activity', icon: Activity }, { id: 'engines', label: 'Engines', icon: Settings }] as tab}<Button
 				aria-current={activeTab === tab.id ? 'page' : undefined}
 				class="flex-1 sm:flex-none"
 				onclick={() => {
 					activeTab = tab.id as Tab;
+					if (activeTab === 'engines') void run('engines', async () => {
+						engineStatus = await SparkMoeService.engines();
+					});
 					if (activeTab === 'activity')
 						void run('activity', async () => {
 							await Promise.all([refreshLogs(), refreshRuntime()]);
 						});
 				}}
-				variant={activeTab === tab.id ? 'secondary' : 'ghost'}><tab.icon />{tab.label}</Button
+				variant={activeTab === tab.id ? 'secondary' : 'ghost'}><tab.icon />{t(tab.label)}</Button
 			>{/each}
 	</nav>
 	{#if managerStatus?.configuration_warning}<div
@@ -395,11 +409,11 @@
 	{#if notice}<div class="rounded-lg bg-muted/50 p-3 text-sm" role="status">{notice}</div>{/if}
 	{#if !managerStatus}<Card.Root
 			><Card.Content class="space-y-3"
-				><p class="text-sm">Open SparkMoE from its shortcut to manage local models.</p>
+				><p class="text-sm">Open Spark Edge from its shortcut to manage local models.</p>
 				<Button
 					disabled={busy !== ''}
 					onclick={() => void run('retry', initialize)}
-					variant="outline">Reconnect</Button
+					variant="outline">{t("Reconnect")}</Button
 				></Card.Content
 			></Card.Root
 		>{/if}
@@ -407,7 +421,7 @@
 	{#if activeTab === 'models'}
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<div>
-				<h2 class="text-lg font-semibold">Model library</h2>
+				<h2 class="text-lg font-semibold">{t("Model library")}</h2>
 				<p class="text-xs text-muted-foreground">
 					{library.length} models | Chat model: {modelsStore.selectedModelName
 						? (library.find((item) => item.id === modelsStore.selectedModelName)?.display_name ??
@@ -419,11 +433,11 @@
 				<Button
 					disabled={!managerStatus}
 					onclick={() => (importOpen = !importOpen)}
-					variant="outline"><Plus />Add local model</Button
+					variant="outline"><Plus />{t("Add local model")}</Button
 				><Button
 					disabled={!managerStatus}
 					onclick={() => (downloadsOpen = !downloadsOpen)}
-					variant="outline"><Download />Download</Button
+					variant="outline"><Download />{t("Download")}</Button
 				>
 			</div>
 		</div>
@@ -458,7 +472,7 @@
 							placeholder="Or paste a local file or folder path"
 							bind:value={importPath}
 						/><Button disabled={!importPath.trim() || busy !== ''} type="submit" variant="outline"
-							>Add</Button
+							>{t("Add")}</Button
 						>
 					</form></Card.Content
 				></Card.Root
@@ -469,7 +483,7 @@
 				></Card.Root
 			>{/if}
 		{#if library.length}<div class="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-				<aside aria-label="Model library" class="space-y-3">
+				<aside aria-label={t("Model library")} class="space-y-3">
 					<div class="flex gap-2">
 						<div class="relative min-w-0 flex-1">
 							<Search class="absolute top-3 left-3 h-4 w-4 text-muted-foreground" /><input
@@ -550,7 +564,7 @@
 											disabled={busy !== '' || selectedModelBusy}
 											onclick={() =>
 												void run('unload', () => modelsStore.status.unload(selectedModel))}
-											variant="outline"><CircleStop />Unload</Button
+											variant="outline"><CircleStop />{t("Unload")}</Button
 										>{/if}
 								</div>
 								{#if !selected.available}<div class="rounded-lg bg-amber-500/10 p-3 text-sm">
@@ -594,7 +608,7 @@
 											/><Button
 												disabled={!rename.trim() || rename === selected.display_name || busy !== ''}
 												type="submit"
-												variant="outline">Rename</Button
+												variant="outline">{t("Rename")}</Button
 											>
 										</form>
 										<Button
@@ -659,6 +673,40 @@
 			</div>
 		</details>
 	{:else if activeTab === 'connections'}<SparkMoeConnections models={library} {selectedModel} />
+	{:else if activeTab === 'engines'}
+		<Card.Root>
+			<Card.Header>
+				<Card.Title>{t('Installed engines')}</Card.Title>
+				<Card.Description>{t('Active engine')}: <bdi>{engineStatus?.active || t('Bundled CPU engine')}</bdi></Card.Description>
+			</Card.Header>
+			<Card.Content class="space-y-3">
+				<Button disabled={busy !== ''} onclick={() => void run('engine-check', async () => {
+					engineStatus = await SparkMoeService.engines(true);
+				})} variant="outline"><RefreshCw />{t('Check for engine updates')}</Button>
+				{#each [{ id: '', backend: t('Bundled CPU engine') }, ...(engineStatus?.installed ?? [])] as engine (engine.id)}
+					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
+						<span><bdi>{engine.backend}</bdi>{#if engine.id}<bdi class="ms-2 text-xs">{engine.id.slice(engine.backend.length + 1, engine.backend.length + 9)}</bdi>{/if}</span>
+						<Button disabled={busy !== '' || (engineStatus?.active ?? '') === engine.id}
+							onclick={() => void run('engine-apply', async () => {
+								try { await SparkMoeService.applyEngine(engine.id); }
+								finally { engineStatus = await SparkMoeService.engines(); }
+								await refreshManager();
+								await refreshLibrary();
+							})}>{t('Apply engine')}</Button>
+					</div>
+				{/each}
+				{#if engineStatus?.available?.length === 0}<p class="text-sm text-muted-foreground">{t('No engine packages are available.')}</p>{/if}
+				{#each engineStatus?.available?.filter((engine) => !engineStatus?.installed.some((row) => row.id === engine.id)) ?? [] as engine (engine.id)}
+					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
+						<span><bdi>{engine.id}</bdi></span>
+						<Button disabled={busy !== ''} variant="outline" onclick={() => void run('engine-download', async () => {
+							await SparkMoeService.downloadEngine(engine.id);
+							engineStatus = await SparkMoeService.engines(true);
+						})}>{t('Install engine')}</Button>
+					</div>
+				{/each}
+			</Card.Content>
+		</Card.Root>
 	{:else}
 		<Card.Root
 			><Card.Header
@@ -689,7 +737,7 @@
 						>{/if}<Button
 						disabled={!managerStatus || busy !== ''}
 						onclick={() => (exitDialogOpen = true)}
-						variant="ghost"><Power />Exit SparkMoE</Button
+						variant="ghost"><Power />{t("Exit Spark Edge")}</Button
 					>
 				</div>
 				<p class="text-xs text-muted-foreground">
@@ -702,7 +750,7 @@
 			><Card.Header><Card.Title>Model activity</Card.Title></Card.Header><Card.Content
 				class="space-y-4"
 				><label class="grid gap-2 text-sm"
-					><span>Model</span><select
+					><span>{t("Model")}</span><select
 						class="rounded-md border border-input bg-background px-3 py-2"
 						onchange={(event) => {
 							selectSettingsModel(event.currentTarget.value);
@@ -812,8 +860,8 @@
 <DialogConfirmation
 	bind:open={exitDialogOpen}
 	cancelText="Cancel"
-	confirmText="Exit SparkMoE"
-	description="Stop the server and all loaded models, then close SparkMoE."
+	confirmText={t("Exit Spark Edge")}
+	description="Stop the server and all loaded models, then close Spark Edge."
 	icon={Power}
 	onCancel={() => (exitDialogOpen = false)}
 	onConfirm={() => {
@@ -821,9 +869,9 @@
 		void run('exit', async () => {
 			await SparkMoeService.shutdown();
 			managerStatus = null;
-			notice = 'SparkMoE has exited. You can close this tab.';
+			notice = 'Spark Edge has exited. You can close this tab.';
 		});
 	}}
-	title="Exit SparkMoE"
+	title={t("Exit Spark Edge")}
 	variant="destructive"
 />

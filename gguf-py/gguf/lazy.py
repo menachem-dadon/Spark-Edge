@@ -138,7 +138,7 @@ class LazyBase(ABC, metaclass=LazyMeta):
                     if isinstance(meta_noop, tuple):
                         dtype, shape = meta_noop
                         assert callable(shape)
-                        res = cls.meta_with_dtype_and_shape(dtype, shape(res.shape))  # ty: ignore[call-top-callable]
+                        res = cls.meta_with_dtype_and_shape(dtype, shape(res.shape))
                     else:
                         res = cls.meta_with_dtype_and_shape(meta_noop, res.shape)
 
@@ -250,6 +250,10 @@ class LazyChunkedTensor:
 
     def numpy(self) -> LazyChunkedTensor:
         return self
+
+    def __array__(self, *args, **kwargs):
+        # numpy would otherwise make a 1-element object array of self, and write 8 bytes
+        raise TypeError("LazyChunkedTensor cannot become an ndarray, it is written in chunks")
 
     def quantize(self, qtype: Any) -> LazyChunkedTensor:
         from .constants import GGMLQuantizationType

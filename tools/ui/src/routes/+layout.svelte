@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { appLocale } from "$lib/i18n/locale.svelte";
 	import '../app.css';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
@@ -181,6 +182,7 @@
 	}
 
 	onMount(() => {
+		appLocale.init();
 		updateFavicon();
 		// snapshot of every backend running stream on first load, populates the sidebar spinners
 		// so the user sees each conv that has a live inference, even ones not opened yet

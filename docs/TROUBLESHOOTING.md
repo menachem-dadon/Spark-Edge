@@ -30,7 +30,7 @@ Start `SparkMoE.exe` rather than `llama-server.exe` directly. The SparkMoE page 
 
 ## Cache budget is too small
 
-The model activates more experts than the configured layer budget can hold. Increase `--moe-cache-mib` or `--moe-slots`. The error reports the minimum bytes when a byte budget is the limiting factor.
+The model activates more experts than the configured layer budget can hold. Increase `--moe-paging-cache-mib` or `--moe-slots`. The error reports the minimum bytes when a byte budget is the limiting factor.
 
 ## Too many unique experts in a microbatch
 

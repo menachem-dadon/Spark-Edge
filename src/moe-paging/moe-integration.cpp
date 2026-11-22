@@ -111,23 +111,27 @@ std::unique_ptr<paging_manager> init_context(ggml_backend_t cpu, const llama_mod
     }
     const auto & capability = capability_for(model.arch_name().c_str());
     LLAMA_LOG_INFO("MoE paging capability: %s - %s\n", capability.architecture, capability.evidence);
-    if ((params.moe_paging.cache_policy == LLAMA_MOE_CACHE_HYBRID || params.moe_paging.overlap ||
-            params.moe_paging.temporal_prefetch) && model.n_gpu_layers() > 0) {
-        throw std::runtime_error("hybrid/overlap/prefetch currently require CPU-only inference (--n-gpu-layers 0)");
-    }
     if (params.n_rs_seq > UINT32_MAX - 2) { throw std::runtime_error("invalid speculative rollback size"); }
-    const uint32_t minimum_ubatch = params.n_rs_seq ? params.n_rs_seq + 2 : 1;
-    auto manager = std::make_unique<paging_manager>(cpu, params.moe_paging, model.moe_index,
-                                                   model.hparams.n_expert_used, minimum_ubatch, model.paging_io);
+    const auto make_manager = [&](uint32_t minimum_ubatch) {
+        return std::make_unique<paging_manager>(cpu, params.moe_paging, model.moe_index,
+                                               model.hparams.n_expert_used_max(), minimum_ubatch, model.paging_io);
+    };
+    auto manager = make_manager(1);
     const uint32_t safe_ubatch = manager->max_safe_ubatch();
     if (params.n_ubatch > safe_ubatch) {
         LLAMA_LOG_WARN("MoE paging: reducing n_ubatch from %u to %u to fit active experts in the slot cache\n",
                 params.n_ubatch, safe_ubatch);
         params.n_ubatch = safe_ubatch;
     }
-    if (params.n_ubatch < minimum_ubatch) {
-        throw std::runtime_error("MoE paging with recurrent speculation requires effective --ubatch-size >= " +
-            std::to_string(minimum_ubatch) + "; increase microbatch and expert cache/slots, or disable speculation");
+    if (params.n_rs_seq > 0) {
+        const uint32_t minimum_ubatch = params.n_rs_seq + 2;
+        if (params.n_ubatch < minimum_ubatch) {
+            LLAMA_LOG_INFO("MoE paging: using speculative checkpoints with microbatch %u\n", params.n_ubatch);
+            params.n_rs_seq = 0;
+        } else {
+            manager.reset();
+            manager = make_manager(minimum_ubatch);
+        }
     }
     return manager;
 }
@@ -146,7 +150,7 @@ bool llama_model_moe_paging_capabilities(
     capabilities->os_mode_available = llama_mmap::SUPPORTED;
     capabilities->layer_count = static_cast<int32_t>(model->hparams.n_layer());
     capabilities->expert_count = model->hparams.n_expert;
-    capabilities->active_expert_count = model->hparams.n_expert_used;
+    capabilities->active_expert_count = model->hparams.n_expert_used_max();
     capabilities->indexed_tensor_count = model->moe_index.tensor_count();
     for (size_t layer = 0; layer < model->moe_index.layer_count(); ++layer) {
         if (model->moe_index.has_layer(static_cast<int32_t>(layer))) {

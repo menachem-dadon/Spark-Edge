@@ -1,1 +1,1 @@
-export const APP_NAME = import.meta.env?.VITE_PUBLIC_APP_NAME || 'SparkMoE';
+export const APP_NAME = import.meta.env?.VITE_PUBLIC_APP_NAME || 'Spark Edge';

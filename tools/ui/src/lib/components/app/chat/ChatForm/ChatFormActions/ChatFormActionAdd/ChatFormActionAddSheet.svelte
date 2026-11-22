@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { File, FolderOpen, MessageSquare, Zap } from '@lucide/svelte';
 	import {
 		Check,
@@ -248,7 +249,7 @@
 										<span
 											class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-xs text-destructive"
 										>
-											Error
+											{t("Error")}
 										</span>
 									{:else}
 										<Switch

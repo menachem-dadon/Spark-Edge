@@ -4,6 +4,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('avx2', 'generic')][string]$Variant = 'avx2',
+    [ValidateSet('cpu', 'cuda', 'vulkan', 'hip', 'sycl')][string]$Backend = 'cpu',
     [string]$BuildRoot = '',
     [switch]$RunTests,
     [switch]$BrowserOnly
@@ -11,7 +12,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-if (-not $BuildRoot) { $BuildRoot = Join-Path $repo "build-windows-$Variant" }
+if (-not $BuildRoot) {
+    $suffix = if ($Backend -eq 'cpu') { $Variant } else { "$Variant-$Backend" }
+    $BuildRoot = Join-Path $repo "build-windows-$suffix"
+}
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $unicodeEnvironment = @{}
     Get-ChildItem Env: | Where-Object { $_.Value -match '[^\x00-\x7F]' } | ForEach-Object { $unicodeEnvironment[$_.Name] = $_.Value }
@@ -74,6 +78,15 @@ if ($Variant -eq 'generic') {
     $cmakeArgs += @('-DGGML_AVX=ON', '-DGGML_AVX2=ON')
 }
 
+switch ($Backend) {
+    'cuda' { $cmakeArgs += '-DGGML_CUDA=ON' }
+    'vulkan' { $cmakeArgs += '-DGGML_VULKAN=ON' }
+    'hip' { $cmakeArgs += @('-DGGML_HIP=ON', '-DCMAKE_C_COMPILER=clang', '-DCMAKE_CXX_COMPILER=clang++') }
+    'sycl' { $cmakeArgs += @('-DGGML_SYCL=ON', '-DCMAKE_C_COMPILER=cl', '-DCMAKE_CXX_COMPILER=icx') }
+}
+$upstream = (Get-Content -LiteralPath (Join-Path $repo 'UPSTREAM_BASE.txt') -Raw).Trim()
+if ($upstream -notmatch '^[0-9a-f]{40}$') { throw 'UPSTREAM_BASE.txt does not contain a full commit SHA' }
+$cmakeArgs += "-DLLAMA_BUILD_COMMIT=$upstream"
 if (Get-Command ninja -ErrorAction SilentlyContinue) { $cmakeArgs += @('-G', 'Ninja') }
 & cmake @cmakeArgs
 if ($LASTEXITCODE) { throw "CMake configure failed with exit code $LASTEXITCODE" }

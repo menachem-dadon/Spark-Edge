@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Plus, Settings } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { DropdownMenuSearchable, McpLogo, McpServerIdentity } from '$lib/components/app';
@@ -105,7 +106,7 @@
 										<span
 											class="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-xs text-destructive"
 										>
-											Error
+											{t("Error")}
 										</span>
 									{/if}
 								</div>

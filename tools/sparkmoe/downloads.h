@@ -7,6 +7,8 @@
 #include <nlohmann/json.hpp>
 
 namespace sparkmoe {
+void https_download(const std::string & url, const std::function<void(const char *, size_t)> & consume);
+
 class downloads {
 public:
     downloads(const std::filesystem::path & data, std::function<void(const std::filesystem::path &)> imported);

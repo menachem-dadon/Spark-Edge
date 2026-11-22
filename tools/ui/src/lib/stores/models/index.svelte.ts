@@ -126,9 +126,8 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 	 * Prioritizes:
 	 * 1. Model from active conversation's last assistant response (if loaded)
 	 * 2. Model from active conversation's last assistant response (if not loaded)
-	 * 3. First loaded model (not from active conversation)
-	 * 4. A favorite model
-	 * 5. First available model
+	 * 3. Loaded model, with the most recently loaded first
+	 * 4. Most recently loaded model or explicit application default
 	 */
 	async ensureFirstModelSelected(): Promise<void> {
 		if (this.selectedModelName) return;
@@ -154,14 +153,11 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 			}
 		}
 
-		// Try a loaded model first
-		const preferred = this.routerModels.find((model) => model.sparkmoe?.is_default);
-		if (preferred && availableModels.some((model) => model.id === preferred.id)) {
-			await this.selectModelById(preferred.id);
-			return;
-		}
-
-		const loadedModel = availableModels.find((m) => this.isModelLoaded(m.model));
+		const lastLoaded = this.routerModels.find((model) => model.sparkmoe?.last_loaded);
+		const lastOption = availableModels.find((model) => model.id === lastLoaded?.id);
+		const loadedModel = lastOption && this.isModelLoaded(lastOption.model)
+			? lastOption
+			: availableModels.find((model) => this.isModelLoaded(model.model));
 
 		if (loadedModel) {
 			await this.selectModelById(loadedModel.id);
@@ -170,17 +166,12 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 			return;
 		}
 
-		// Try loading a favorite model
-		const favorite = this.favoriteModelIds.values().next()?.value;
-
-		if (favorite) {
-			await this.selectModelById(favorite);
-
-			return;
+		const preferred = this.routerModels.find((model) => model.sparkmoe?.is_default);
+		const startup = lastOption ?? availableModels.find((model) => model.id === preferred?.id);
+		if (startup) await this.selectModelById(startup.id);
+		else if (!this.routerModels.some((model) => model.sparkmoe) || availableModels.length === 1) {
+			await this.selectModelById(availableModels[0].id);
 		}
-
-		// Fall back to the first available model
-		await this.selectModelById(availableModels[0].id);
 	}
 
 	/**

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Loader2, Square, SquarePen, X } from '@lucide/svelte';
+	import { t } from '$lib/i18n/locale.svelte';
+	import { Square, SquarePen, X } from '@lucide/svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { cn } from '$lib/components/ui/utils';
 	import { ICON_CLASS_SM, ICON_CLASS_XS, ROUTES, UI_DATA_ATTRS } from '$lib/constants';
@@ -83,11 +84,12 @@
 						{...props}
 						class="stop-button relative z-10 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
 						onclick={(e) => handleActionClick(e, () => onStop?.(tab.id, e))}
-						aria-label="Stop generation"
+						aria-label={t("Stop generation")}
 					>
-						<Loader2
-							class="loading-icon {ICON_CLASS_SM} animate-spin transition-opacity duration-300 {contentOpacity}"
-						/>
+						<picture class="loading-icon {ICON_CLASS_SM} transition-opacity duration-300 {contentOpacity}">
+							<source media="(prefers-reduced-motion: reduce)" srcset="spark-edge-static.svg" />
+							<img src="spark-edge-inference.svg" alt="" class="size-full" />
+						</picture>
 
 						<Square
 							class="stop-icon hidden {ICON_CLASS_XS} fill-current text-destructive transition-opacity {contentOpacity}"
@@ -97,7 +99,7 @@
 			</Tooltip.Trigger>
 
 			<Tooltip.Content>
-				<p>Stop generation</p>
+				<p>{t('Stop generation')}</p>
 			</Tooltip.Content>
 		</Tooltip.Root>
 	{/if}

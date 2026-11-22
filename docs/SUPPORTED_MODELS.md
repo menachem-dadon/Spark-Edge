@@ -21,7 +21,7 @@ If a model does not satisfy these checks, loading fails explicitly. SparkMoE doe
 
 ## MTP notes
 
-MTP is optional and can reduce performance on some CPUs, backends, quantizations, or prompts. Start with three draft tokens and compare measured end-to-end throughput against MTP off. Recurrent rollback requires effective microbatch at least draft tokens + 2, with enough expert slots/cache. Too-small paging configurations fail with an explanation instead of an assertion; runtime resize preserves this minimum. A GGUF without compatible MTP tensors will fail to initialize the draft context; disable MTP for that model.
+MTP is optional and can reduce performance on some CPUs, backends, quantizations, or prompts. Start with three draft tokens and compare measured end-to-end throughput against MTP off. Recurrent rollback requires effective microbatch at least draft tokens + 2, with enough expert slots/cache. With a smaller expert paging microbatch, the server uses sequence checkpoints. Runtime resize preserves the minimum when bounded recurrent rollback is active. A GGUF without compatible MTP tensors will fail to initialize the draft context; disable MTP for that model.
 
 Hybrid cache, compute/I/O overlap and temporal prefetch are opt-in CPU modes.
 Direct-I/O fallback is byte-exact. Default routing/top-k remain unchanged.

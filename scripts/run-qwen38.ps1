@@ -27,7 +27,7 @@ $serverArgs = @(
     '--threads', $Threads, '--threads-batch', $Threads,
     '--n-gpu-layers', '0', '--fit', 'off', '--no-warmup', '--no-context-shift',
     '--moe-paging', 'explicit', '--moe-cache-policy', 'hybrid',
-    '--moe-cache-mib', $ExpertCacheMiB, '--moe-ple-cache-mib', $PleCacheMiB,
+    '--moe-paging-cache-mib', $ExpertCacheMiB, '--moe-ple-cache-mib', $PleCacheMiB,
     '--moe-io-mode', 'buffered', '--moe-io-threads', $IoThreads,
     '--moe-overlap', 'off', '--moe-prefetch', 'off', '--moe-dense-residency', 'resident',
     '--spec-type', 'draft-mtp', '--spec-draft-n-max', $DraftWidth,

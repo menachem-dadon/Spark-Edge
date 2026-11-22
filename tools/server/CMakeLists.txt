@@ -14,8 +14,12 @@ add_library(${TARGET} STATIC
     server-common.cpp
     server-common.h
     ../sparkmoe/server-api.cpp
+    server-decision.cpp
+    server-decision.h
     server-context.cpp
     server-context.h
+    server-realtime.cpp
+    server-realtime.h
     server-stream.cpp
     server-stream.h
     server-tools.cpp
@@ -24,17 +28,20 @@ add_library(${TARGET} STATIC
     server-mcp.h
     server-schema.cpp
     server-schema.h
+    server-slot-sched.cpp
+    server-slot-sched.h
 )
 
 if (BUILD_SHARED_LIBS)
     set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
-target_include_directories(${TARGET} PRIVATE ../mtmd)
-target_link_libraries(${TARGET} PUBLIC llama-common mtmd ${CMAKE_THREAD_LIBS_INIT})
 if (WIN32)
     target_link_libraries(${TARGET} PRIVATE psapi)
 endif()
+target_include_directories(${TARGET} PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(${TARGET} PUBLIC llama-common mtmd ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${TARGET} PRIVATE vendor::hash)
 
 # llama-server-impl: server logic, reusable by app
 
@@ -42,16 +49,22 @@ set(TARGET llama-server-impl)
 
 add_library(${TARGET}
     server.cpp
+    server-connect.cpp
+    server-connect.h
     server-http.cpp
     server-http.h
     server-models.cpp
     server-models.h
+    server-models-sched.cpp
+    server-models-sched.h
 )
 set_target_properties(${TARGET} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(${TARGET} PRIVATE ../mtmd)
+target_include_directories(${TARGET} PRIVATE ../mtmd ${PROJECT_SOURCE_DIR})
 target_link_libraries(${TARGET} PUBLIC server-context llama-ui cpp-httplib ${CMAKE_THREAD_LIBS_INIT})
+
+add_dependencies(${TARGET} llama-ui-assets)
 
 if(LLAMA_TOOLS_INSTALL)
     install(TARGETS ${TARGET} LIBRARY)

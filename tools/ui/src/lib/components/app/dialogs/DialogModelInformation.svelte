@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { ActionIconCopyToClipboard, BadgesModality } from '$lib/components/app';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Table from '$lib/components/ui/table';
@@ -103,7 +104,7 @@
 					<Table.Root>
 						<Table.Header>
 							<Table.Row>
-								<Table.Head class="w-[10rem]">Model</Table.Head>
+								<Table.Head class="w-[10rem]">{t("Model")}</Table.Head>
 
 								<Table.Head>
 									<div class="inline-flex items-center gap-2">

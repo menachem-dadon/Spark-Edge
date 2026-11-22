@@ -73,7 +73,7 @@ export const SIDEBAR_ACTIONS_ITEMS: DesktopIconStripItem[] = [
 		activeRouteId: '/sparkmoe',
 		icon: Sparkles,
 		route: ROUTES.SPARKMOE,
-		tooltip: 'SparkMoE'
+		tooltip: 'Spark Edge'
 	},
 	{
 		activeUrlIncludes: '#/settings',

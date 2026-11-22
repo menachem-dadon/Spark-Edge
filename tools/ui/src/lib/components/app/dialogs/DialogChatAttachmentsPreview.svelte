@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { X } from '@lucide/svelte';
 	import { ChatAttachmentsPreview } from '$lib/components/app';
 	import * as DialogUI from '$lib/components/ui/dialog';
@@ -72,7 +73,7 @@
 			<Dialog.Close
 				class="absolute top-4 right-4 z-10 cursor-pointer text-white hover:text-gray-400"
 				onclick={handleClose}
-				aria-label="Close"
+				aria-label={t("Close")}
 			>
 				<X class="size-4" />
 			</Dialog.Close>

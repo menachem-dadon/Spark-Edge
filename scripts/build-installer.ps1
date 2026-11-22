@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $version = (Get-Content (Join-Path $repo 'VERSION') -Raw).Trim()
 if (-not $OutputDir) { $OutputDir = Join-Path $repo 'artifacts/release' }
-if (-not $StageDir) { $StageDir = Join-Path $OutputDir "sparkmoe-$version-windows-x64-avx2" }
+if (-not $StageDir) { $StageDir = Join-Path $OutputDir "spark-edge-$version-windows-x64-avx2" }
 if (-not (Test-Path (Join-Path $StageDir 'SparkMoE.exe'))) { throw "Portable stage is incomplete: $StageDir" }
 $manifest = Get-Content -LiteralPath (Join-Path $StageDir 'release-manifest.json') -Raw | ConvertFrom-Json
 $variant = $manifest.variant
@@ -64,7 +64,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 $compilerArgs += "/DOutputDir=$resolvedOutput"
 & $iscc.Source @compilerArgs (Join-Path $repo 'packaging/windows/SparkMoE.iss')
 if ($LASTEXITCODE) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-$installer = Join-Path $resolvedOutput "sparkmoe-$version-windows-x64-$variant-setup.exe"
+$installer = Join-Path $resolvedOutput "spark-edge-$version-windows-x64-$variant-setup.exe"
 if ($signingCertificate) {
     $signature = Set-AuthenticodeSignature -LiteralPath $installer -Certificate $signingCertificate -HashAlgorithm SHA256 -TimestampServer $TimestampServer
     if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
@@ -77,7 +77,7 @@ if ($signingCertificate) {
     signature = (Get-AuthenticodeSignature -LiteralPath $installer).Status.ToString()
     webview2_bootstrapper = $bootstrapperInfo
 } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath "$installer.manifest.json" -Encoding utf8
-$prefix = "sparkmoe-$version-"
+$prefix = "spark-edge-$version-"
 $files = Get-ChildItem -LiteralPath $OutputDir -File | Where-Object {
     $_.Name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and $_.Extension -in @('.zip', '.exe')
 } | Sort-Object Name

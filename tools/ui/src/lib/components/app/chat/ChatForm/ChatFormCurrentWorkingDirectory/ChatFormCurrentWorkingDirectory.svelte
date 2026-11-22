@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import ChatFormCurrentWorkingDirectoryChip from './ChatFormCurrentWorkingDirectoryChip.svelte';
 	import ChatFormCurrentWorkingDirectoryResultsList from './ChatFormCurrentWorkingDirectoryResultsList.svelte';
 	import { FolderOpen } from '@lucide/svelte';
@@ -391,7 +392,7 @@
 					onclick={browseNative}
 				>
 					<FolderOpen class="size-4 shrink-0 text-muted-foreground" />
-					<span>Browse</span>
+					<span>{t("Browse")}</span>
 				</button>
 			{/if}
 

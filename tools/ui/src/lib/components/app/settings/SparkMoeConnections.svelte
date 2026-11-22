@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 <!-- Required Notice: Copyright (c) 2026 SparkMoE contributors. -->
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Copy, Eye, FolderOpen, LoaderCircle, Play, Plus, Trash2 } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -111,7 +112,7 @@
 				></Card.Header
 			><Card.Content class="space-y-4">
 				<label class="grid gap-2 text-sm"
-					><span class="font-medium">Model</span><select
+					><span class="font-medium">{t("Model")}</span><select
 						class="rounded-md border border-input bg-background p-2"
 						bind:value={model}
 						><option value="">Choose a model</option
@@ -167,7 +168,7 @@
 											message = 'Configuration copied.';
 										})}
 									size="sm"
-									variant="ghost"><Copy />Copy</Button
+									variant="ghost"><Copy />{t("Copy")}</Button
 								>
 							</details>{/each}
 						{#if preview.arguments?.length}<details>

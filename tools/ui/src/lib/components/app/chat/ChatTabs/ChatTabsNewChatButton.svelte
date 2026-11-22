@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Plus } from '@lucide/svelte';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { ICON_CLASS_DEFAULT } from '$lib/constants';
@@ -17,7 +18,7 @@
 				{...props}
 				class="backdrop-blur-lg flex h-8 w-8 mr-4 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-foreground/5"
 				{onclick}
-				aria-label="New chat"
+				aria-label={t("New chat")}
 			>
 				<Plus class="{ICON_CLASS_DEFAULT} opacity-40 transition-opacity group-hover:opacity-100" />
 			</button>
@@ -25,6 +26,6 @@
 	</Tooltip.Trigger>
 
 	<Tooltip.Content>
-		<p>New chat</p>
+		<p>{t("New chat")}</p>
 	</Tooltip.Content>
 </Tooltip.Root>

@@ -57,7 +57,20 @@ export interface SparkMoeLibraryModel {
 	metadata?: Record<string, unknown>;
 }
 
+export interface EnginePackage {
+	id: string;
+	backend: string;
+	bytes?: number;
+}
+
+export interface EngineStatus {
+	installed: EnginePackage[];
+	available?: EnginePackage[];
+	active: string;
+}
+
 export interface SparkMoeApplication {
+	locale?: 'he' | 'en';
 	background_mode: boolean;
 	launch_at_login: boolean;
 	default_model: string;
@@ -126,6 +139,8 @@ export interface SparkMoeModelProfile {
 	context_mode: 'auto' | 'manual';
 	memory_mode: 'auto' | 'manual';
 	gpu_layers: number;
+	gpu_expert_cache_mib?: number;
+	worker_engine?: string;
 	batch_size: number;
 	cache: number;
 	cache_policy: 'lru' | 'hybrid';
@@ -144,6 +159,7 @@ export interface SparkMoeModelProfile {
 	mtp_backend_sampling: boolean;
 	mtp_cache_mib: number;
 	mtp_draft_tokens: number;
+	speculative_types?: string;
 	mtp_enabled: boolean;
 	mtp_min_tokens: number;
 	mtp_model: string;
@@ -292,6 +308,24 @@ export class SparkMoeService {
 
 	static async removeLibraryModel(id: string): Promise<unknown> {
 		return managerFetch('/api/library?id=' + encodeURIComponent(id), { method: 'DELETE' });
+	}
+
+	static async engines(check = false): Promise<EngineStatus> {
+		return managerFetch('/api/engines' + (check ? '?check=1' : ''));
+	}
+
+	static async downloadEngine(id: string): Promise<void> {
+		await managerFetch('/api/engines/download', {
+			method: 'POST',
+			body: JSON.stringify({ id })
+		});
+	}
+
+	static async applyEngine(id: string): Promise<void> {
+		await managerFetch('/api/engines/apply', {
+			method: 'POST',
+			body: JSON.stringify({ id })
+		});
 	}
 
 	static async application(): Promise<SparkMoeApplication> {

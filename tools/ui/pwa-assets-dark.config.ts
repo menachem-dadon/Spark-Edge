@@ -6,7 +6,7 @@ export default defineConfig({
 	headLinkOptions: {
 		preset: '2023'
 	},
-	images: ['static/SparkMoE.png'],
+	images: ['static/spark-edge.png'],
 	preset: {
 		apple: {
 			sizes: []

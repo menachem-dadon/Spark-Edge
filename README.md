@@ -1,10 +1,12 @@
-# SparkMoE
+# Spark Edge
+
+Spark Edge for Windows is the desktop edition. Spark Edge for Android is the mobile edition of the same product. See [Windows builds and engine packages](docs/SPARK_EDGE_WINDOWS.md).
 
 **Run giant local models on modest hardware.**
 
-SparkMoE is an independent, CPU-first fork of `llama.cpp` that can keep standard routed MoE expert tensors on a GGUF file and load only the experts selected by the router into bounded per-layer RAM caches.
+Spark Edge runs local AI models through llama.cpp, manages a GGUF library and provides a local API. Its expert streaming reads routed MoE weights from SSD into bounded caches.
 
-This is **v0.4.2-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows regression suite includes synthetic full-logit equivalence, real two-shard GGUF, HTTP/Desktop controls and exact Ling-3.0-tiny Q4_K_M logits with matching CPU kernels and microbatch. Qwen3.8-Flash-Next now has a bounded PLE adapter, a separate native MTP sidecar path and tiny-fixture parity tests; full-model memory and speed validation is still pending. See [supported models](docs/SUPPORTED_MODELS.md). This remains an alpha rather than a performance or memory-fit guarantee.
+The Windows release candidate integrates the official llama.cpp revision recorded in UPSTREAM_BASE.txt. It includes the Spark Edge model manager, Hebrew and English interface options, and standalone engine packages. Model coverage and verification status are listed in [supported models](docs/SUPPORTED_MODELS.md).
 
 ## What it does
 
@@ -20,7 +22,7 @@ This is **v0.4.2-alpha**, refreshed onto llama.cpp stable v0.3.0. The Windows re
 - Keeps all SparkMoE controls in a dedicated page inside the original llama.cpp Web UI: Router limits, model profiles, loading, expert paging, context, MTP, RAM, logs, and diagnostics.
 - Runs the launcher and every managed model process without a console window on Windows, while preserving complete per-session logs under the user's local application data.
 
-It does not promise that every model or quantization fits in 16 GB. Advanced hybrid/overlap/prefetch modes require CPU-only inference. Buffered per-layer paging remains the default; direct I/O and speculative prefetch are not always faster. Explicit mode validates routed expert tensor names, shapes, strides, shard bounds, and active-expert capacity before inference. See [engine measurements](docs/ENGINE_UPGRADES.md) and [refresh report](docs/REFRESH_REPORT.md).
+Buffered per-layer paging remains the default. Explicit mode validates tensor names, shapes, strides, shard bounds, and active expert capacity. GPU paged expert support needs validation for each backend and device. See the [Windows build and validation guide](docs/SPARK_EDGE_WINDOWS.md).
 
 ## Hardware
 
@@ -33,9 +35,9 @@ It does not promise that every model or quantization fits in 16 GB. Advanced hyb
 
 Permanent Windows installation:
 
-1. Use `sparkmoe-0.4.2-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
+1. Use `spark-edge-0.5.0-alpha-windows-x64-avx2-setup.exe` from your local `artifacts/release` build or a published release.
 2. Run the installer. It installs for the current user, creates an uninstall entry, and can create desktop and Start menu shortcuts.
-3. Run `SparkMoE` from the Start menu.
+3. Run Spark Edge from the Start menu.
 4. While SparkMoE is running, its notification-area icon provides Open, Router status, Start, Stop, and Exit actions without a command window.
 
 Portable Windows package:
@@ -63,13 +65,13 @@ Use `-Variant generic` for older x64 CPUs without AVX2. Linux users can run `./s
 CLI:
 
 ```powershell
-llama-cli.exe -m C:\models\qwen.gguf --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 -p "Hello"
+llama-cli.exe -m C:\models\qwen.gguf --moe-paging explicit --moe-paging-cache-mib 1536 --moe-io-threads 3 -p "Hello"
 ```
 
 Server with context and MTP:
 
 ```powershell
-llama-server.exe -m C:\models\qwen.gguf --host 127.0.0.1 --port 8080 --parallel 1 --ctx-size 16384 --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 --spec-type draft-mtp --spec-draft-n-max 3
+llama-server.exe -m C:\models\qwen.gguf --host 127.0.0.1 --port 8080 --parallel 1 --ctx-size 16384 --moe-paging explicit --moe-paging-cache-mib 1536 --moe-io-threads 3 --spec-type draft-mtp --spec-draft-n-max 3
 ```
 
 Qwen3.8-Flash-Next uses `--model-draft` for its separate compatible MTP sidecar. See [the Qwen3.8 implementation and validation guide](docs/QWEN38_IMPLEMENTATION.md).

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Trash2 } from '@lucide/svelte';
 	import {
 		DialogChatError,
@@ -28,7 +29,7 @@
 	bind:open={showDeleteDialog}
 	title="Delete Conversation"
 	description="Are you sure you want to delete this conversation? This action cannot be undone and will permanently remove all messages in this conversation."
-	confirmText="Delete"
+	confirmText={t("Delete")}
 	cancelText="Cancel"
 	variant="destructive"
 	icon={Trash2}

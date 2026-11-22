@@ -68,6 +68,10 @@ struct tensor_pool {
     ggml_backend_buffer_ptr buffer;
     const tensor_descriptor * descriptor = nullptr;
     std::shared_ptr<readiness_table> readiness;
+    ggml_context_ptr device_context;
+    ggml_backend_buffer_ptr device_buffer;
+    ggml_tensor * device_tensor = nullptr;
+    std::vector<uint64_t> device_generations;
 };
 
 class layer_cache {
@@ -86,6 +90,7 @@ public:
     ~layer_cache();
 
     ggml_tensor * bind_tensor(const ggml_tensor * original, const tensor_descriptor & descriptor);
+    ggml_tensor * bind_device(const ggml_tensor * host, ggml_backend_t device, uint64_t & bytes_left);
     void resolve(const int32_t * expert_ids, size_t count, int32_t * slot_ids, bool graph = false);
     bool set_pinned(int32_t expert, bool pinned);
 
@@ -128,6 +133,7 @@ private:
     std::unordered_map<std::string, size_t> pool_by_name;
     std::shared_ptr<stats> counters = std::make_shared<stats>();
     bool overlap;
+    ggml_backend_t device = nullptr;
     std::vector<int32_t> previous_experts;
     std::function<void()> next_layer_prefetch;
 };

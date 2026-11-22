@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { RotateCcw } from '@lucide/svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
@@ -52,7 +53,7 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel>{t("Cancel")}</AlertDialog.Cancel>
 			<AlertDialog.Action onclick={handleConfirmReset}>Reset to Default</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

@@ -3,7 +3,7 @@
 </script>
 
 <div class={className} {style}>
-	<img src="SparkMoE.png" alt="SparkMoE" />
+	<img src="spark-edge-static.svg" alt="Spark Edge" />
 </div>
 
 <style>

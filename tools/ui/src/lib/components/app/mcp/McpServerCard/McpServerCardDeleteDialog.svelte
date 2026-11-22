@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 
 	interface Props {
@@ -23,13 +24,13 @@
 		</AlertDialog.Header>
 
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel>{t("Cancel")}</AlertDialog.Cancel>
 
 			<AlertDialog.Action
 				class="text-destructive-foreground bg-destructive hover:bg-destructive/90"
 				onclick={onConfirm}
 			>
-				Delete
+				{t("Delete")}
 			</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

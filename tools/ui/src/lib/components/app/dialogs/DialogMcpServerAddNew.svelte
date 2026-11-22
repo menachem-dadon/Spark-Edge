@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { browser } from '$app/environment';
 	import { McpServerCardCompact, McpServerForm } from '$lib/components/app/mcp';
 	import { Button } from '$lib/components/ui/button';
@@ -293,11 +294,11 @@
 
 			<Dialog.Footer>
 				<Button variant="secondary" size="sm" onclick={() => handleOpenChange(false)}>
-					Cancel
+					{t("Cancel")}
 				</Button>
 
-				<Button variant="default" size="sm" type="submit" disabled={!canSave} aria-label="Save">
-					Add
+				<Button variant="default" size="sm" type="submit" disabled={!canSave} aria-label={t("Save")}>
+					{t("Add")}
 				</Button>
 			</Dialog.Footer>
 		</form>

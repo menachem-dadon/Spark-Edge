@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Settings } from '@lucide/svelte';
 	import { ScrollCarousel } from '$lib/components/app';
 	import { ICON_CLASS_DEFAULT, UI_DATA_ATTRS } from '$lib/constants';
@@ -41,7 +42,7 @@
 	<div class="flex items-center gap-2 px-4 pt-4 pb-2 md:pt-6">
 		<Settings class="h-5 w-5 md:h-6 md:w-6" />
 
-		<h1 class="text-xl font-semibold md:text-2xl">Settings</h1>
+		<h1 class="text-xl font-semibold md:text-2xl">{t("Settings")}</h1>
 	</div>
 
 	<div class="border-b border-border/30 py-2">

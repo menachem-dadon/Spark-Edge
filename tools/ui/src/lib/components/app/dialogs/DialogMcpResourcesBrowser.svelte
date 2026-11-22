@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Braces, FolderOpen, Loader2, Plus } from '@lucide/svelte';
 	import {
 		McpResourcePreview,
@@ -363,7 +364,7 @@
 		</div>
 
 		<Dialog.Footer class="border-t border-border/30 px-6 py-4">
-			<Button variant="outline" onclick={() => handleOpenChange(false)}>Cancel</Button>
+			<Button variant="outline" onclick={() => handleOpenChange(false)}>{t("Cancel")}</Button>
 
 			{#if hasTemplateResult}
 				<Button onclick={handleAttachTemplateResource} disabled={isAttaching}>

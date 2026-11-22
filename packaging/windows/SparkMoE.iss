@@ -1,12 +1,12 @@
 ; SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 ; Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
-#define AppName "SparkMoE"
+#define AppName "Spark Edge"
 #ifndef AppVersion
-#define AppVersion "0.4.2-alpha"
+#define AppVersion "0.5.0-alpha"
 #endif
 #ifndef SourceDir
-#define SourceDir "..\..\artifacts\release\sparkmoe-0.4.2-alpha-windows-x64-avx2"
+#define SourceDir "..\..\artifacts\release\spark-edge-0.5.0-alpha-windows-x64-avx2"
 #endif
 #ifndef OutputDir
 #define OutputDir "..\..\artifacts\release"
@@ -19,25 +19,29 @@
 AppId={{CB3A5957-FB37-4D8D-ABB3-F3F61C6432F6}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=SparkMoE Project
-AppComments=Run giant local language models on modest hardware
+AppPublisher=Spark Edge Project
+AppComments=Run and manage local AI models
 DefaultDirName={localappdata}\Programs\SparkMoE
-DefaultGroupName=SparkMoE
+DefaultGroupName=Spark Edge
 PrivilegesRequired=lowest
 UsePreviousGroup=no
 UsePreviousTasks=no
 OutputDir={#OutputDir}
-OutputBaseFilename=sparkmoe-{#AppVersion}-windows-x64-{#Variant}-setup
+OutputBaseFilename=spark-edge-{#AppVersion}-windows-x64-{#Variant}-setup
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\SparkMoE.exe
-SetupIconFile={#SourceDir}\assets\branding\SparkMoE.ico
-VersionInfoDescription=SparkMoE installer
-VersionInfoProductName=SparkMoE
+SetupIconFile={#SourceDir}\assets\branding\spark-edge.ico
+VersionInfoDescription=Spark Edge installer
+VersionInfoProductName=Spark Edge
 ChangesEnvironment=yes
+
+[Languages]
+Name: "hebrew"; MessagesFile: "compiler:Languages\Hebrew.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -46,14 +50,14 @@ Source: "{#WebView2Bootstrapper}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; F
 #endif
 
 [Icons]
-Name: "{group}\SparkMoE"; Filename: "{app}\SparkMoE.exe"
-Name: "{userdesktop}\SparkMoE"; Filename: "{app}\SparkMoE.exe"; Tasks: desktopicon
+Name: "{group}\Spark Edge"; Filename: "{app}\SparkMoE.exe"
+Name: "{userdesktop}\Spark Edge"; Filename: "{app}\SparkMoE.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
-Name: "addtopath"; Description: "Add SparkMoE to the user PATH"; GroupDescription: "Command line:"; Flags: unchecked
+Name: "addtopath"; Description: "Add Spark Edge to the user PATH"; GroupDescription: "Command line:"; Flags: unchecked
 #ifdef WebView2Bootstrapper
-Name: "webview2"; Description: "Install Microsoft WebView2 Runtime for the desktop window (requires Internet)"; GroupDescription: "Optional: SparkMoE can also open in your default browser."; Flags: unchecked; Check: NeedsWebView2
+Name: "webview2"; Description: "Install Microsoft WebView2 Runtime for the desktop window (requires Internet)"; GroupDescription: "Optional: Spark Edge can also open in your default browser."; Flags: unchecked; Check: NeedsWebView2
 #endif
 
 [Code]
@@ -144,7 +148,7 @@ begin
   if WizardIsTaskSelected('webview2') and NeedsWebView2 then begin
     ExtractTemporaryFile('MicrosoftEdgeWebview2Setup.exe');
     if not ExecAsOriginalUser(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) or NeedsWebView2 then
-      SuppressibleMsgBox('Microsoft WebView2 Runtime could not be installed. SparkMoE will open in your default browser. You can install the Runtime later from Microsoft.', mbInformation, MB_OK, IDOK);
+      SuppressibleMsgBox('Microsoft WebView2 Runtime could not be installed. Spark Edge will open in your default browser. You can install the Runtime later from Microsoft.', mbInformation, MB_OK, IDOK);
   end;
 #endif
 end;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import ModelLoadHighlight from './ModelLoadHighlight.svelte';
 	import type { ModelItem } from './utils';
 	import { ChevronDown, Loader2 } from '@lucide/svelte';
@@ -211,7 +212,7 @@
 										hideQuantization
 									/>
 								{:else}
-									<span class="min-w-0 font-medium">Select model</span>
+									<span class="min-w-0 font-medium">{t("Select model")}</span>
 								{/if}
 
 								{#if ms.updating || ms.isLoadingModel}

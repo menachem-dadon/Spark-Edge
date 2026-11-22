@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Settings } from '@lucide/svelte';
 	import { ICON_CLASS_DEFAULT } from '$lib/constants';
 	import type { SettingsSection, SettingsSectionTitle } from '$lib/types';
@@ -17,7 +18,7 @@
 	<div class="flex items-center gap-2 py-2">
 		<Settings class="h-5 w-5 md:h-6 md:w-6" />
 
-		<h1 class="text-xl font-semibold md:text-2xl">Settings</h1>
+		<h1 class="text-xl font-semibold md:text-2xl">{t("Settings")}</h1>
 	</div>
 
 	<nav class="space-y-1">

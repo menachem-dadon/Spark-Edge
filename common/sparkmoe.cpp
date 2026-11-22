@@ -26,7 +26,7 @@ std::vector<common_arg> sparkmoe_options() {
         }
     ).set_env("LLAMA_ARG_MOE_PAGING"));
     add_opt(common_arg(
-        {"--moe-cache-mib"}, "N",
+        {"--moe-paging-cache-mib"}, "N",
         "total explicit MoE expert cache budget in MiB",
         [](common_params & params, const std::string & value) {
             const uint64_t mib = std::stoull(value);
@@ -35,7 +35,7 @@ std::vector<common_arg> sparkmoe_options() {
             }
             params.moe_paging.cache_bytes = mib * 1024ull * 1024ull;
         }
-    ).set_env("LLAMA_ARG_MOE_CACHE_MIB"));
+    ).set_env("LLAMA_ARG_MOE_PAGING_CACHE_MIB"));
     add_opt(common_arg(
         {"--moe-slots"}, "N",
         "expert slots per MoE layer; must cover all active experts",
@@ -129,6 +129,11 @@ std::vector<common_arg> sparkmoe_options() {
             params.moe_draft_cache_bytes = uint64_t(value) * 1024 * 1024;
         }
     ).set_env("LLAMA_ARG_MOE_DRAFT_CACHE_MIB"));
+    options.push_back(common_arg(
+        {"--spark-edge-engine"}, "PATH",
+        "Spark Edge managed model-worker executable",
+        [](common_params &, const std::string &) {}
+    ).set_examples({LLAMA_EXAMPLE_SERVER}).set_env("SPARK_EDGE_ENGINE"));
     return options;
 }
 

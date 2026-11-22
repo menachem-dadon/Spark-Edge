@@ -2,7 +2,7 @@
 
 ## Configuration
 
-`--moe-paging explicit` enables the subsystem. Set `--moe-cache-mib N`, `--moe-slots N`, or both. If both are present, both limits apply. The cache rejects a byte budget too small to hold at least the model's active-expert count per paged layer.
+`--moe-paging explicit` enables the subsystem. Set `--moe-paging-cache-mib N`, `--moe-slots N`, or both. If both are present, both limits apply. The cache rejects a byte budget too small to hold at least the model's active-expert count per paged layer.
 
 Additional options:
 

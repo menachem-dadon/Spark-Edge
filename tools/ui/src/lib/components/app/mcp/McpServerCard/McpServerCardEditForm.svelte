@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { McpServerForm } from '$lib/components/app/mcp';
 	import { Button } from '$lib/components/ui/button';
 	import { parseHeadersToArray } from '$lib/utils';
@@ -85,7 +86,7 @@
 		/>
 
 		<div class="flex items-center justify-end gap-2">
-			<Button variant="secondary" size="sm" onclick={onCancel}>Cancel</Button>
+			<Button variant="secondary" size="sm" onclick={onCancel}>{t("Cancel")}</Button>
 
 			<Button size="sm" type="submit" disabled={!canSave}>
 				{serverUrl.trim() ? 'Update' : 'Add'}

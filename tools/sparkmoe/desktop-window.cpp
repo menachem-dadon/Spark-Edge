@@ -402,7 +402,7 @@ struct desktop_window::implementation {
                     ShowWindow(hwnd, SW_HIDE);
                     return 0;
                 }
-                if (self->config.has_active_requests && self->config.has_active_requests() && MessageBoxW(hwnd, L"A request is still running. Exit SparkMoE and stop it?", L"SparkMoE", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) {
+                if (self->config.has_active_requests && self->config.has_active_requests() && MessageBoxW(hwnd, self->config.use_hebrew && self->config.use_hebrew() ? L"בקשה עדיין פעילה. לצאת מ־Spark Edge ולהפסיק אותה?" : L"A request is still running. Exit Spark Edge and stop it?", L"Spark Edge", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) {
                     return 0;
                 }
                 if (self->config.request_shutdown) { self->config.request_shutdown(); }
@@ -456,7 +456,7 @@ struct desktop_window::implementation {
             definition.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
             definition.lpszClassName = class_name;
             RegisterClassExW(&definition);
-            const HWND hwnd = CreateWindowExW(0, class_name, L"SparkMoE", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1200, 800, nullptr, nullptr, definition.hInstance, this);
+            const HWND hwnd = CreateWindowExW(0, class_name, L"Spark Edge", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1200, 800, nullptr, nullptr, definition.hInstance, this);
             if (hwnd) {
                 theme();
                 initialize_webview();

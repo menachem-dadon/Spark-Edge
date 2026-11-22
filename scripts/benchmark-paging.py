@@ -60,7 +60,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     common = [str(args.bin.resolve()), "-m", str(args.model.resolve()), "-p", "0", "-n", str(args.tokens),
               "-r", "2", "-b", "8", "-ub", "1", "-t", str(args.threads), "-ngl", "0", "-o", "json",
-              "--moe-paging", "explicit", "--moe-cache-mib", str(args.cache_mib)]
+              "--moe-paging", "explicit", "--moe-paging-cache-mib", str(args.cache_mib)]
     report = {"model": str(args.model.resolve()), "model_bytes": args.model.stat().st_size,
               "note": "No OS cache flush. Forward/reverse paired warm-cache observations; no speed threshold.", "runs": []}
     for ordinal, case in enumerate(cases + list(reversed(cases))):

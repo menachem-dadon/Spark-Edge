@@ -1,10 +1,11 @@
 <!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 <!-- Required Notice: Copyright (c) 2026 SparkMoE contributors. -->
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Check, LoaderCircle, RefreshCw, RotateCcw } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { SparkMoeService, type SparkMoeModelProfile } from '$lib/services/sparkmoe.service';
+	import { SparkMoeService, type SparkMoeModelProfile, type EnginePackage } from '$lib/services/sparkmoe.service';
 	import { sparkMoeProfileStore } from '$lib/stores/sparkmoe-profile.svelte';
 	import { untrack } from 'svelte';
 
@@ -19,13 +20,27 @@
 		model: string;
 		onApplied?: () => Promise<void>;
 	} = $props();
+	let engines = $state<EnginePackage[]>([]);
 	let loadError = $state('');
 	let action = $state('');
 	let actionMessage = $state('');
 	let draft = $derived(sparkMoeProfileStore.drafts.get(model));
 	let dirty = $derived(draft ? sparkMoeProfileStore.dirty(draft) : false);
 	let supportsReasoning = $derived(draft?.recommendation.supports_reasoning === true);
-	let supportsMtp = $derived(draft?.recommendation.supports_mtp);
+
+    let supportsMtp = $derived(draft?.recommendation.supports_mtp);
+    const speculativeMethods = [
+        'draft-simple', 'draft-eagle3', 'draft-mtp', 'draft-dflash', 'draft-dflash2', 'draft-dspark',
+        'draft-lilicorr', 'ngram-simple', 'ngram-map-k', 'ngram-map-k4v', 'ngram-mod', 'ngram-cache'
+    ];
+    let speculation = $derived((draft?.value.speculative_types || (draft?.value.mtp_enabled ? 'draft-mtp' : 'none')).split(','));
+
+    function toggleSpeculation(method: string, selected: boolean) {
+        const remaining = speculation.filter((type) => type !== 'none' && type !== method);
+        const compatible = selected && method.startsWith('draft-') ? remaining.filter((type) => !type.startsWith('draft-')) : remaining;
+        const methods = selected ? [...compatible, method] : compatible;
+        change('speculative_types', methods.join(',') || 'none');
+    }
 	type Field = {
 		key: keyof SparkMoeModelProfile;
 		label: string;
@@ -65,6 +80,7 @@
 				{ key: 'paged_layers', label: 'First layers to page (0 = all)', min: 0, max: 4096 },
 				{ key: 'ple_cache_mib', label: 'PLE page cache (MiB)', min: 1, max: 4096 },
 				{ key: 'cpu_repack', label: 'CPU weight repacking', options: ['auto', 'on', 'off'] },
+				{ key: 'gpu_expert_cache_mib', label: 'Expert VRAM cache (MiB)', min: 0, max: 262144 },
 				{ key: 'gpu_layers', label: 'GPU layers (-1 = automatic, 0 = CPU)', min: -1, max: 4096 }
 			]
 		},
@@ -98,11 +114,10 @@
 			]
 		},
 		{
-			title: 'Speculative decoding (MTP)',
+			title: 'Speculative decoding',
 			description:
 				'Requires a compatible model and draft weights. Unsupported combinations are rejected on load.',
 			fields: [
-				{ key: 'mtp_enabled', label: 'Enable MTP', type: 'boolean' },
 				{ key: 'mtp_model', label: 'Draft model path (empty = discover companion)', type: 'text' },
 				{ key: 'mtp_draft_tokens', label: 'Maximum draft tokens', min: 1, max: 64 },
 				{ key: 'mtp_min_tokens', label: 'Minimum draft tokens', min: 0, max: 64 },
@@ -114,6 +129,9 @@
 		}
 	];
 
+	$effect(() => {
+		void SparkMoeService.engines().then((status) => { engines = status.installed; }).catch(() => {});
+	});
 	$effect(() => {
 		const id = model;
 		loadError = '';
@@ -152,7 +170,7 @@
 {#snippet fieldControl(field: Field)}
 	{#if draft}
 		<label class="grid content-start gap-2 text-sm">
-			<span class="font-medium">{field.label}</span>
+			<span class="font-medium">{t(field.label)}</span>
 			{#if field.options}
 				<select
 					class="w-full rounded-md border border-input bg-background px-3 py-2"
@@ -200,7 +218,7 @@
 
 <Card.Root>
 	<Card.Header
-		><Card.Title>Model settings</Card.Title><Card.Description
+		><Card.Title>{t("Model settings")}</Card.Title><Card.Description
 			>Changes save automatically for this model. Apply them when you are ready to load or reload
 			it.</Card.Description
 		></Card.Header
@@ -212,7 +230,7 @@
 					loadError = '';
 					void sparkMoeProfileStore.load(model).catch((cause) => (loadError = String(cause)));
 				}}
-				variant="outline">Retry</Button
+				variant="outline">{t("Retry")}</Button
 			>
 		{:else if !draft}<p class="flex items-center gap-2 text-sm text-muted-foreground">
 				<LoaderCircle class="h-4 w-4 animate-spin" />Loading model settings...
@@ -229,11 +247,22 @@
 							class="mr-1 inline h-4 w-4"
 						/>Saved{/if}</span
 				>
-				{#if draft.error || dirty}<Button
+				<label class="flex flex-wrap items-center justify-between gap-2 text-sm">
+				<span>{t('Engine')}</span>
+				<select class="max-w-full rounded-md border bg-background px-2 py-1.5" dir="ltr"
+					value={draft.value.worker_engine ?? ''}
+					onchange={(event) => change('worker_engine', event.currentTarget.value)}>
+					<option value="">{t('Application default')}</option>
+					{#each engines as engine (engine.id)}
+						<option value={engine.id}>{engine.backend} · {engine.id.slice(engine.backend.length + 1, engine.backend.length + 9)}</option>
+					{/each}
+				</select>
+			</label>
+			{#if draft.error || dirty}<Button
 						disabled={draft.saving}
 						onclick={() => void run('discard', (id) => sparkMoeProfileStore.reload(id))}
 						size="sm"
-						variant="ghost">Discard draft</Button
+						variant="ghost">{t("Discard draft")}</Button
 					>{/if}
 			</div>
 			<fieldset class="space-y-5" disabled={action !== ''}>
@@ -278,9 +307,21 @@
 					</p>{/if}
 				{#each groups as group}
 					<details class="rounded-lg border border-border/60 p-4">
-						<summary class="cursor-pointer text-sm font-medium">{group.title}</summary>
-						<p class="mt-2 text-xs text-muted-foreground">{group.description}</p>
-						{#if group.title.includes('MTP') && supportsMtp !== true}<p
+						<summary class="cursor-pointer text-sm font-medium">{t(group.title)}</summary>
+						<p class="mt-2 text-xs text-muted-foreground">{t(group.description)}</p>
+						{#if group.title === 'Speculative decoding'}
+                        <fieldset class="grid grid-cols-2 gap-2 rounded-lg border p-3">
+                            <legend class="px-1 text-sm">{t("Methods")}</legend>
+                            {#each speculativeMethods as method (method)}
+                                <label class="flex items-center gap-2 text-xs">
+                                    <input type="checkbox" checked={speculation.includes(method)}
+                                        onchange={(event) => toggleSpeculation(method, event.currentTarget.checked)} />
+                                    <span dir="ltr">{method}</span>
+                                </label>
+                            {/each}
+                        </fieldset>
+                    {/if}
+                    {#if group.title === 'Speculative decoding' && speculation.includes('draft-mtp') && supportsMtp !== true}<p
 								class="mt-2 text-xs text-amber-600 dark:text-amber-400"
 							>
 								{supportsMtp === false
@@ -303,7 +344,7 @@
 										actionMessage = 'Cache resize accepted; it applies before the next decode.';
 									})}
 								size="sm"
-								variant="outline">Apply hybrid cache now</Button
+								variant="outline">{t("Apply hybrid cache now")}</Button
 							>{/if}
 					</details>
 				{/each}

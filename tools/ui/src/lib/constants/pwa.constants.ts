@@ -53,7 +53,7 @@ export const APPLE_ASSETS = {
 
 export const PWA_MANIFEST = {
 	background_color: THEME_COLORS.BACKGROUND_LIGHT,
-	description: 'SparkMoE local AI chat interface powered by llama.cpp',
+	description: 'Spark Edge local AI chat interface powered by llama.cpp',
 	display: 'standalone' as const,
 	icons: [
 		{ sizes: '64x64', src: 'pwa-64x64.png', type: 'image/png' },

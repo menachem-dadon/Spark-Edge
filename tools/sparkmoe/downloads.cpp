@@ -117,6 +117,15 @@ std::vector<std::string> download_urls(const std::string & url) {
 }
 }
 
+void https_download(const std::string & url, const std::function<void(const char *, size_t)> & consume) {
+    get_https(url, "Accept: application/json, application/octet-stream\r\n",
+        [](int status, const auto &, const auto &, const auto &) {
+            if (status != 200) throw std::runtime_error("Download returned HTTP " + std::to_string(status));
+            return true;
+        },
+        [&](const char * bytes, size_t count) { consume(bytes, count); return true; });
+}
+
 struct downloads::impl {
     std::filesystem::path directory, settings;
     std::function<void(const std::filesystem::path &)> imported;

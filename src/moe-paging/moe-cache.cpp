@@ -314,6 +314,34 @@ void layer_cache::queue_slot(int32_t expert, int32_t slot, bool speculative) {
     }
 }
 
+ggml_tensor * layer_cache::bind_device(const ggml_tensor * host, ggml_backend_t backend, uint64_t & bytes_left) {
+    std::lock_guard<std::recursive_mutex> lock(cache_mutex());
+    for (auto & pool : pools) {
+        if (pool.tensor != host) continue;
+        if (pool.device_tensor) return pool.device_tensor;
+        if (device && device != backend) return nullptr;
+        auto context = ggml_context_ptr(ggml_init({ggml_tensor_overhead() * 2, nullptr, true}));
+        if (!context) return nullptr;
+        auto * tensor = ggml_new_tensor_3d(context.get(), host->type, host->ne[0], host->ne[1], host->ne[2]);
+        auto * buft = ggml_backend_get_default_buffer_type(backend);
+        if (!buft || ggml_backend_buft_get_alloc_size(buft, tensor) > bytes_left) return nullptr;
+        auto buffer = ggml_backend_buffer_ptr(ggml_backend_alloc_ctx_tensors(context.get(), backend));
+        if (!buffer) return nullptr;
+        const size_t reserved = ggml_backend_buffer_get_size(buffer.get());
+        if (reserved > bytes_left) return nullptr;
+        bytes_left -= reserved;
+        ggml_format_name(tensor, "%s_device", host->name);
+        ggml_backend_buffer_set_usage(buffer.get(), GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+        pool.device_context = std::move(context);
+        pool.device_buffer = std::move(buffer);
+        pool.device_tensor = tensor;
+        pool.device_generations.resize(static_cast<size_t>(n_slots));
+        device = backend;
+        return tensor;
+    }
+    return nullptr;
+}
+
 void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * slot_ids, bool graph) {
     if (!expert_ids || !slot_ids || !count) { throw std::runtime_error("empty MoE routing request"); }
     std::unique_lock<std::recursive_mutex> lock(cache_mutex(), std::defer_lock);
@@ -376,7 +404,7 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
         }
         std::sort(misses.begin(), misses.end(), [](const auto & a, const auto & b) { return a.second < b.second; });
         for (const auto & miss : misses) { queue_slot(miss.first, miss.second, false); }
-        if (graph && overlap) {
+        if (graph && overlap && !device) {
             auto batch = std::make_shared<read_batch>();
             for (const int32_t expert : unique) {
                 for (const auto & pool : pools) { batch->reads.push_back(pool.readiness->reads[mapped[expert]]); }
@@ -390,6 +418,24 @@ void layer_cache::resolve(const int32_t * expert_ids, size_t count, int32_t * sl
             counters->add(metric::remap_wait_us, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - start).count()));
             if (!ok) { throw std::runtime_error("MoE expert demand read failed"); }
+        }
+        if (graph && device) {
+            bool synchronized = false;
+            for (auto & pool : pools) {
+                if (!pool.device_tensor) continue;
+                for (const auto expert : unique) {
+                    const auto slot = mapped.at(expert);
+                    const auto generation = entries[slot].generation;
+                    if (pool.device_generations[slot] == generation) continue;
+                    if (!synchronized) {
+                        ggml_backend_synchronize(device);
+                        synchronized = true;
+                    }
+                    const auto * data = static_cast<const char *>(pool.tensor->data) + slot * pool.tensor->nb[2];
+                    ggml_backend_tensor_set(pool.device_tensor, data, slot * pool.device_tensor->nb[2], pool.descriptor->expert_stride);
+                    pool.device_generations[slot] = generation;
+                }
+            }
         }
         for (size_t i = 0; i < count; ++i) { slot_ids[i] = mapped.at(expert_ids[i]); }
         previous_experts = unique;

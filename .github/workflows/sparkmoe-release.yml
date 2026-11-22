@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Required Notice: Copyright (c) 2026 SparkMoE contributors.
 
-name: SparkMoE release
+name: Spark Edge release
 
 on:
   push:
@@ -26,6 +26,9 @@ jobs:
       - if: matrix.variant == 'avx2'
         shell: pwsh
         run: ./scripts/build-installer.ps1
+      - if: matrix.variant == 'avx2'
+        shell: pwsh
+        run: ./scripts/package-engine-windows.ps1 -BuildDir build-windows-avx2 -Backend cpu -OutputDir artifacts/release
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.variant }}
@@ -45,7 +48,6 @@ jobs:
           stage="sparkmoe-${version}-linux-x64-${{ matrix.variant }}"
           mkdir -p "$stage/assets" "$stage/config" "$stage/docs" "$stage/licenses"
           cp build-linux-${{ matrix.variant }}/bin/{SparkMoE,llama-cli,llama-server,llama-bench,sparkmoe-iobench} "$stage/"
-          cp tools/sparkmoe/dashboard.html "$stage/"
           cp -r assets/branding "$stage/assets/"
           cp -r config/presets "$stage/config/"
           cp LICENSE LICENSE-SPARKMOE-NONCOMMERCIAL.md LICENSING.md NOTICE THIRD_PARTY_NOTICES.md VERSION "$stage/licenses/"

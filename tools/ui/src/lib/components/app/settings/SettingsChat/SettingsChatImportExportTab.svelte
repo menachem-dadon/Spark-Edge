@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import SettingsChatImportExportSection from './SettingsChatImportExportSection.svelte';
 	import { Download, Trash2, Upload } from '@lucide/svelte';
 	import {
@@ -293,7 +294,7 @@
 		/>
 	</SettingsGroup>
 
-	<SettingsGroup title="Settings">
+	<SettingsGroup title={t("Settings")}>
 		<SettingsChatImportExportSection
 			title="Export"
 			description="Export your chat settings and preferences as a JSON file."

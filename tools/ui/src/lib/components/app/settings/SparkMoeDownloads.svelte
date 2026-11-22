@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 <!-- Required Notice: Copyright (c) 2026 SparkMoE contributors. -->
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Download, LoaderCircle, Pause, Play, Search } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { SparkMoeService, type SparkMoeDownload } from '$lib/services/sparkmoe.service';
@@ -75,7 +76,7 @@
 			placeholder="Search models"
 			bind:value={query}
 		/><Button disabled={!query.trim() || busy !== ''} type="submit" variant="outline"
-			><Search />Search</Button
+			><Search />{t("Search")}</Button
 		>
 	</form>
 	{#if searched && !results.length}<p class="text-sm text-muted-foreground">
@@ -141,7 +142,7 @@
 				placeholder="https://huggingface.co/.../resolve/main/model.gguf"
 				type="url"
 				bind:value={url}
-			/><Button disabled={!url.trim() || busy !== ''} type="submit"><Download />Download</Button>
+			/><Button disabled={!url.trim() || busy !== ''} type="submit"><Download />{t("Download")}</Button>
 		</form>
 	</details>
 	{#if busy}<p class="flex items-center gap-2 text-sm text-muted-foreground">

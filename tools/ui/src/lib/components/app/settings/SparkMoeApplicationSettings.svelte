@@ -6,6 +6,7 @@
 </script>
 
 <script lang="ts">
+	import { appLocale, t, type AppLocale } from '$lib/i18n/locale.svelte';
 	import { LoaderCircle, RefreshCw } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -15,6 +16,11 @@
 		type SparkMoeRouterConfig
 	} from '$lib/services/sparkmoe.service';
 	import { onMount } from 'svelte';
+	async function changeLanguage(language: AppLocale) {
+		appLocale.select(language);
+		await SparkMoeService.saveApplication({ locale: language }).catch(() => {});
+	}
+
 	let config = $state<SparkMoeApplication | null>(draftCache);
 	let saved = $state<SparkMoeApplication | null>(savedCache);
 	let models = $state<SparkMoeLibraryModel[]>([]);
@@ -118,7 +124,16 @@
 {#if available && config}
 	<section class="space-y-4 rounded-lg border border-border/60 p-4">
 		<div>
-			<h4 class="text-sm font-semibold">SparkMoE application</h4>
+			<h4 class="text-sm font-semibold">{t("Spark Edge application")}</h4>
+            <label class="flex items-center justify-between gap-3 text-sm">
+                <span>{t('Application language')}</span>
+                <select class="rounded-md border bg-background px-3 py-1.5" value={appLocale.language}
+                    onchange={(event) => void changeLanguage(event.currentTarget.value as AppLocale)}>
+                    <option value="he">עברית</option>
+                    <option value="en">English</option>
+                </select>
+            </label>
+
 			<p class="mt-1 text-xs text-muted-foreground">
 				Saved on this computer. Model settings are managed in the model library.
 			</p>
@@ -126,7 +141,7 @@
 		<fieldset class="space-y-4" disabled={saving}>
 			<label class="flex items-start justify-between gap-4 text-sm"
 				><span
-					>Keep SparkMoE in the background<span class="mt-1 block text-xs text-muted-foreground"
+					>{t("Keep Spark Edge in the background")}<span class="mt-1 block text-xs text-muted-foreground"
 						>Closing the window keeps the local server available. Exit from the tray to stop it.</span
 					></span
 				><input
@@ -140,7 +155,7 @@
 				/></label
 			>
 			<label class="flex items-center justify-between gap-4 text-sm"
-				><span>Launch SparkMoE when I sign in to Windows</span><input
+				><span>{t("Launch Spark Edge when I sign in to Windows")}</span><input
 					checked={config.launch_at_login}
 					onchange={(event) => {
 						config!.launch_at_login = event.currentTarget.checked;
@@ -150,7 +165,7 @@
 				/></label
 			>
 			<label class="grid gap-2 text-sm"
-				><span>Default model</span><select
+				><span>{t("Default model")}</span><select
 					class="rounded-md border border-input bg-background px-3 py-2"
 					onchange={(event) => {
 						config!.default_model = event.currentTarget.value;
@@ -177,7 +192,7 @@
 						else void save();
 					}}
 					size="sm"
-					variant="outline">Retry</Button
+					variant="outline">{t("Retry")}</Button
 				>{:else}{dirty ? 'Unsaved changes' : message || 'Saved'}{/if}
 		</div>
 		{#if router}<details class="border-t border-border/50 pt-4">
@@ -220,7 +235,7 @@
 						/>Load models automatically for API requests</label
 					>
 					<p class="text-xs text-muted-foreground">
-						The SparkMoE application address stays the same. Restarting stops loaded models and
+						The Spark Edge application address stays the same. Restarting stops loaded models and
 						active requests.
 					</p>
 					<div class="flex flex-wrap gap-2">

@@ -1,18 +1,8 @@
-# SparkMoE branding assets
+# Spark Edge branding
 
-Replace these two files while keeping their exact names:
+The Spark Edge SVG studio supplied the static artwork and its Kinetic Boot animation. The installed app plays the boot animation once when the interface opens. Reduced-motion mode uses the static mark.
 
-- `SparkMoE.png`: chat, SparkMoE page, PWA, and browser artwork. Use a square PNG with transparency.
-- `SparkMoE.ico`: Windows executable, installer, uninstall entry, Start menu, desktop shortcut, and browser icon.
-
-The ICO should contain square images at 16, 24, 32, 48, 64, 128, and 256 pixels. Keep important artwork away from the outer 8 percent so Windows does not crop it at small sizes.
-
-After replacing either file, rebuild and package:
-
-```powershell
-.\scripts\build-windows.ps1 -Variant avx2 -RunTests
-.\scripts\package-windows.ps1 -BuildDir .\build-windows-avx2 -Variant avx2
-.\scripts\build-installer.ps1
-```
-
-The UI build derives its PWA sizes from the PNG. Do not rename either file; the Web UI, portable package, and installer all use these paths.
+- \`spark-edge-static.svg\` is the app mark.
+- \`spark-edge-boot.svg\` is the startup animation.
+- \`spark-edge.png\` supplies the PWA artwork and \`spark-edge.ico\` supplies Windows system icons from 16 to 256 pixels.
+- spark-edge-inference.svg is shown in chat tabs while a response is running.

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { AlertTriangle, CheckCircle, Key, RefreshCw, XCircle } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
@@ -228,7 +229,7 @@
 						class="flex-1"
 						disabled={apiKeyState === 'validating'}
 					>
-						Cancel
+						{t("Cancel")}
 					</Button>
 				</div>
 			</div>

@@ -141,6 +141,30 @@ ggml_tensor * paging_manager::bind_pool(int32_t layer, const ggml_tensor * origi
     return get_or_create_layer(layer).bind_tensor(original, *descriptor);
 }
 
+void paging_manager::configure_devices(std::vector<ggml_backend_t> backends, uint64_t cache_bytes) {
+    layer_devices = std::move(backends);
+    for (auto backend : layer_devices) {
+        if (!backend || device_budget.count(backend)) continue;
+        size_t free = 0;
+        size_t total = 0;
+        ggml_backend_dev_memory(ggml_backend_get_device(backend), &free, &total);
+        const uint64_t headroom = 512ull * 1024 * 1024;
+        device_budget[backend] = free > headroom ? std::min<uint64_t>(cache_bytes, free - headroom) : 0;
+    }
+}
+
+ggml_backend_t paging_manager::device_for_layer(int32_t layer) const {
+    return layer >= 0 && size_t(layer) < layer_devices.size() ? layer_devices[layer] : nullptr;
+}
+
+ggml_tensor * paging_manager::bind_device_pool(int32_t layer, const ggml_tensor * host) {
+    auto backend = device_for_layer(layer);
+    if (!backend) return nullptr;
+    auto & cache = get_or_create_layer(layer);
+    std::lock_guard<std::mutex> lock(mutex);
+    return cache.bind_device(host, backend, device_budget.at(backend));
+}
+
 bool paging_manager::handles_layer(int32_t layer) const {
     return index.has_layer(layer);
 }

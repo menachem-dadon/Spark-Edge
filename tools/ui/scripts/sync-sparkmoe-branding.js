@@ -10,7 +10,10 @@ const brandingDirectory = resolve(repositoryRoot, 'assets', 'branding');
 const staticDirectory = resolve(scriptDirectory, '..', 'static');
 
 mkdirSync(staticDirectory, { recursive: true });
-copyFileSync(resolve(brandingDirectory, 'SparkMoE.png'), resolve(staticDirectory, 'SparkMoE.png'));
-copyFileSync(resolve(brandingDirectory, 'SparkMoE.ico'), resolve(staticDirectory, 'favicon.ico'));
-copyFileSync(resolve(brandingDirectory, 'SparkMoE.ico'), resolve(staticDirectory, 'favicon-dark.ico'));
-
+for (const variant of ['static', 'boot', 'inference']) {
+    const name = 'spark-edge-' + variant + '.svg';
+    copyFileSync(resolve(brandingDirectory, name), resolve(staticDirectory, name));
+}
+copyFileSync(resolve(brandingDirectory, 'spark-edge.png'), resolve(staticDirectory, 'spark-edge.png'));
+copyFileSync(resolve(brandingDirectory, 'spark-edge.ico'), resolve(staticDirectory, 'favicon.ico'));
+copyFileSync(resolve(brandingDirectory, 'spark-edge.ico'), resolve(staticDirectory, 'favicon-dark.ico'));

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { AlertTriangle, Loader2, RefreshCw } from '@lucide/svelte';
 	import * as Alert from '$lib/components/ui/alert';
 	import { ICON_CLASS_DEFAULT } from '$lib/constants';
@@ -18,7 +19,7 @@
 			{/if}
 
 			<Alert.Title class="flex items-center justify-between">
-				<span>{isLoadingModel ? 'Loading model' : 'Server unavailable'}</span>
+				<span>{t(isLoadingModel ? 'Loading model' : 'Server unavailable')}</span>
 
 				{#if !isLoadingModel}
 					<button
@@ -27,7 +28,7 @@
 						class="flex items-center gap-1.5 rounded-lg bg-destructive/20 px-2 py-1 text-xs font-medium hover:bg-destructive/30 disabled:opacity-50"
 					>
 						<RefreshCw class="h-3 w-3 {serverStore.loading ? 'animate-spin' : ''}" />
-						{serverStore.loading ? 'Retrying...' : 'Retry'}
+						{t(serverStore.loading ? 'Retrying...' : 'Retry')}
 					</button>
 				{/if}
 			</Alert.Title>

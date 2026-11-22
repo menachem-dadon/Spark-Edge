@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	// Fall-through renderer for tool calls without a dedicated block.
 	// Renders section.toolArgs / section.toolResult directly using the
 	// shared chrome shell.
@@ -38,7 +39,7 @@
 	{#snippet children(_meta, ctx)}
 		{#if ctx.isStreamingCall}
 			<div class="mb-2 flex items-center gap-2 text-xs text-muted-foreground/70">
-				<span>Input</span>
+				<span>{t("Input")}</span>
 				{#if ctx.isStreaming}
 					<Loader2 class="h-3 w-3 animate-spin" />
 				{/if}
@@ -65,7 +66,7 @@
 			{@const showInput = Boolean(section.toolArgs)}
 			{#if showInput}
 				<div class="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground/70">
-					<span>Input</span>
+					<span>{t("Input")}</span>
 				</div>
 				<SyntaxHighlightedCode
 					code={formatJsonPretty(section.toolArgs ?? '')}
@@ -79,7 +80,7 @@
 					? 'mt-4 mb-1.5 flex items-center gap-2 text-xs text-muted-foreground/70'
 					: 'mb-1.5 flex items-center gap-2 text-xs text-muted-foreground/70'}
 			>
-				<span>Output</span>
+				<span>{t("Output")}</span>
 				{#if ctx.isPending}
 					<Loader2 class="h-3 w-3 animate-spin" />
 				{/if}

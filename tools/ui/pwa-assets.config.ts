@@ -17,7 +17,7 @@ export default defineConfig({
 	headLinkOptions: {
 		preset: PWA_ASSET_GENERATOR.LINK_PRESET
 	},
-	images: ['static/SparkMoE.png'],
+	images: ['static/spark-edge.png'],
 	preset: combinePresetAndAppleSplashScreens(
 		{
 			...minimal2023Preset,
@@ -29,8 +29,8 @@ export default defineConfig({
 		},
 		{
 			darkImageResolver: async (imageName: string) => {
-				if (imageName.endsWith('SparkMoE.png')) {
-					return readFileSync(resolve('static/SparkMoE.png'));
+				if (imageName.endsWith('spark-edge.png')) {
+					return readFileSync(resolve('static/spark-edge.png'));
 				}
 			},
 			darkResizeOptions: {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import ChatMessageActionCard from './ChatMessageActionCard.svelte';
 	import { RotateCw } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -24,7 +25,7 @@
 			class="text-destructive hover:text-destructive"
 			onclick={() => onDecision(false)}
 		>
-			Stop
+			{t("Stop")}
 		</Button>
 	{/snippet}
 </ChatMessageActionCard>

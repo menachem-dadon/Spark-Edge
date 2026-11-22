@@ -4,10 +4,10 @@
 #include "log.h"
 #include "download.h"
 
-#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <algorithm>
 #include <regex>
 
 static std::string rm_leading_dashes(const std::string & str) {
@@ -168,12 +168,16 @@ void common_preset::apply_to_params(common_params & params, const std::set<std::
     }
 }
 
-static std::map<std::string, std::map<std::string, std::string>> parse_ini_from_file(const std::string & path) {
+static std::map<std::string, std::map<std::string, std::string>> parse_ini_from_file(const std::filesystem::path & path) {
     std::map<std::string, std::map<std::string, std::string>> parsed;
 
-    std::ifstream file = fs_open_ifstream(path, std::ios::in);
+    if (!std::filesystem::exists(path)) {
+        throw std::runtime_error("preset file does not exist: " + path.string());
+    }
+
+    std::ifstream file(path);
     if (!file.good()) {
-        throw std::runtime_error("preset file does not exist or cannot be opened: " + path);
+        throw std::runtime_error("failed to open server preset file: " + path.string());
     }
 
     std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -222,7 +226,7 @@ static std::map<std::string, std::map<std::string, std::string>> parse_ini_from_
     common_peg_parse_context ctx(contents);
     const auto result = parser.parse(ctx);
     if (!result.success()) {
-        throw std::runtime_error("failed to parse server config file: " + path);
+        throw std::runtime_error("failed to parse server config file: " + path.string());
     }
 
     std::string current_section = COMMON_PRESET_DEFAULT_NAME;
@@ -279,7 +283,7 @@ common_preset_context::common_preset_context(llama_example ex)
     key_to_opt = get_map_key_opt(ctx_params);
 }
 
-common_presets common_preset_context::load_from_ini(const std::string & path, common_preset & global) const {
+common_presets common_preset_context::load_from_ini(const std::filesystem::path & path, common_preset & global) const {
     common_presets out;
     auto ini_data = parse_ini_from_file(path);
 
@@ -320,7 +324,7 @@ common_presets common_preset_context::load_from_ini(const std::string & path, co
                 }
                 LOG_DBG("accepted option: %s = %s\n", key.c_str(), preset.options[opt].c_str());
             } else if (ignore_unknown_keys) {
-                LOG_WRN("ignoring option '%s' from %s: not supported by this program\n", key.c_str(), path.c_str());
+                LOG_WRN("ignoring option '%s' from %s: not supported by this program\n", key.c_str(), path.string().c_str());
             } else {
                 throw std::runtime_error(string_format(
                     "option '%s' not recognized in preset '%s'",
@@ -373,7 +377,7 @@ struct local_model_directory {
 };
 
 // TODO @ngxson: handle "eagle3-" when it's supported by common_speculative_types_from_gguf()
-static const char * draft_prefixes[] = { "mtp-", "dspark-", "dflash-" };
+static const char * draft_prefixes[] = { "mtp-", "eagle3-", "dspark-", "dflash-", "dflash2-", "lilicorr-" };
 
 static bool is_mmproj_file(const std::string & fname) {
     return fname.find("mmproj") != std::string::npos;

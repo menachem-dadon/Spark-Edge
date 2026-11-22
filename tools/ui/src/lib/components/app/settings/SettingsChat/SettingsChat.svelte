@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { RefreshCw } from '@lucide/svelte';
 	import { page } from '$app/state';
 	import {
@@ -189,7 +190,7 @@
 
 							{#if advancedFields.length}
 								<details class="rounded-lg border border-border/60 p-4">
-									<summary class="cursor-pointer text-sm font-medium">Advanced settings</summary>
+									<summary class="cursor-pointer text-sm font-medium">{t("Advanced settings")}</summary>
 									<div class="mt-5 space-y-6">
 										<SettingsChatFields
 											fields={advancedFields}
@@ -226,7 +227,7 @@
 						<Button onclick={handleSave} size="sm" variant="outline">Retry saving</Button><Button
 							onclick={handleReset}
 							size="sm"
-							variant="ghost">Discard draft</Button
+							variant="ghost">{t("Discard draft")}</Button
 						>
 					</div>{:else}<p class="text-muted-foreground">{saveStatus}</p>{/if}
 			</div>

@@ -1,11 +1,11 @@
 # Benchmarking
 
-`llama-bench` accepts `--moe-paging`, `--moe-cache-mib`, `--moe-slots`, and `--moe-io-threads`. CSV and JSON/JSONL output include mode, full cache configuration, hits, misses, hit rate, bytes read, bytes/token, read count, and evictions.
+`llama-bench` accepts `--moe-paging`, `--moe-paging-cache-mib`, `--moe-slots`, and `--moe-io-threads`. CSV and JSON/JSONL output include mode, full cache configuration, hits, misses, hit rate, bytes read, bytes/token, read count, and evictions.
 
 Cold example:
 
 ```powershell
-llama-bench.exe -m model.gguf --moe-paging explicit --moe-cache-mib 1536 --moe-io-threads 3 --no-warmup -r 1 -o json
+llama-bench.exe -m model.gguf --moe-paging explicit --moe-paging-cache-mib 1536 --moe-io-threads 3 --no-warmup -r 1 -o json
 ```
 
 Warm example removes `--no-warmup` and uses multiple repetitions. Paging stats are reset after the warmup so reported counters describe measured repetitions.

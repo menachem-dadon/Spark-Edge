@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="se-clip">
+      <rect x="24" y="24" width="464" height="464" rx="112" ry="112"/>
+    </clipPath>
+    <linearGradient id="se-chassis" x1="12%" y1="0%" x2="88%" y2="100%">
+      <stop offset="0%" stop-color="#0E1529"/>
+      <stop offset="48%" stop-color="#070A14"/>
+      <stop offset="100%" stop-color="#0D0B1F"/>
+    </linearGradient>
+    <radialGradient id="se-ac" cx="28%" cy="22%" r="54%">
+      <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.28"/>
+      <stop offset="55%" stop-color="#0284C7" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="se-av" cx="76%" cy="78%" r="56%">
+      <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.30"/>
+      <stop offset="55%" stop-color="#4F46E5" stop-opacity="0.09"/>
+      <stop offset="100%" stop-color="#4F46E5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="se-cb" cx="50%" cy="50%" r="36%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.42"/>
+      <stop offset="45%" stop-color="#818CF8" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="se-bo" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.44"/>
+      <stop offset="25%" stop-color="#67E8F9" stop-opacity="0.28"/>
+      <stop offset="68%" stop-color="#818CF8" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#C084FC" stop-opacity="0.38"/>
+    </linearGradient>
+    <linearGradient id="se-bi" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="30%" stop-color="#FFFFFF" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="se-ut" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#67E8F9" stop-opacity="0.92"/>
+      <stop offset="48%" stop-color="#E0F7FF" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.88"/>
+    </linearGradient>
+    <linearGradient id="se-uf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.85"/>
+      <stop offset="55%" stop-color="#2563EB" stop-opacity="0.78"/>
+      <stop offset="100%" stop-color="#1E3A8A" stop-opacity="0.88"/>
+    </linearGradient>
+    <linearGradient id="se-us" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#0284C7" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="se-lt" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.92"/>
+      <stop offset="45%" stop-color="#8B5CF6" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="se-lf" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#6D28D9" stop-opacity="0.86"/>
+      <stop offset="55%" stop-color="#4338CA" stop-opacity="0.82"/>
+      <stop offset="100%" stop-color="#1E1B4B" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="se-ls" x1="50%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#5B21B6" stop-opacity="0.74"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.94"/>
+    </linearGradient>
+    <linearGradient id="se-su" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.06"/>
+      <stop offset="50%" stop-color="#67E8F9" stop-opacity="0.52"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="se-sl" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#A78BFA" stop-opacity="0.06"/>
+      <stop offset="50%" stop-color="#A78BFA" stop-opacity="0.52"/>
+      <stop offset="100%" stop-color="#E9D5FF" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="se-eb" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0"/>
+      <stop offset="22%" stop-color="#67E8F9" stop-opacity="0.92"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="78%" stop-color="#C4B5FD" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="se-esu" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="se-esl" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#EDE9FE" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#A78BFA" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="se-sheen-g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="se-drop" x="-16%" y="-16%" width="132%" height="132%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#02040B" flood-opacity="0.65"/>
+    </filter>
+    <filter id="se-bs" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#020617" flood-opacity="0.7"/>
+    </filter>
+    <filter id="se-pg" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="b1"/>
+      <feGaussianBlur stdDeviation="2.5" result="b2"/>
+      <feMerge>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#se-drop)">
+    <rect x="24" y="24" width="464" height="464" rx="112" ry="112" fill="url(#se-chassis)"/>
+  </g>
+
+  <g clip-path="url(#se-clip)">
+    <rect x="24" y="24" width="464" height="464" fill="url(#se-ac)"/>
+    <rect x="24" y="24" width="464" height="464" fill="url(#se-av)"/>
+    <rect class="se-bloom" x="24" y="24" width="464" height="464" fill="url(#se-cb)"/>
+
+    <rect x="38" y="38" width="436" height="436" rx="98" ry="98"
+          fill="none" stroke="url(#se-bi)" stroke-width="2"/>
+
+    <!-- שכבות MoE מרובודות עליונות -->
+    <g class="se-slices-up" fill="none" stroke-linecap="round">
+      <path class="se-sl-u1" d="M 110 202 L 326 84" stroke="url(#se-su)" stroke-width="3.2" stroke-opacity="0.55"/>
+      <path class="se-sl-u2" d="M 102 184 L 292 80" stroke="url(#se-su)" stroke-width="2.2" stroke-opacity="0.34"/>
+      <path class="se-sl-u3" d="M 96 168 L 254 82" stroke="url(#se-su)" stroke-width="1.5" stroke-opacity="0.18"/>
+    </g>
+
+    <!-- שכבות MoE מרובודות תחתונות -->
+    <g class="se-slices-lo" fill="none" stroke-linecap="round">
+      <path class="se-sl-l1" d="M 402 310 L 186 428" stroke="url(#se-sl)" stroke-width="3.2" stroke-opacity="0.55"/>
+      <path class="se-sl-l2" d="M 410 328 L 220 432" stroke="url(#se-sl)" stroke-width="2.2" stroke-opacity="0.34"/>
+      <path class="se-sl-l3" d="M 416 344 L 258 430" stroke="url(#se-sl)" stroke-width="1.5" stroke-opacity="0.18"/>
+    </g>
+
+    <!-- להב עליון תלת-ממדי -->
+    <g class="se-blade-up" filter="url(#se-bs)">
+      <polygon points="376,92 246,184 322,208" fill="url(#se-us)"/>
+      <polygon points="118,224 168,248 322,208 246,184" fill="url(#se-uf)"/>
+      <polygon points="376,92 118,224 246,184" fill="url(#se-ut)"/>
+      <polyline points="118,224 376,92 322,208" fill="none" stroke="url(#se-esu)" stroke-width="2.2" stroke-linejoin="round"/>
+      <polyline points="118,224 246,184 376,92" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="1.5" stroke-linejoin="round"/>
+      <line x1="168" y1="248" x2="322" y2="208" stroke="#BAE6FD" stroke-opacity="0.82" stroke-width="2" stroke-linecap="round"/>
+    </g>
+
+    <!-- להב תחתון תלת-ממדי -->
+    <g class="se-blade-lo" filter="url(#se-bs)">
+      <polygon points="136,420 266,328 190,304" fill="url(#se-ls)"/>
+      <polygon points="394,288 344,264 190,304 266,328" fill="url(#se-lf)"/>
+      <polygon points="136,420 394,288 266,328" fill="url(#se-lt)"/>
+      <polyline points="394,288 136,420 190,304" fill="none" stroke="url(#se-esl)" stroke-width="2.2" stroke-linejoin="round"/>
+      <polyline points="394,288 266,328 136,420" fill="none" stroke="#EDE9FE" stroke-opacity="0.50" stroke-width="1.5" stroke-linejoin="round"/>
+      <line x1="344" y1="264" x2="190" y2="304" stroke="#DDD6FE" stroke-opacity="0.82" stroke-width="2" stroke-linecap="round"/>
+    </g>
+
+    <!-- תפר הניצוץ האלכסוני (Spark Edge) -->
+    <g class="se-beam-wrap" filter="url(#se-pg)">
+      <line class="se-beam" x1="146" y1="284" x2="366" y2="228" stroke="url(#se-eb)" stroke-width="5.5" stroke-linecap="round"/>
+      <line x1="184" y1="274" x2="328" y2="238" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"/>
+      <polygon class="se-spark" points="256,232 269,252 292,247 269,260 256,280 243,260 220,265 243,252" fill="#FFFFFF"/>
+    </g>
+
+
+
+    <path d="M 136 24 L 376 24 C 438 24 488 74 488 136 L 488 148 C 392 98 120 98 24 148 L 24 136 C 24 74 74 24 136 24 Z"
+          fill="#FFFFFF" fill-opacity="0.04"/>
+  </g>
+
+  <rect x="25.5" y="25.5" width="461" height="461" rx="110.5" ry="110.5"
+        fill="none" stroke="url(#se-bo)" stroke-width="3"/>
+</svg>

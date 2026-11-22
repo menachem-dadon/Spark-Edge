@@ -16,6 +16,7 @@ public:
         std::string url;
         std::filesystem::path user_data_directory;
         std::function<bool()> keep_in_background;
+        std::function<bool()> use_hebrew;
         std::function<bool()> has_active_requests;
         std::function<void()> request_shutdown;
         std::function<void(const std::string &)> log;

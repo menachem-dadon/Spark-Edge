@@ -40,7 +40,7 @@ def main():
         command = [str(args.bin.resolve()), "-m", str(args.model.resolve()), "--host", "127.0.0.1", "--port", str(port),
                    "-c", "256", "-b", "16", "-ub", "8", "-t", "4", "-ngl", "0", "--parallel", "1",
                    "--fit", "off", "--no-warmup", "--metrics", "--moe-paging", "explicit",
-                   "--moe-cache-mib", str(args.cache_mib), "--moe-io-threads", "4"]
+                   "--moe-paging-cache-mib", str(args.cache_mib), "--moe-io-threads", "4"]
         if mtp:
             command += ["--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--spec-draft-ngl", "0",
                         "--spec-draft-threads", "4"]

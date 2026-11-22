@@ -29,6 +29,9 @@ public:
     ~paging_manager();
 
     ggml_tensor * bind_pool(int32_t layer, const ggml_tensor * original);
+    void configure_devices(std::vector<ggml_backend_t> backends, uint64_t cache_bytes);
+    ggml_backend_t device_for_layer(int32_t layer) const;
+    ggml_tensor * bind_device_pool(int32_t layer, const ggml_tensor * host);
     ggml_tensor * remap_ids(ggml_context * ctx, ggml_tensor * selected_experts, int32_t layer);
     bool handles_layer(int32_t layer) const;
     bool set_expert_pinned(int32_t layer, int32_t expert, bool pinned);
@@ -57,6 +60,8 @@ private:
     int64_t minimum_slots;
     std::shared_ptr<io_executor> executor;
     std::shared_ptr<cache_budget> budget;
+    std::vector<ggml_backend_t> layer_devices;
+    std::unordered_map<ggml_backend_t, uint64_t> device_budget;
     uint64_t minimum_budget = 0;
     uint64_t minimum_resize_budget = 0;
     std::atomic<uint64_t> pending_resize{0};

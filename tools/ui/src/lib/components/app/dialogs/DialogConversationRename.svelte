@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Pencil } from '@lucide/svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
@@ -79,9 +80,9 @@
 		</form>
 
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Cancel>{t("Cancel")}</AlertDialog.Cancel>
 
-			<Button type="button" onclick={handleSubmit} disabled={!canSubmit}>Save</Button>
+			<Button type="button" onclick={handleSubmit} disabled={!canSubmit}>{t("Save")}</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
