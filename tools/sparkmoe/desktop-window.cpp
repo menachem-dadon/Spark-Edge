@@ -9,6 +9,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <windowsx.h>
 #include <shellapi.h>
 #include <WebView2.h>
 #include <WebView2EnvironmentOptions.h>
@@ -49,6 +50,8 @@ struct desktop_window::implementation {
     bool ever_ready = false;
     bool failed = false;
     bool recovered = false;
+    bool custom_frame = false;
+    bool reveal_pending = false;
     HMODULE loader = nullptr;
     create_environment_fn create_environment = nullptr;
     ComPtr<ICoreWebView2Environment> environment;
@@ -110,6 +113,16 @@ struct desktop_window::implementation {
             controller->put_Bounds(bounds);
             controller->NotifyParentWindowPositionChanged();
         }
+    }
+
+    void reveal_when_visible() {
+        const HWND hwnd = window.load();
+        if (!reveal_pending || !webview || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return;
+        const HRESULT result = webview->ExecuteScript(
+            IsZoomed(hwnd)
+                ? L"document.documentElement.dataset.maximized = 'true'; window.dispatchEvent(new Event('spark-edge-visible'));"
+                : L"window.dispatchEvent(new Event('spark-edge-visible'));", nullptr);
+        if (SUCCEEDED(result)) reveal_pending = false;
     }
 
     void theme() {
@@ -192,12 +205,38 @@ struct desktop_window::implementation {
         }
         result = settings->put_AreHostObjectsAllowed(FALSE);
         if (FAILED(result)) { return result; }
-        result = settings->put_IsWebMessageEnabled(FALSE);
+        ComPtr<ICoreWebView2Settings9> non_client;
+        custom_frame = SUCCEEDED(settings.As(&non_client)) &&
+            SUCCEEDED(non_client->put_IsNonClientRegionSupportEnabled(TRUE));
+        result = settings->put_IsWebMessageEnabled(custom_frame);
         if (FAILED(result)) { return result; }
         settings->put_AreDevToolsEnabled(FALSE);
         settings->put_IsStatusBarEnabled(FALSE);
         const std::weak_ptr<int> lifetime = callbacks;
         EventRegistrationToken token{};
+        if (custom_frame) {
+            result = webview->add_WebMessageReceived(Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                [this, lifetime](ICoreWebView2 *, ICoreWebView2WebMessageReceivedEventArgs * args) -> HRESULT {
+                    if (lifetime.expired()) { return S_OK; }
+                    LPWSTR source = nullptr;
+                    args->get_Source(&source);
+                    const bool allowed = source && trusted(source);
+                    CoTaskMemFree(source);
+                    LPWSTR message = nullptr;
+                    if (allowed && SUCCEEDED(args->TryGetWebMessageAsString(&message)) && message) {
+                        const std::wstring command(message);
+                        const HWND hwnd = window.load();
+                        if (command == L"window:minimize") PostMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+                        if (command == L"window:toggle-maximize") PostMessageW(hwnd, WM_SYSCOMMAND, IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE, 0);
+                        if (command == L"window:close") PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    }
+                    CoTaskMemFree(message);
+                    return S_OK;
+                }).Get(), &token);
+            if (FAILED(result)) { return result; }
+        }
+        SetWindowPos(window.load(), nullptr, 0, 0, 0, 0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         result = webview->add_NavigationStarting(Callback<ICoreWebView2NavigationStartingEventHandler>([this, lifetime](ICoreWebView2 *, ICoreWebView2NavigationStartingEventArgs * args) -> HRESULT {
             if (lifetime.expired()) { return S_OK; }
             LPWSTR raw = nullptr;
@@ -278,6 +317,8 @@ struct desktop_window::implementation {
                     ShowWindow(window.load(), restore_placement());
                     SetForegroundWindow(window.load());
                 }
+                reveal_pending = true;
+                reveal_when_visible();
                 ever_ready = true;
                 complete(true);
                 log("navigation ready");
@@ -307,7 +348,16 @@ struct desktop_window::implementation {
         resize();
         result = controller->put_IsVisible(IsWindowVisible(window.load()) && !IsIconic(window.load()));
         if (FAILED(result)) { return result; }
-        return webview->Navigate(url.c_str());
+        return webview->AddScriptToExecuteOnDocumentCreated(
+            custom_frame ? L"if (window.top === window) {window.sparkEdgeNative = true; window.sparkEdgeFrame = true;}"
+                         : L"if (window.top === window) window.sparkEdgeNative = true;",
+            Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+                [this, lifetime](HRESULT status, PCWSTR) -> HRESULT {
+                    if (lifetime.expired()) { return S_OK; }
+                    if (SUCCEEDED(status)) status = webview->Navigate(url.c_str());
+                    if (FAILED(status)) fail("startup navigation", status);
+                    return S_OK;
+                }).Get());
     }
 
     void initialize_webview() {
@@ -349,9 +399,40 @@ struct desktop_window::implementation {
             case show_message:
                 ShowWindow(hwnd, IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
                 SetForegroundWindow(hwnd);
+                self->reveal_when_visible();
                 if (self->controller) { self->controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC); }
                 return 0;
+            case WM_NCCALCSIZE:
+                if (self->custom_frame && wparam) {
+                    auto & client = reinterpret_cast<NCCALCSIZE_PARAMS *>(lparam)->rgrc[0];
+                    const LONG top = client.top;
+                    DefWindowProcW(hwnd, message, wparam, lparam);
+                    const UINT dpi = GetDpiForWindow(hwnd);
+                    client.top = top + GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) +
+                        GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+                    return 0;
+                }
+                break;
+            case WM_NCHITTEST:
+                if (self->custom_frame && !IsZoomed(hwnd)) {
+                    POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+                    ScreenToClient(hwnd, &point);
+                    if (point.y < 0) {
+                        RECT client{};
+                        GetClientRect(hwnd, &client);
+                        if (point.x < 0) return HTTOPLEFT;
+                        if (point.x >= client.right) return HTTOPRIGHT;
+                        return HTTOP;
+                    }
+                }
+                break;
             case WM_SIZE:
+                self->reveal_when_visible();
+                if (self->custom_frame && self->webview && self->ever_ready && wparam != SIZE_MINIMIZED) {
+                    self->webview->ExecuteScript(wparam == SIZE_MAXIMIZED
+                        ? L"document.documentElement.dataset.maximized = 'true'"
+                        : L"delete document.documentElement.dataset.maximized", nullptr);
+                }
                 if (self->controller) { self->controller->put_IsVisible(wparam != SIZE_MINIMIZED && IsWindowVisible(hwnd)); }
                 self->resize();
                 return 0;

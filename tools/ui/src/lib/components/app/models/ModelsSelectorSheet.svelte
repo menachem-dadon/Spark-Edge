@@ -134,7 +134,7 @@
 					<div class="flex flex-col gap-1 pb-4">
 						<div class="mb-3 px-4">
 							<SearchInput
-								placeholder="Search models..."
+								placeholder={t("Search models...")}
 								value={ms.searchTerm}
 								onInput={(v) => ms.setSearchTerm(v)}
 							/>
@@ -144,19 +144,19 @@
 							{#if !ms.isCurrentModelInCache && currentModel}
 								<button
 									type="button"
-									class="flex w-full cursor-not-allowed items-center rounded-md bg-red-400/10 px-3 py-2.5 text-left text-sm text-red-400"
+									class="flex w-full cursor-not-allowed items-center rounded-md bg-red-400/10 px-3 py-2.5 text-start text-sm text-red-400"
 									disabled
 								>
 									<span class="min-w-0 flex-1 truncate">
 										{selectedOption?.name || currentModel}
 									</span>
-									<span class="ml-2 text-xs whitespace-nowrap opacity-70">(not available)</span>
+									<span class="ms-2 text-xs whitespace-nowrap opacity-70">{t("(not available)")}</span>
 								</button>
 								<div class="my-1 h-px bg-border"></div>
 							{/if}
 
 							{#if ms.filteredOptions.length === 0}
-								<p class="px-3 py-3 text-center text-sm text-muted-foreground">No models found.</p>
+								<p class="px-3 py-3 text-center text-sm text-muted-foreground">{t("No models found.")}</p>
 							{/if}
 
 							<ModelsSelectorList

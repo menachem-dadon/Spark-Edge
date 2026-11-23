@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import ModelLoadHighlight from './ModelLoadHighlight.svelte';
 	import {
 		CircleAlert,
@@ -62,7 +63,7 @@
 
 <div
 	class={[
-		'group relative flex w-full items-center gap-2 rounded-sm p-2 text-left text-sm transition focus:outline-none',
+		'group relative flex w-full items-center gap-2 rounded-sm p-2 text-start text-sm transition focus:outline-none',
 		'cursor-pointer',
 		isSelected && 'bg-accent/50 text-accent-foreground',
 		isHighlighted && 'bg-accent',
@@ -115,7 +116,7 @@
 				<ActionIcon
 					iconSize="h-2.5 w-2.5"
 					icon={Info}
-					tooltip="Model information"
+					tooltip={t("Model information")}
 					class="h-3 w-3 hover:text-foreground"
 					onclick={() => onInfoClick(option.model)}
 				/>

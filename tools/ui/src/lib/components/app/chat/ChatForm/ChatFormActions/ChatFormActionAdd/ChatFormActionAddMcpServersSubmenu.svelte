@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { t } from '$lib/i18n/locale.svelte';
+	import { appLocale, t } from '$lib/i18n/locale.svelte';
 	import { Plus, Settings } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { DropdownMenuSearchable, McpLogo, McpServerIdentity } from '$lib/components/app';
@@ -60,20 +60,20 @@
 	}
 </script>
 
-<DropdownMenu.Root>
+<DropdownMenu.Root dir={appLocale.language === 'he' ? 'rtl' : 'ltr'}>
 	<DropdownMenu.Sub onOpenChange={handleMcpSubMenuOpen}>
 		<DropdownMenu.SubTrigger class="flex cursor-pointer items-center gap-2">
 			<McpLogo class={ICON_CLASS_DEFAULT} />
 
-			<span>MCP Servers</span>
+			<span>{t("MCP Servers")}</span>
 		</DropdownMenu.SubTrigger>
 
 		<DropdownMenu.SubContent class="w-72 pt-0">
 			{#if hasMcpServers}
 				<DropdownMenuSearchable
-					placeholder="Search servers..."
+					placeholder={t("Search servers...")}
 					bind:searchValue={mcpSearchQuery}
-					emptyMessage="No servers found"
+					emptyMessage={t("No servers found")}
 					isEmpty={filteredMcpServers.length === 0}
 				>
 					<div class="max-h-64 overflow-y-auto">
@@ -86,7 +86,7 @@
 
 							<button
 								type="button"
-								class="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-2 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+								class="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-2 text-start transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
 								onclick={() => !hasError && toggleServerForChat(server.id)}
 								disabled={hasError}
 							>
@@ -128,13 +128,13 @@
 						>
 							<Settings class={ICON_CLASS_DEFAULT} />
 
-							<span>Manage MCP Servers</span>
+							<span>{t("Manage MCP Servers")}</span>
 						</DropdownMenu.Item>
 					{/snippet}
 				</DropdownMenuSearchable>
 			{:else}
 				<div class="px-2 py-3 text-center text-sm text-muted-foreground">
-					No MCP servers configured
+					{t("No MCP servers configured")}
 				</div>
 
 				<DropdownMenu.Separator />
@@ -145,7 +145,7 @@
 				>
 					<Plus class={ICON_CLASS_DEFAULT} />
 
-					<span>Add MCP Servers</span>
+					<span>{t("Add MCP Servers")}</span>
 				</DropdownMenu.Item>
 			{/if}
 		</DropdownMenu.SubContent>

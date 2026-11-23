@@ -106,10 +106,10 @@
 		value={editCtx.editedContent}
 		attachments={editCtx.editedExtras}
 		bind:uploadedFiles={editCtx.editedUploadedFiles}
-		placeholder="Edit your message..."
+		placeholder={t("Edit your message...")}
 		showMcpPromptButton
 		showAddButton={editCtx.messageRole === MessageRole.USER}
-		showModelSelector={editCtx.messageRole === MessageRole.USER}
+		showModelSelector={false}
 		onValueChange={editCtx.setContent}
 		onAttachmentRemove={handleAttachmentRemove}
 		onUploadedFileRemove={handleUploadedFileRemove}
@@ -124,7 +124,7 @@
 			<Switch id="save-only-switch" bind:checked={saveWithoutRegenerate} class="scale-75" />
 
 			<label for="save-only-switch" class="cursor-pointer text-xs text-muted-foreground">
-				Update without re-sending
+				{t("Update without re-sending")}
 			</label>
 		</div>
 	{:else if isAssistantMessage}
@@ -132,7 +132,7 @@
 			<Switch id="branch-after-edit" bind:checked={branchAfterEdit} class="scale-75" />
 
 			<label for="branch-after-edit" class="cursor-pointer text-xs text-muted-foreground">
-				Branch conversation after edit
+				{t("Branch conversation after edit")}
 			</label>
 		</div>
 	{:else}
@@ -148,10 +148,10 @@
 
 <DialogConfirmation
 	bind:open={showDiscardDialog}
-	title="Discard changes?"
-	description="You have unsaved changes. Are you sure you want to discard them?"
-	confirmText="Discard"
-	cancelText="Keep editing"
+	title={t("Discard changes?")}
+	description={t("You have unsaved changes. Are you sure you want to discard them?")}
+	confirmText={t("Discard")}
+	cancelText={t("Keep editing")}
 	variant="destructive"
 	icon={AlertTriangle}
 	onConfirm={editCtx.cancel}

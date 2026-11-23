@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { appLocale, t } from '$lib/i18n/locale.svelte';
 	import { File, FolderOpen, MessageSquare, Plus, Zap } from '@lucide/svelte';
 	import {
 		ChatFormActionAddMcpServersSubmenu,
@@ -57,7 +58,7 @@
 </script>
 
 <div class="flex items-center gap-1 {className}">
-	<DropdownMenu.Root bind:open={dropdownOpen}>
+	<DropdownMenu.Root dir={appLocale.language === 'he' ? 'rtl' : 'ltr'} bind:open={dropdownOpen}>
 		<!-- ignoreNonKeyboardFocus prevents the tooltip from flashing when the
 		     menu closes and focus returns to the trigger -->
 		<Tooltip.Root ignoreNonKeyboardFocus>
@@ -71,7 +72,7 @@
 						)}
 						disabled={chatFormActions.disabled}
 					>
-						<span class="sr-only">{ATTACHMENT_TOOLTIP_TEXT}</span>
+						<span class="sr-only">{t(ATTACHMENT_TOOLTIP_TEXT)}</span>
 
 						<Plus class={ICON_CLASS_DEFAULT} />
 					</DropdownMenu.Trigger>
@@ -79,7 +80,7 @@
 			</Tooltip.Trigger>
 
 			<Tooltip.Content>
-				<p>{ATTACHMENT_TOOLTIP_TEXT}</p>
+				<p>{t(ATTACHMENT_TOOLTIP_TEXT)}</p>
 			</Tooltip.Content>
 		</Tooltip.Root>
 
@@ -101,7 +102,7 @@
 				<DropdownMenu.SubTrigger class="flex cursor-pointer items-center gap-2">
 					<File class={ICON_CLASS_DEFAULT} />
 
-					<span>Add files</span>
+					<span>{t("Add files")}</span>
 				</DropdownMenu.SubTrigger>
 
 				<DropdownMenu.SubContent class="w-48">
@@ -114,7 +115,7 @@
 							>
 								<item.icon class={ICON_CLASS_DEFAULT} />
 
-								<span>{item.label}</span>
+								<span>{t(item.label)}</span>
 							</DropdownMenu.Item>
 						{:else if item.disabledTooltip}
 							<Tooltip.Root delayDuration={TOOLTIP_DELAY_DURATION}>
@@ -127,14 +128,14 @@
 											>
 												<item.icon class={ICON_CLASS_DEFAULT} />
 
-												<span>{item.label}</span>
+												<span>{t(item.label)}</span>
 											</DropdownMenu.Item>
 										</div>
 									{/snippet}
 								</Tooltip.Trigger>
 
 								<Tooltip.Content side="right">
-									<p>{item.disabledTooltip}</p>
+									<p>{t(item.disabledTooltip)}</p>
 								</Tooltip.Content>
 							</Tooltip.Root>
 						{/if}
@@ -151,7 +152,7 @@
 			>
 				<MessageSquare class={ICON_CLASS_DEFAULT} />
 
-				<span>System Message</span>
+				<span>{t("System Message")}</span>
 			</DropdownMenu.Item>
 
 			<ChatFormActionAddToolsSubmenu />
@@ -167,7 +168,7 @@
 				>
 					<Zap class={ICON_CLASS_DEFAULT} />
 
-					<span>MCP Prompt</span>
+					<span>{t("MCP Prompt")}</span>
 				</DropdownMenu.Item>
 			{/if}
 
@@ -178,7 +179,7 @@
 				>
 					<FolderOpen class={ICON_CLASS_DEFAULT} />
 
-					<span>MCP Resources</span>
+					<span>{t("MCP Resources")}</span>
 				</DropdownMenu.Item>
 			{/if}
 		</DropdownMenu.Content>

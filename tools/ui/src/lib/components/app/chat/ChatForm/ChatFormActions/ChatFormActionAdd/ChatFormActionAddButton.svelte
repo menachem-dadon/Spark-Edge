@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n/locale.svelte';
 	import { Plus } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -21,13 +22,13 @@
 			variant="secondary"
 			type="button"
 		>
-			<span class="sr-only">{ATTACHMENT_TOOLTIP_TEXT}</span>
+			<span class="sr-only">{t(ATTACHMENT_TOOLTIP_TEXT)}</span>
 
 			<Plus class={ICON_CLASS_DEFAULT} />
 		</Button>
 	</Tooltip.Trigger>
 
 	<Tooltip.Content>
-		<p>{ATTACHMENT_TOOLTIP_TEXT}</p>
+		<p>{t(ATTACHMENT_TOOLTIP_TEXT)}</p>
 	</Tooltip.Content>
 </Tooltip.Root>

@@ -325,6 +325,31 @@ def run_manager(binary_dir, root, log_dir):
             with urllib.request.urlopen(sse, timeout=30) as response:
                 events = [line[6:] for line in response.read().decode().splitlines() if line.startswith("data: ")]
             assert events and events[-1] == "[DONE]", "manager truncated SSE"
+            added_model = root / "added-manually.gguf"
+            added_draft = root / "added-manually-DSpark.gguf"
+            added_model.write_bytes(b"GGUF")
+            shutil.copyfile(root / "test-dense-regression.gguf", added_draft)
+
+            def wait_for_catalog(condition):
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    models = request(base, "/api/library")["models"]
+                    if condition({model["id"]: model for model in models}):
+                        return
+                    time.sleep(.15)
+                raise AssertionError(f"model folder changes did not appear: {models}")
+
+            wait_for_catalog(lambda models: "added-manually" in models and not models["added-manually"]["available"]
+                             and models.get("added-manually-dspark", {}).get("draft_only"))
+            shutil.copyfile(root / "test-dense-regression.gguf", added_model)
+            wait_for_catalog(lambda models: models.get("added-manually", {}).get("available"))
+            published = {model["id"]: model for model in request(base, "/models")["data"]}
+            assert "added-manually" in published and "added-manually-dspark" not in published
+            assert published[model_id]["status"]["value"] == "loaded", "library refresh displaced the loaded model"
+            added_model.unlink()
+            wait_for_catalog(lambda models: models.get("added-manually", {}).get("missing"))
+            assert "added-manually" not in {model["id"] for model in request(base, "/v1/models")["data"]}
+
             current_profile = request(base, "/api/model-profile" + query)
             changed = request(base, "/api/model-profile", {"model": model_id, "profile": {"overlap": "off"}, "revision": current_profile["revision"]})
             assert changed["pending"]

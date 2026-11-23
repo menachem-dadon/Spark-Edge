@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { appLocale } from '$lib/i18n/locale.svelte';
 	import { ChevronDown, ShieldQuestion } from '@lucide/svelte';
 	import { ChatMessageActionCard } from '$lib/components/app';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
@@ -25,7 +26,7 @@
 	{/snippet}
 
 	{#snippet actions()}
-		<DropdownMenu.Root>
+		<DropdownMenu.Root dir={appLocale.language === 'he' ? 'rtl' : 'ltr'}>
 			<ButtonGroup.Root class="overflow-hidden rounded-md shadow-sm">
 				<Button
 					variant="secondary"

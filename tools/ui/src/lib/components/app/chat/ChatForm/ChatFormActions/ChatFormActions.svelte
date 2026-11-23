@@ -177,7 +177,7 @@
 	style="container-type: inline-size"
 >
 	{#if showAddButton}
-		<div class="mr-auto flex items-center gap-2">
+		<div class="me-auto flex items-center gap-2">
 			<ChatFormActionsAdd />
 		</div>
 	{/if}
@@ -210,9 +210,9 @@
 			onclick={() =>
 				ChatService.stopReasoning(activeMessage?.completionId ?? '', activeMessage?.model)}
 			class="group h-8 w-8 rounded-full p-0"
-			title="Skip reasoning"
+			title={t("Skip reasoning")}
 		>
-			<span class="sr-only">Skip reasoning</span>
+			<span class="sr-only">{t("Skip reasoning")}</span>
 
 			<SkipForward
 				class="{ICON_CLASS_DEFAULT} stroke-muted-foreground group-hover:stroke-foreground"

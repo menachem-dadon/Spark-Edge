@@ -67,10 +67,10 @@
 	const reasoning = useReasoningMenu();
 
 	const sheetItemClass =
-		'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent active:bg-accent disabled:cursor-not-allowed disabled:opacity-50';
+		'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-start text-sm transition-colors hover:bg-accent active:bg-accent disabled:cursor-not-allowed disabled:opacity-50';
 
 	const sheetItemRowClass =
-		'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent';
+		'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-start text-sm transition-colors hover:bg-accent';
 
 	let mcpServers = $derived(mcpStore.getServers());
 </script>
@@ -81,7 +81,7 @@
 
 		<Sheet.Content side="bottom" class="max-h-[85vh] gap-0 overflow-y-auto">
 			<Sheet.Header>
-				<Sheet.Title>Add to chat</Sheet.Title>
+				<Sheet.Title>{t("Add to chat")}</Sheet.Title>
 
 				<Sheet.Description class="sr-only">
 					Add files, system prompt or configure MCP servers
@@ -98,7 +98,7 @@
 							{#if reasoningExpanded}
 								<ChevronDown class="{ICON_CLASS_DEFAULT} shrink-0" />
 							{:else}
-								<ChevronRight class="{ICON_CLASS_DEFAULT} shrink-0" />
+								<ChevronRight class="rtl:rotate-180 {ICON_CLASS_DEFAULT} shrink-0" />
 							{/if}
 
 							{#if reasoning.thinkingEnabled}
@@ -109,15 +109,15 @@
 								<Lightbulb class="{ICON_CLASS_DEFAULT} shrink-0 text-muted-foreground" />
 							{/if}
 
-							<span class="flex-1">Reasoning</span>
+							<span class="flex-1">{t("Reasoning")}</span>
 
 							<span class="text-xs capitalize text-muted-foreground">
-								{reasoning.currentEffort}
+								{t(reasoning.levels.find((level) => level.value === reasoning.currentEffort)?.label ?? reasoning.currentEffort)}
 							</span>
 						</Collapsible.Trigger>
 
 						<Collapsible.Content>
-							<div class="flex flex-col gap-0.5 pl-4">
+							<div class="flex flex-col gap-0.5 ps-4">
 								{#each reasoning.levels as level (level.value)}
 									{@const tokenLabel = reasoning.tokenLabel(level)}
 									<button
@@ -133,7 +133,7 @@
 												<div class="{ICON_CLASS_DEFAULT} shrink-0"></div>
 											{/if}
 
-											<span class="text-sm">{level.label}</span>
+											<span class="text-sm">{t(level.label)}</span>
 										</div>
 
 										{#if tokenLabel}
@@ -153,16 +153,16 @@
 						{#if filesExpanded}
 							<ChevronDown class="{ICON_CLASS_DEFAULT} shrink-0" />
 						{:else}
-							<ChevronRight class="{ICON_CLASS_DEFAULT} shrink-0" />
+							<ChevronRight class="rtl:rotate-180 {ICON_CLASS_DEFAULT} shrink-0" />
 						{/if}
 
 						<File class="{ICON_CLASS_DEFAULT} shrink-0" />
 
-						<span class="flex-1">Add files</span>
+						<span class="flex-1">{t("Add files")}</span>
 					</Collapsible.Trigger>
 
 					<Collapsible.Content>
-						<div class="flex flex-col gap-0.5 pl-4">
+						<div class="flex flex-col gap-0.5 ps-4">
 							{#each ATTACHMENT_FILE_ITEMS as item (item.id)}
 								{@const enabled = attachmentMenu.isItemEnabled(item.enabledWhen)}
 								{#if enabled}
@@ -173,7 +173,7 @@
 									>
 										<item.icon class="{ICON_CLASS_DEFAULT} shrink-0" />
 
-										<span>{item.label}</span>
+										<span>{t(item.label)}</span>
 									</button>
 								{:else if item.disabledTooltip}
 									<Tooltip.Root delayDuration={TOOLTIP_DELAY_DURATION}>
@@ -181,12 +181,12 @@
 											<button type="button" class={sheetItemClass} disabled>
 												<item.icon class="{ICON_CLASS_DEFAULT} shrink-0" />
 
-												<span>{item.label}</span>
+												<span>{t(item.label)}</span>
 											</button>
 										</Tooltip.Trigger>
 
 										<Tooltip.Content side="right">
-											<p>{item.disabledTooltip}</p>
+											<p>{t(item.disabledTooltip)}</p>
 										</Tooltip.Content>
 									</Tooltip.Root>
 								{/if}
@@ -200,12 +200,12 @@
 						{#if mcpExpanded}
 							<ChevronDown class="{ICON_CLASS_DEFAULT} shrink-0" />
 						{:else}
-							<ChevronRight class="{ICON_CLASS_DEFAULT} shrink-0" />
+							<ChevronRight class="rtl:rotate-180 {ICON_CLASS_DEFAULT} shrink-0" />
 						{/if}
 
 						<McpLogo class="inline {ICON_CLASS_DEFAULT} shrink-0" />
 
-						<span class="flex-1">MCP Servers</span>
+						<span class="flex-1">{t("MCP Servers")}</span>
 
 						<span class="text-xs text-muted-foreground">
 							{mcpServers.length} server{mcpServers.length !== 1 ? 's' : ''}
@@ -213,7 +213,7 @@
 					</Collapsible.Trigger>
 
 					<Collapsible.Content>
-						<div class="flex flex-col gap-0.5 pl-4">
+						<div class="flex flex-col gap-0.5 ps-4">
 							{#each mcpServers as server (server.id)}
 								{@const healthState = mcpStore.getHealthCheckState(server.id)}
 								{@const hasError = healthState.status === HealthCheckStatus.ERROR}
@@ -263,7 +263,7 @@
 
 							{#if mcpServers.length === 0}
 								<div class="px-3 py-2 text-center text-sm text-muted-foreground">
-									No MCP servers configured
+									{t("No MCP servers configured")}
 								</div>
 							{/if}
 						</div>
@@ -276,20 +276,20 @@
 							{#if toolsExpanded}
 								<ChevronDown class="{ICON_CLASS_DEFAULT} shrink-0" />
 							{:else}
-								<ChevronRight class="{ICON_CLASS_DEFAULT} shrink-0" />
+								<ChevronRight class="rtl:rotate-180 {ICON_CLASS_DEFAULT} shrink-0" />
 							{/if}
 
 							<PencilRuler class="inline {ICON_CLASS_DEFAULT} shrink-0" />
 
-							<span class="flex-1">Tools</span>
+							<span class="flex-1">{t("Tools")}</span>
 
 							<span class="text-xs text-muted-foreground">
-								{toolsPanel.totalToolCount} tool{toolsPanel.totalToolCount !== 1 ? 's' : ''}
+								{toolsPanel.totalToolCount} {t('tools')}
 							</span>
 						</Collapsible.Trigger>
 
 						<Collapsible.Content>
-							<div class="flex flex-col gap-0.5 pl-4">
+							<div class="flex flex-col gap-0.5 ps-4">
 								{#each toolsPanel.activeGroups as group (group.key)}
 									{@const checked = toolsPanel.isGroupChecked(group)}
 									{@const enabledCount = toolsPanel.getEnabledToolCount(group)}
@@ -337,7 +337,7 @@
 				>
 					<MessageSquare class="{ICON_CLASS_DEFAULT} shrink-0" />
 
-					<span>System Message</span>
+					<span>{t("System Message")}</span>
 				</button>
 
 				{#if chatFormActions.hasMcpPromptsSupport}
@@ -348,7 +348,7 @@
 					>
 						<Zap class="{ICON_CLASS_DEFAULT} shrink-0" />
 
-						<span>MCP Prompt</span>
+						<span>{t("MCP Prompt")}</span>
 					</button>
 				{/if}
 
@@ -360,7 +360,7 @@
 					>
 						<FolderOpen class="{ICON_CLASS_DEFAULT} shrink-0" />
 
-						<span>MCP Resources</span>
+						<span>{t("MCP Resources")}</span>
 					</button>
 				{/if}
 			</div>

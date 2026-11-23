@@ -1,5 +1,6 @@
 export const API_MODELS = {
 	LIST: '/v1/models',
+	ROUTER_LIST: '/models',
 	LOAD: '/models/load',
 	SSE: '/models/sse',
 	UNLOAD: '/models/unload'

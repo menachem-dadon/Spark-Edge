@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { t } from '$lib/i18n/locale.svelte';
+	import { appLocale, t } from '$lib/i18n/locale.svelte';
 	import ModelLoadHighlight from './ModelLoadHighlight.svelte';
 	import type { ModelItem } from './utils';
 	import { ChevronDown, Loader2 } from '@lucide/svelte';
@@ -181,7 +181,7 @@
 			: 0}
 
 		{#if ms.isRouter}
-			<DropdownMenu.Root bind:open={isOpen} onOpenChange={ms.handleOpenChange}>
+			<DropdownMenu.Root dir={appLocale.language === 'he' ? 'rtl' : 'ltr'} bind:open={isOpen} onOpenChange={ms.handleOpenChange}>
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						<!-- prevent another nested button element -->
@@ -243,9 +243,9 @@
 					<DropdownMenuSearchable
 						searchValue={ms.searchTerm}
 						onSearchChange={(v) => ms.setSearchTerm(v)}
-						placeholder="Search models..."
+						placeholder={t("Search models...")}
 						onSearchKeyDown={handleSearchKeyDown}
-						emptyMessage="No models found."
+						emptyMessage={t("No models found.")}
 						isEmpty={ms.filteredOptions.length === 0 && ms.isCurrentModelInCache}
 					>
 						<div class="models-list">
@@ -253,7 +253,7 @@
 								<!-- Show unavailable model as first option (disabled) -->
 								<button
 									type="button"
-									class="flex w-full cursor-not-allowed items-center bg-red-400/10 p-2 text-left text-sm text-red-400"
+									class="flex w-full cursor-not-allowed items-center bg-red-400/10 p-2 text-start text-sm text-red-400"
 									role="option"
 									aria-selected="true"
 									aria-disabled="true"
@@ -261,12 +261,12 @@
 								>
 									<ModelId modelId={currentModel} class="flex-1" hideQuantization />
 
-									<span class="ml-2 text-xs whitespace-nowrap opacity-70">(not available)</span>
+									<span class="ms-2 text-xs whitespace-nowrap opacity-70">{t("(not available)")}</span>
 								</button>
 							{/if}
 
 							{#if ms.filteredOptions.length === 0}
-								<p class="px-4 py-3 text-sm text-muted-foreground">No models found.</p>
+								<p class="px-4 py-3 text-sm text-muted-foreground">{t("No models found.")}</p>
 							{/if}
 
 							{#snippet modelOption(item: ModelItem, hideOrgName: boolean)}

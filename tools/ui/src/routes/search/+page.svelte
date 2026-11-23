@@ -75,7 +75,7 @@
 	<title>Search - Spark Edge</title>
 </svelte:head>
 
-<div class="fixed top-0 z-10 left-0 right-0 p-2">
+<div class="fixed top-[var(--desktop-caption-height,0px)] z-10 inset-x-0 p-2">
 	<SearchInput
 		autofocus
 		bind:value={searchQuery}

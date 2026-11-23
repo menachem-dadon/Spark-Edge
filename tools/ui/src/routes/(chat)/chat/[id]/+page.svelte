@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto, replaceState } from '$app/navigation';
-	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { DialogModelNotAvailable } from '$lib/components/app';
 	import { APP_NAME, ROUTES, URL_PARAMS } from '$lib/constants';
@@ -72,11 +71,6 @@
 		urlParamsProcessed = true;
 	}
 
-	afterNavigate(() => {
-		setTimeout(() => {
-			void modelsStore.selectModelFromLastAssistantResponse();
-		}, 100);
-	});
 
 	$effect(() => {
 		if (chatId && chatId !== currentChatId) {

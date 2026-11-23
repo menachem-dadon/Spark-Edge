@@ -105,6 +105,41 @@ library_json inspect_model(const std::filesystem::path & path) {
     return result;
 }
 
+model_files model_directory_snapshot(const std::filesystem::path & path) {
+    model_files files;
+    if (path.empty()) return files;
+    std::error_code error;
+    std::filesystem::recursive_directory_iterator entry(path, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::recursive_directory_iterator end;
+    while (entry != end) {
+        auto extension = entry->path().extension().u8string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (extension == ".gguf" && entry->is_regular_file(error) && !error) {
+            const auto modified = entry->last_write_time(error);
+            if (!error) {
+                const auto size = entry->file_size(error);
+                if (!error) files.emplace(entry->path(), std::make_pair(modified, size));
+            }
+        }
+        error.clear();
+        entry.increment(error);
+    }
+    return files;
+}
+
+bool is_draft_model(const library_json & model) {
+    const auto metadata = model.value("metadata", library_json::object());
+    const auto architecture = metadata.is_object() ? metadata.value("architecture", library_json(nullptr)) : library_json(nullptr);
+    if (architecture == "dflash" || architecture == "dspark" || architecture == "lilicorr" || architecture == "eagle3") return true;
+
+    const auto name = std::filesystem::u8path(model.value("path", std::string{})).stem().u8string();
+    static const std::regex draft_name(
+        R"((^|[-_. ])(dspark|dflash2?|lilicorr|eagle3)([-_. ]|$)|^mtp[-_. ]|[-_. ]mtp$)",
+        std::regex::icase);
+    return std::regex_search(name, draft_name);
+}
+
 library_json discover_models(const std::filesystem::path & source) {
     const auto path = std::filesystem::weakly_canonical(source);
     const bool single = std::filesystem::is_regular_file(path);

@@ -172,7 +172,7 @@
 						void save();
 					}}
 					value={config.default_model}
-					><option value="">{t("Choose when starting a chat")}</option>{#each models as model}<option
+					><option value="">{t("Choose when starting a chat")}</option>{#each models.filter((model) => !model.draft_only) as model}<option
 							value={model.id}
 							>{model.display_name}{!model.available ? ' · ' + t('File missing') : ''}</option
 						>{/each}</select

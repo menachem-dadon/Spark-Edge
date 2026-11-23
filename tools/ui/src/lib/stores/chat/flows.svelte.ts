@@ -607,7 +607,7 @@ export class ChatMessageFlows {
 				parentMessage.id,
 				false
 			) as DatabaseMessage[];
-			const modelToUse = modelOverride || msg.model || undefined;
+			const modelToUse = modelOverride;
 
 			await this.host.streamChatCompletion(
 				conversationPath,

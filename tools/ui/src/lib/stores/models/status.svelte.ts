@@ -7,6 +7,7 @@
  * modelsStore; the host owns the router model rows the feed updates.
  */
 
+import { t } from '$lib/i18n/locale.svelte';
 import { ServerModelsSseEventType, ServerModelStatus } from '$lib/enums';
 import { ModelsService } from '$lib/services/models.service';
 import type { ModelPropsManager } from '$lib/stores/models/props.svelte';
@@ -27,6 +28,7 @@ export interface ModelStatusHost {
 	routerModels: ApiModelDataEntry[];
 	fetchRouterModels(): Promise<void>;
 	isModelLoaded(modelId: string): boolean;
+	onModelLoaded?(modelId: string): void;
 	toDisplayName(id: string): string;
 }
 
@@ -78,7 +80,8 @@ export class ModelStatusManager {
 		try {
 			await ModelsService.load(modelId);
 			await reachedLoaded;
-			toast.success(`Model loaded: ${this.host.toDisplayName(modelId)}`);
+			this.host.onModelLoaded?.(modelId);
+			toast.success(t('Model loaded') + ' · ' + this.host.toDisplayName(modelId));
 		} catch (error) {
 			this.rejectStatus(modelId, error instanceof Error ? error : new Error('load failed'));
 			this.host.error = error instanceof Error ? error.message : 'Failed to load model';
@@ -121,7 +124,7 @@ export class ModelStatusManager {
 		try {
 			await ModelsService.unload(modelId);
 			await reachedUnloaded;
-			toast.info(`Model unloaded: ${this.host.toDisplayName(modelId)}`);
+			toast.info(t('Model stopped') + ' · ' + this.host.toDisplayName(modelId));
 		} catch (error) {
 			this.rejectStatus(modelId, error instanceof Error ? error : new Error('unload failed'));
 			this.host.error = error instanceof Error ? error.message : 'Failed to unload model';
@@ -155,6 +158,7 @@ export class ModelStatusManager {
 
 		const status = data.status;
 
+		const wasLoaded = this.host.isModelLoaded(model);
 		this.setRouterModelStatus(model, status);
 
 		if (status === ServerModelStatus.LOADING) {
@@ -164,6 +168,9 @@ export class ModelStatusManager {
 		}
 
 		if (status === ServerModelStatus.LOADED) {
+			if (!wasLoaded && event.event === ServerModelsSseEventType.STATUS_CHANGE) {
+				this.host.onModelLoaded?.(model);
+			}
 			void this.host.props.updateModelModalities(model);
 		}
 

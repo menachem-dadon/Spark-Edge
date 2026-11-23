@@ -1737,6 +1737,10 @@ struct test {
             "tensor_buft_overrides",            "load_mode",     "lazy_mode",
             "embeddings",
             "no_op_offload",  "no_host",        "repack",        "fit_target",    "fit_min_ctx",
+            "moe_paging",      "moe_cache_mib",  "moe_slots",      "moe_io_threads",
+            "moe_cache_hits",  "moe_cache_misses", "moe_hit_rate", "moe_bytes_read",
+            "moe_bytes_per_token", "moe_read_count", "moe_evictions",
+            "moe_compute_wait_us", "moe_overlap_events", "moe_prefetch_hits", "moe_prefetch_reads", "moe_prefetch_wasted",
             "n_prompt",       "n_gen",          "n_depth",
             "test_time",      "avg_ns",         "stddev_ns",     "avg_ts",         "stddev_ts"
         };

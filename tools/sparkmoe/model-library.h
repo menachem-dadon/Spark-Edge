@@ -3,11 +3,15 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <nlohmann/json.hpp>
 
 namespace sparkmoe {
 using library_json = nlohmann::ordered_json;
+using model_files = std::map<std::filesystem::path, std::pair<std::filesystem::file_time_type, uintmax_t>>;
+model_files model_directory_snapshot(const std::filesystem::path & path);
+bool is_draft_model(const library_json & model);
 library_json discover_models(const std::filesystem::path & path);
 library_json inspect_model(const std::filesystem::path & path);
 std::string model_slug(const std::string & name);

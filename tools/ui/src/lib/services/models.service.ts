@@ -68,7 +68,7 @@ export class ModelsService {
 	 * @returns List of models with detailed status and configuration info
 	 */
 	static async listRouter(): Promise<ApiRouterModelsListResponse> {
-		return apiFetch<ApiRouterModelsListResponse>(API_MODELS.LIST);
+		return apiFetch<ApiRouterModelsListResponse>(API_MODELS.ROUTER_LIST);
 	}
 
 	/**

@@ -43,7 +43,6 @@ import type {
 import {
 	findMessageById,
 	formatCwdMessage,
-	getConversationModel,
 	isAbortError,
 	normalizeModelName
 } from '$lib/utils';
@@ -820,9 +819,7 @@ class ChatStore implements ChatStreamHost, ChatFlowsHost {
 		let effectiveModel: string | null | undefined = undefined;
 
 		if (serverStore.isRouterMode) {
-			const conversationModel = getConversationModel(allMessages);
-
-			effectiveModel = modelOverride || modelsStore.selectedModelName || conversationModel;
+			effectiveModel = modelOverride || modelsStore.selectedModelName;
 		}
 
 		if (serverStore.isRouterMode && effectiveModel) {

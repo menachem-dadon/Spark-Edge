@@ -13,34 +13,45 @@
 			name="viewport"
 			content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
 		/>
-        <style>
-            #spark-edge-boot {
-                position: fixed;
-                inset: 0;
-                display: grid;
-                place-items: center;
-                z-index: 900;
-                background: #070b16;
-                pointer-events: none;
-                animation: spark-edge-reveal 240ms ease-out 1.52s both;
-            }
-            #spark-edge-boot img { width: clamp(88px, 18vw, 168px); height: auto; }
-            #spark-edge-boot picture { display: grid; place-items: center; }
-            @keyframes spark-edge-reveal { to { opacity: 0; visibility: hidden; } }
-            @media (prefers-reduced-motion: reduce) {
-                #spark-edge-boot { animation-delay: 260ms; }
-            }
-        </style>
+		<style>
+			#spark-edge-boot {
+				position: fixed;
+				inset: 0;
+				display: grid;
+				place-items: center;
+				z-index: 900;
+				background: #070b16;
+			}
+			#spark-edge-boot img { width: clamp(88px, 18vw, 168px); height: auto; }
+			#spark-edge-boot.is-playing { animation: spark-edge-reveal 240ms ease-out 1.52s both; }
+			@keyframes spark-edge-reveal { to { opacity: 0; visibility: hidden; } }
+			@media (prefers-reduced-motion: reduce) {
+				#spark-edge-boot.is-playing { animation-delay: 260ms; }
+			}
+		</style>
 		%sveltekit.head%
 	</head>
 
 	<body data-sveltekit-preload-data="hover">
-        <div id="spark-edge-boot" aria-hidden="true">
-            <picture>
-                <source media="(prefers-reduced-motion: reduce)" srcset="spark-edge-static.svg" />
-                <img src="spark-edge-boot.svg" alt="" width="168" height="168" />
-            </picture>
-        </div>
+		<div id="spark-edge-boot" aria-hidden="true"></div>
+		<script>
+			const splash = document.getElementById('spark-edge-boot');
+			const playSplash = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+				const icon = new Image(168, 168);
+				icon.alt = '';
+				icon.onload = icon.onerror = () => splash.classList.add('is-playing');
+				splash.addEventListener('animationend', () => splash.remove(), { once: true });
+				icon.src = matchMedia('(prefers-reduced-motion: reduce)').matches
+					? 'spark-edge-static.svg'
+					: 'spark-edge-boot.svg';
+				splash.append(icon);
+			}));
+			if (window.sparkEdgeNative) {
+				window.addEventListener('spark-edge-visible', playSplash, { once: true });
+			} else {
+				playSplash();
+			}
+		</script>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

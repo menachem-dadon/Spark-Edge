@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { appLocale } from '$lib/i18n/locale.svelte';
 	import { KeyboardShortcutInfo } from '$lib/components/app';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -33,7 +34,7 @@
 	}: Props = $props();
 </script>
 
-<DropdownMenu.Root bind:open>
+<DropdownMenu.Root dir={appLocale.language === 'he' ? 'rtl' : 'ltr'} bind:open>
 	<Tooltip.Root>
 		<Tooltip.Trigger>
 			<!-- prevent another nested button element -->

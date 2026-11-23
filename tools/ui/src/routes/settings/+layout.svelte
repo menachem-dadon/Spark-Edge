@@ -29,7 +29,7 @@
 	}
 </script>
 
-<div class="fixed top-4.5 right-4 z-50 md:hidden">
+<div class="fixed top-[calc(1.125rem+var(--desktop-caption-height,0px))] start-4 z-50 md:hidden">
 	<ActionIcon icon={X} tooltip="Close" onclick={handleClose} />
 </div>
 

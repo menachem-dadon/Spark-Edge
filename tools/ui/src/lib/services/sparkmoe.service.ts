@@ -51,6 +51,7 @@ export interface SparkMoeLibraryModel {
 	display_name: string;
 	path: string;
 	favorite: boolean;
+	draft_only?: boolean;
 	available: boolean;
 	size_bytes: number;
 	legacy_ids?: string[];
@@ -67,6 +68,8 @@ export interface EngineStatus {
 	installed: EnginePackage[];
 	available?: EnginePackage[];
 	active: string;
+	application_version?: string;
+	bundled_commit?: string;
 }
 
 export interface SparkMoeApplication {
@@ -122,6 +125,7 @@ export interface SparkMoeRouterConfig {
 export interface SparkMoeManagerStatus {
 	configuration_warning?: string;
 	pending?: boolean;
+	catalog_revision?: number;
 	config: SparkMoeRouterConfig;
 	last_error: string;
 	last_exit_code: number | null;
@@ -284,7 +288,7 @@ export class SparkMoeService {
 
 	static async library(
 		rescan = false
-	): Promise<{ models: SparkMoeLibraryModel[]; revision: number }> {
+	): Promise<{ models: SparkMoeLibraryModel[]; revision: number; catalog_revision?: number }> {
 		return managerFetch('/api/library' + (rescan ? '?rescan=1' : ''));
 	}
 

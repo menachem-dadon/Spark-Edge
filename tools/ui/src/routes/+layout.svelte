@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { appLocale } from "$lib/i18n/locale.svelte";
+	import { appLocale, t } from "$lib/i18n/locale.svelte";
 	import '../app.css';
+	import { Copy, Minus, Square, X } from '@lucide/svelte';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
@@ -39,6 +40,15 @@
 	import { pwaAssetsHead } from 'virtual:pwa-assets/head';
 
 	let { children } = $props();
+
+	const desktop = browser ? (window as Window & {
+		sparkEdgeFrame?: boolean;
+		chrome?: { webview?: { postMessage(message: string): void } };
+	}) : undefined;
+
+	function windowCommand(command: 'minimize' | 'toggle-maximize' | 'close') {
+		desktop?.chrome?.webview?.postMessage('window:' + command);
+	}
 
 	// migrations and store startup, ordered explicitly instead of import side effects
 	void initStores();
@@ -183,6 +193,7 @@
 
 	onMount(() => {
 		appLocale.init();
+		if (desktop?.sparkEdgeFrame) document.documentElement.classList.add('spark-edge-desktop');
 		updateFavicon();
 		// snapshot of every backend running stream on first load, populates the sidebar spinners
 		// so the user sees each conv that has a live inference, even ones not opened yet
@@ -315,6 +326,16 @@
 <svelte:window onkeydown={handleKeydown} bind:innerHeight bind:innerWidth />
 <svelte:document onvisibilitychange={handleVisibilityChange} />
 
+{#if desktop?.sparkEdgeFrame}
+	<div class="desktop-caption">
+		<button type="button" aria-label={t('Minimize window')} title={t('Minimize window')} onclick={() => windowCommand('minimize')}><Minus size={14} /></button>
+		<button type="button" aria-label={t('Maximize or restore window')} title={t('Maximize or restore window')} onclick={() => windowCommand('toggle-maximize')}>
+			<span class="maximize-icon"><Square size={12} /></span><span class="restore-icon"><Copy size={12} /></span>
+		</button>
+		<button type="button" class="close-window" aria-label={t('Close window')} title={t('Close window')} onclick={() => windowCommand('close')}><X size={15} /></button>
+	</div>
+{/if}
+
 <Tooltip.Provider delayDuration={TOOLTIP_DELAY_DURATION}>
 	<div class="flex flex-col md:flex-row">
 		<SidebarNavigation
@@ -349,3 +370,27 @@
 		{updateServiceWorker}
 	/>
 </div>
+
+<style>
+	.desktop-caption {
+		position: sticky;
+		top: 0;
+		z-index: 60;
+		height: var(--desktop-caption-height);
+		display: flex;
+		justify-content: flex-end;
+		background: var(--background);
+		-webkit-app-region: drag;
+	}
+	.desktop-caption button {
+		display: grid;
+		place-items: center;
+		width: 44px;
+		color: var(--foreground);
+		-webkit-app-region: no-drag;
+	}
+	.desktop-caption button:hover { background: var(--muted); }
+	.desktop-caption .close-window:hover { background: #c42b1c; color: white; }
+	.restore-icon, :global([data-maximized]) .maximize-icon { display: none; }
+	:global([data-maximized]) .restore-icon { display: block; }
+</style>

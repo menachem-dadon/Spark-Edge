@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ModelsSelectorDropdown, ModelsSelectorSheet } from '$lib/components/app';
-	import { conversationsStore, deviceStore, modelsStore, serverStore } from '$lib/stores';
-	import { getConversationModel } from '$lib/utils';
+	import { deviceStore, modelsStore, serverStore } from '$lib/stores';
+	import { t } from '$lib/i18n/locale.svelte';
 
 	interface Props {
 		disabled?: boolean;
@@ -30,50 +30,7 @@
 	let isRouter = $derived(serverStore.isRouterMode);
 	let isOffline = $derived(!!serverStore.error);
 
-	let conversationModel = $derived(
-		getConversationModel(conversationsStore.activeMessages as DatabaseMessage[])
-	);
-
-	let lastSyncedConversationModel: string | null = null;
-
-	let selectorModel = $derived.by(() => {
-		const storeModel = modelsStore.selectedModelName;
-
-		if (storeModel && storeModel !== conversationModel) {
-			return storeModel;
-		}
-
-		if (conversationModel) {
-			return conversationModel;
-		}
-
-		return null;
-	});
-
-	$effect(() => {
-		if (conversationModel && conversationModel !== lastSyncedConversationModel) {
-			if (modelsStore.models.some((m) => m.model === conversationModel)) {
-				modelsStore.selectedModelName = conversationModel;
-				modelsStore.selectModelByName(conversationModel);
-			} else {
-				modelsStore.selectedModelName = null;
-				modelsStore.clearSelection();
-			}
-
-			lastSyncedConversationModel = conversationModel;
-		} else if (
-			isRouter &&
-			!modelsStore.selectedModelId &&
-			modelsStore.loadedModelIds.length > 0 &&
-			conversationsStore.activeMessages.length > 0 &&
-			!conversationModel
-		) {
-			lastSyncedConversationModel = null;
-			const first = modelsStore.models.find((m) => modelsStore.loadedModelIds.includes(m.model));
-
-			if (first) modelsStore.selectModelById(first.id);
-		}
-	});
+	let selectorModel = $derived(modelsStore.selectedModelName);
 
 	let activeModelId = $derived(modelsStore.activeModelId);
 
@@ -112,35 +69,13 @@
 	});
 
 	$effect(() => {
-		hasModelSelected = !isRouter || !!conversationModel || !!modelsStore.selectedModelId;
-	});
-
-	$effect(() => {
-		if (!isRouter) {
-			isSelectedModelInCache = true;
-		} else if (conversationModel) {
-			isSelectedModelInCache = modelsStore.models.some(
-				(option) => option.model === conversationModel
-			);
-		} else {
-			const currentModelId = modelsStore.selectedModelId;
-
-			if (!currentModelId) {
-				isSelectedModelInCache = false;
-			} else {
-				isSelectedModelInCache = modelsStore.models.some((option) => option.id === currentModelId);
-			}
-		}
-	});
-
-	$effect(() => {
-		if (!hasModelSelected) {
-			submitTooltip = 'Please select a model first';
-		} else if (!isSelectedModelInCache) {
-			submitTooltip = 'Selected model is not available, please select another';
-		} else {
-			submitTooltip = '';
-		}
+		hasModelSelected = !isRouter || !!modelsStore.selectedModelId;
+		isSelectedModelInCache = !isRouter || !!modelsStore.selectedModel;
+		submitTooltip = !hasModelSelected
+			? t('Please select a model first')
+			: !isSelectedModelInCache
+				? t('Selected model is not available, please select another')
+				: '';
 	});
 
 	let selectorModelRef: ModelsSelectorDropdown | ModelsSelectorSheet | undefined =

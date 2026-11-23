@@ -68,6 +68,23 @@
 		step?: number;
 		help?: string;
 	};
+	const runMode: Field = {
+		key: 'mode',
+		label: 'Model run mode',
+		options: ['auto', 'os', 'explicit', 'off'],
+		help: 'Automatic uses standard loading when the model fits in available memory, and streams experts from SSD for larger MoE models. Changes take effect when the model is loaded.'
+	};
+	const optionLabels: Record<string, string> = {
+		auto: 'Automatic (recommended)', default: 'Model default', manual: 'Manual',
+		off: 'Off', on: 'On', low: 'Low', medium: 'Medium', high: 'High', max: 'Max',
+		lru: 'Per-layer LRU', hybrid: 'Hybrid', buffered: 'Buffered', direct: 'Direct',
+		mmap: 'Memory mapping', resident: 'Resident', locked: 'Locked', temporal: 'Temporal'
+	};
+	const modeLabels: Record<string, string> = {
+		auto: 'Automatic (recommended)', os: 'Standard (memory mapping)',
+		explicit: 'Expert streaming from SSD', off: 'Fully resident in memory'
+	};
+
 	const cacheTypes = ['f16', 'bf16', 'q8_0', 'q5_1', 'q5_0', 'q4_1', 'q4_0', 'iq4_nl'];
 	const reasoning: Field = {
 		key: 'reasoning',
@@ -80,12 +97,6 @@
 			title: 'Memory and expert loading',
 			description: 'Control how model weights move between storage and memory.',
 			fields: [
-				{
-					key: 'mode',
-					label: 'Loading method',
-					options: ['auto', 'os', 'explicit', 'off'],
-					help: 'auto: choose automatically; os: standard mmap; explicit: expert paging; off: fully resident.'
-				},
 				{ key: 'slots', label: 'Expert slots per layer (0 = automatic)', min: 0 },
 				{ key: 'cache_policy', label: 'Cache policy', options: ['lru', 'hybrid'] },
 				{ key: 'cache_ram_mib', label: 'Resident cache reserve (MiB, -1 = automatic)', min: -1 },
@@ -195,11 +206,7 @@
 					value={String(draft.value[field.key])}
 				>
 					{#each field.options as option}<option value={option}
-							>{option === 'auto'
-								? 'Automatic (recommended)'
-								: option === 'default'
-									? 'Model default'
-									: option}</option
+							>{t((field.key === 'mode' ? modeLabels[option] : optionLabels[option]) ?? option)}</option
 						>{/each}
 				</select>
 			{:else if field.type === 'boolean'}
@@ -265,7 +272,7 @@
 				>
 				<label class="flex flex-wrap items-center justify-between gap-2 text-sm">
 				<span>{t('Engine')}</span>
-				<select class="max-w-full rounded-md border bg-background px-2 py-1.5" dir="ltr"
+				<select class="min-w-0 max-w-full rounded-md border bg-background ps-2 py-1.5"
 					value={draft.value.worker_engine ?? ''}
 					onchange={(event) => change('worker_engine', event.currentTarget.value)}>
 					<option value="">{t('Application default')}</option>
@@ -283,6 +290,7 @@
 			</div>
 			<fieldset class="space-y-5" disabled={action !== ''}>
 				<div class="grid gap-4 sm:grid-cols-2">
+					<div class="sm:col-span-2">{@render fieldControl(runMode)}</div>
 					{@render fieldControl({
 						key: 'context_mode',
 						label: 'Context length',
@@ -319,7 +327,7 @@
 					{#if supportsReasoning}{@render fieldControl(reasoning)}{/if}
 				</div>
 				{#if draft.recommendation.reason}<p class="text-xs text-muted-foreground">
-						{String(draft.recommendation.reason)}
+						{t(String(draft.recommendation.reason))}
 					</p>{/if}
 				{#each groups as group}
 					<details class="rounded-lg border border-border/60 p-4">
@@ -400,7 +408,7 @@
 							: t('Settings will be used on the next load')}
 				</p>
 				{#if draft.applied}<p class="mt-1 text-xs text-muted-foreground">
-						Applied context: {draft.applied.ctx_size.toLocaleString()} tokens. Applied cache: {draft.applied.cache.toLocaleString()}
+						{t('Applied settings')} · {t(modeLabels[draft.applied.mode] ?? draft.applied.mode)} · {draft.applied.ctx_size.toLocaleString()} {t('tokens')} · <bdi>{draft.applied.cache.toLocaleString()} MiB</bdi>
 						MiB.
 					</p>{/if}
 			</div>

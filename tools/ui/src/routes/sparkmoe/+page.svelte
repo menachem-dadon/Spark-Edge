@@ -47,6 +47,7 @@
 	type MetricItem = { label: string; value: string };
 	let activeTab = $state<Tab>('models');
 	let library = $state<SparkMoeLibraryModel[]>([]);
+	let libraryRevision: number | undefined;
 	let selectedModel = $state('');
 	let engineStatus = $state<EngineStatus | null>(null);
 	let managerStatus = $state<SparkMoeManagerStatus | null>(null);
@@ -85,6 +86,13 @@
 	let logDirectory = $state('');
 	let refreshing = false;
 	let selected = $derived(library.find((model) => model.id === selectedModel));
+
+	$effect(() => {
+		const id = modelsStore.selectedModelId;
+		if (id && library.some((model) => model.id === id)) {
+			selectSettingsModel(id);
+		}
+	});
 	let selectedModelStatus = $derived(
 		modelsStore.routerModels.find((model) => model.id === selectedModel)?.status.value ??
 			ServerModelStatus.UNLOADED
@@ -186,9 +194,9 @@
 	}
 	function statusLabel(status: string) {
         const labels: Record<string, string> = {
-            loaded: 'Loaded', loading: 'Loading', unloaded: 'Unloaded', sleeping: 'Sleeping', failed: 'Failed'
+            loaded: 'Loaded', loading: 'Loading', sleeping: 'Sleeping', failed: 'Failed'
         };
-        return t(labels[status] ?? status);
+        return labels[status] ? t(labels[status]) : '';
     }
     function selectSettingsModel(id: string) {
 		selectedModel = id;
@@ -207,10 +215,10 @@
 	}
 	async function refreshLibrary(rescan = false) {
 		const result = await SparkMoeService.library(rescan);
-		library = result.models;
+		library = result.models.filter((model) => !model.draft_only);
+		libraryRevision = result.catalog_revision;
 		if (managerStatus?.server_ready) {
 			await modelsStore.fetch(true);
-			await modelsStore.fetchRouterModels();
 			modelsStore.status.subscribe();
 		}
 		if (!library.some((model) => model.id === selectedModel)) {
@@ -323,7 +331,7 @@
 		if (!id) return;
 		const draft = await sparkMoeProfileStore.load(id, true);
 		if (draft.saving || !(await sparkMoeProfileStore.save(id)))
-			throw new Error('Finish saving the model settings before starting a chat.');
+			throw new Error(t('Finish saving the model settings before starting a chat.'));
 		await modelsStore.selectModelById(id);
 		if (draft.pending) await SparkMoeService.applyModel(id);
 		await modelsStore.fetch(true);
@@ -335,7 +343,7 @@
 		removeDialogOpen = false;
 		await SparkMoeService.removeLibraryModel(id);
 		await refreshLibrary();
-		notice = 'Removed from the library. The model files were kept.';
+		notice = t('Removed from the library. The model files were kept.');
 	}
 	async function updateModel(
 		changes: Partial<Pick<SparkMoeLibraryModel, 'display_name' | 'favorite' | 'path'>>
@@ -356,7 +364,9 @@
 			void (async () => {
 				const wasReady = managerStatus?.server_ready;
 				await refreshManager();
-				if (!wasReady && managerStatus?.server_ready) await refreshLibrary();
+				if ((!wasReady && managerStatus?.server_ready) || managerStatus?.catalog_revision !== libraryRevision) {
+					await refreshLibrary();
+				}
 				if (activeTab === 'activity') await Promise.all([refreshRuntime(), refreshLogs()]);
 			})()
 				.catch(() => {
@@ -384,12 +394,12 @@
 		<div class="flex items-center gap-2">
 			<span class="text-xs text-muted-foreground"
 				>{managerStatus?.server_ready
-					? 'Ready'
+					? t('Ready')
 					: managerStatus?.running
-						? 'Starting...'
+						? t('Starting...')
 						: managerStatus
 							? t('Server stopped')
-							: 'Manager unavailable'}</span
+							: t('Manager unavailable')}</span
 			><Button
 				aria-label={t("Application settings")}
 				href={RouterService.settings('general')}
@@ -470,10 +480,9 @@
 		</div>
 		{#if importOpen || (initialized && library.length === 0)}<Card.Root
 				><Card.Header
-					><Card.Title>{library.length ? 'Add a local model' : 'Add your first model'}</Card.Title
+					><Card.Title>{t(library.length ? 'Add a local model' : 'Add your first model')}</Card.Title
 					><Card.Description
-						>Select a GGUF file or a folder. Split files and companion weights are grouped
-						automatically.</Card.Description
+						>{t('Select a GGUF file or a folder. Split files and companion weights are grouped automatically.')}</Card.Description
 					></Card.Header
 				><Card.Content class="space-y-4"
 					><div class="flex flex-wrap gap-2">
@@ -510,12 +519,12 @@
 				></Card.Root
 			>{/if}
 		{#if library.length}<div class="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-				<aside aria-label={t("Model library")} class="space-y-3">
-					<div class="flex gap-2">
+				<aside aria-label={t("Model library")} class="min-w-0 space-y-3 lg:sticky lg:top-[calc(1rem+var(--desktop-caption-height,0px))] lg:flex lg:max-h-[calc(100dvh-5rem)] lg:flex-col">
+					<div class="flex shrink-0 gap-2">
 						<div class="relative min-w-0 flex-1">
-							<Search class="absolute top-3 left-3 h-4 w-4 text-muted-foreground" /><input
+							<Search class="absolute top-3 start-3 h-4 w-4 text-muted-foreground" /><input
 								aria-label={t("Search model library")}
-								class="w-full rounded-md border border-input bg-background py-2 pr-3 pl-9 text-sm"
+								class="w-full rounded-md border border-input bg-background py-2 pe-3 ps-9 text-sm"
 								placeholder={t("Find a model")}
 								bind:value={search}
 							/>
@@ -529,23 +538,24 @@
 							><Star class={favoritesOnly ? 'fill-current' : ''} /></Button
 						>
 					</div>
-					<div class="max-h-[65vh] space-y-2 overflow-y-auto">
+					<div class="max-h-[40vh] min-h-0 space-y-2 overflow-y-auto pe-1 lg:max-h-none">
 						{#each filteredModels as model}<button
 								aria-pressed={selectedModel === model.id}
 								class={[
 									'w-full rounded-lg border p-3 text-start transition-colors hover:bg-muted/50',
 									selectedModel === model.id ? 'border-primary bg-primary/5' : 'border-border/60'
 								]}
-								onclick={() => selectSettingsModel(model.id)}
+								onclick={() => {
+									selectSettingsModel(model.id);
+									if (modelsStore.findModelById(model.id)) void modelsStore.selectModelById(model.id);
+								}}
 								type="button"
 								><span class="block break-words text-sm font-medium"
 									>{#if model.favorite}<Star
 											class="me-1 inline h-3 w-3 fill-current"
 										/>{/if}{model.display_name}</span
 								><span class="mt-2 block text-xs text-muted-foreground"
-									>{model.available ? statusLabel(statusFor(model.id)) : t('File missing')} | {formatBytes(
-										model.size_bytes
-									)}</span
+									>{#if !model.available || statusLabel(statusFor(model.id))}{model.available ? statusLabel(statusFor(model.id)) : t('File missing')} · {/if}<bdi>{formatBytes(model.size_bytes)}</bdi></span
 								></button
 							>{/each}{#if !filteredModels.length}<p
 								class="py-6 text-center text-sm text-muted-foreground"
@@ -563,7 +573,7 @@
 										><Card.Description class="mt-2"
 											>{selected.available
 												? statusLabel(selectedModelStatus)
-												: t('File missing')}{modelsStore.selectedModelName === selectedModel
+												: t('File missing')}{modelsStore.selectedModelId === selectedModel
 												? ' · ' + t('Selected for chat')
 												: ''}</Card.Description
 										>
@@ -586,7 +596,7 @@
 											selectedModelBusy}
 										onclick={() => void run('chat', openChat)}
 										>{#if busy === 'chat'}<LoaderCircle class="animate-spin" />{:else}<MessageSquare
-											/>{/if}Use in chat</Button
+											/>{/if}{t("Use in chat")}</Button
 									>{#if selectedModelLoaded}<Button
 											disabled={busy !== '' || selectedModelBusy}
 											onclick={() =>
@@ -704,23 +714,35 @@
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>{t('Installed engines')}</Card.Title>
-				<Card.Description>{t('Active engine')}: <bdi>{engineStatus?.active || t('Bundled CPU engine')}</bdi></Card.Description>
+				<Card.Description>{t('The default engine runs the model server. A model can use a different installed engine under Model settings.')}</Card.Description>
 			</Card.Header>
 			<Card.Content class="space-y-3">
+				<div class="grid gap-3 rounded-lg bg-muted/50 p-4 text-sm sm:grid-cols-3">
+					<div><div class="text-muted-foreground">{t('Application version')}</div><bdi>{engineStatus?.application_version ?? '–'}</bdi></div>
+					<div><div class="text-muted-foreground">{t('Bundled engine revision')}</div><bdi title={engineStatus?.bundled_commit}>{engineStatus?.bundled_commit?.slice(0, 12) ?? '–'}</bdi></div>
+					<div class="min-w-0"><div class="text-muted-foreground">{t('Application default engine')}</div><bdi class="break-all">{engineStatus?.active || t('Bundled CPU engine')}</bdi></div>
+				</div>
+				<p class="text-sm text-muted-foreground">{t('Activating an engine restarts the model server and tries to reload the last active model. If startup fails, Spark Edge restores a working engine.')}</p>
 				<Button disabled={busy !== ''} onclick={() => void run('engine-check', async () => {
 					engineStatus = await SparkMoeService.engines(true);
 				})} variant="outline"><RefreshCw />{t('Check for engine updates')}</Button>
 				{#each [{ id: '', backend: t('Bundled CPU engine') }, ...(engineStatus?.installed ?? [])] as engine (engine.id)}
 					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
 						<span><bdi>{engine.backend}</bdi>{#if engine.id}<bdi class="ms-2 text-xs">{engine.id.slice(engine.backend.length + 1, engine.backend.length + 9)}</bdi>{/if}</span>
-						<Button disabled={busy !== '' || (engineStatus?.active ?? '') === engine.id}
-							onclick={() => void run('engine-apply', () => activateEngine(engine.id))}>{t('Apply engine')}</Button>
+						{#if (engineStatus?.active ?? '') === engine.id}
+							<span class="text-sm text-muted-foreground">{t('Default for the application')}</span>
+						{:else}
+							<Button disabled={busy !== ''} onclick={() => void run('engine-apply', () => activateEngine(engine.id))}>{t('Activate')}</Button>
+						{/if}
 					</div>
 				{/each}
 				{#if busy === 'engine-download'}
 				<p class="text-sm text-muted-foreground" role="status">{t('Downloading and activating engine…')}</p>
 			{/if}
 			{#if engineStatus?.available?.length === 0}<p class="text-sm text-muted-foreground">{t('No engine packages are available.')}</p>{/if}
+				{#if engineStatus?.available?.some((engine) => !engineStatus?.installed.some((row) => row.id === engine.id))}
+					<h3 class="font-semibold">{t('Available engine versions')}</h3>
+				{/if}
 				{#each engineStatus?.available?.filter((engine) => !engineStatus?.installed.some((row) => row.id === engine.id)) ?? [] as engine (engine.id)}
 					<div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
 						<span>
@@ -787,7 +809,7 @@
 						>
                         <option value="" disabled>{t("Choose a model")}</option>
                         {#each library as model}<option value={model.id}
-								>{model.display_name} ({statusLabel(statusFor(model.id))})</option
+								>{model.display_name}{statusLabel(statusFor(model.id)) ? ' (' + statusLabel(statusFor(model.id)) + ')' : ''}</option
 							>{/each}</select
 					></label
 				>{#if selectedModelLoaded && metrics}<div class="grid gap-3 sm:grid-cols-3">

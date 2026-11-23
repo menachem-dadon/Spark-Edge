@@ -12,11 +12,9 @@ import { ServerModelStatus } from '$lib/enums';
 import { ModelsService } from '$lib/services/models.service';
 import { SparkMoeService } from '$lib/services/sparkmoe.service';
 // direct imports between stores, not via the barrel, to avoid circular deps
-import { conversationsStore } from '$lib/stores/conversations/index.svelte';
 import { type ModelPropsHost, ModelPropsManager } from '$lib/stores/models/props.svelte';
 import { type ModelStatusHost, ModelStatusManager } from '$lib/stores/models/status.svelte';
 import { serverStore } from '$lib/stores/server.svelte';
-import { getConversationModel } from '$lib/utils/conversation-utils';
 import { SvelteSet } from 'svelte/reactivity';
 import { toast } from 'svelte-sonner';
 
@@ -43,9 +41,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 	private favoriteUpdates = new Set<string>();
 
 	/**
-	 * Model the active conversation view resolves to. Router mode: the user's
-	 * selection first, then the conversation's own model. Otherwise the single
-	 * served model, from the models list or the server props as a fallback.
+	 * Global selection in router mode, or the single served model.
 	 */
 	get activeModelId(): string | null {
 		if (!serverStore.isRouterMode) {
@@ -56,14 +52,6 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 			const selected = this.models.find((m) => m.id === this.selectedModelId);
 
 			if (selected) return selected.model;
-		}
-
-		const conversationModel = getConversationModel(conversationsStore.activeMessages);
-
-		if (conversationModel) {
-			const model = this.models.find((m) => m.model === conversationModel);
-
-			if (model) return model.model;
 		}
 
 		return null;
@@ -124,10 +112,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 	/**
 	 * Auto-selects the first available model if none is selected.
 	 * Prioritizes:
-	 * 1. Model from active conversation's last assistant response (if loaded)
-	 * 2. Model from active conversation's last assistant response (if not loaded)
-	 * 3. Loaded model, with the most recently loaded first
-	 * 4. Most recently loaded model or explicit application default
+	 * Loaded model first, then the most recently loaded model or application default.
 	 */
 	async ensureFirstModelSelected(): Promise<void> {
 		if (this.selectedModelName) return;
@@ -135,23 +120,6 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		const availableModels = this.getVisibleModels();
 
 		if (availableModels.length === 0) return;
-
-		// Try to select model from last assistant response first
-		const lastModel = this.getModelFromLastAssistantResponse();
-
-		if (lastModel) {
-			const lastModelOption = availableModels.find((m) => m.model === lastModel);
-
-			if (lastModelOption) {
-				await this.selectModelById(lastModelOption.id);
-
-				if (this.isModelLoaded(lastModel)) {
-					await this.props.fetchModelProps(lastModel);
-				}
-
-				return;
-			}
-		}
 
 		const lastLoaded = this.routerModels.find((model) => model.sparkmoe?.last_loaded);
 		const lastOption = availableModels.find((model) => model.id === lastLoaded?.id);
@@ -193,8 +161,7 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 
 	/**
 	 * Fetch router models with full metadata (ROUTER mode only).
-	 * No-op in router mode — fetch() already calls listRouter() internally.
-	 * Kept for API compatibility (e.g. handleOpenChange dropdown open handler).
+	 * Used by the model status feed and when the picker opens.
 	 */
 	async fetchRouterModels(): Promise<void> {
 		if (!serverStore.isRouterMode) return;
@@ -202,15 +169,9 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		try {
 			const response = await ModelsService.listRouter();
 
-			this.routerModels = response.data;
-			this.syncSparkMoeFavorites();
+			this.updateRouterModels(response);
 			await this.props.fetchModalitiesForLoadedModels();
 
-			const visible = this.getVisibleModels();
-
-			if (visible.length === 1 && this.isModelLoaded(visible[0].model)) {
-				this.selectModelById(visible[0].id);
-			}
 		} catch (error) {
 			console.warn('Failed to fetch router models:', error);
 			this.routerModels = [];
@@ -228,24 +189,6 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 					model.model === modelName || model.id === modelName || model.aliases?.includes(modelName)
 			) ?? null
 		);
-	}
-
-	/**
-	 * Gets the model name from the last assistant message in the active conversation.
-	 * Used by both the chat page and settings page to maintain model consistency.
-	 */
-	getModelFromLastAssistantResponse(): string | null {
-		const messages = conversationsStore.activeMessages;
-
-		if (!messages || messages.length === 0) return null;
-
-		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].model) {
-				return messages[i].model;
-			}
-		}
-
-		return null;
 	}
 
 	getModelStatus(modelId: string): ServerModelStatus | null {
@@ -291,43 +234,6 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		}
 	}
 
-	/**
-	 * Select a model by its model name (used for syncing with conversation model).
-	 */
-	selectModelByName(modelName: string): void {
-		const option = this.models.find((model) => model.model === modelName);
-
-		if (option) {
-			this.selectedModelId = option.id;
-			this.selectedModelName = option.model;
-		}
-	}
-
-	/**
-	 * Auto-selects the model from the last assistant response if available and loaded.
-	 * Returns true if a model was selected, false otherwise.
-	 */
-	async selectModelFromLastAssistantResponse(): Promise<boolean> {
-		const lastModel = this.getModelFromLastAssistantResponse();
-
-		if (!lastModel || this.selectedModelName === lastModel) return false;
-
-		const matchingModel = this.models.find((option) => option.model === lastModel);
-
-		if (!matchingModel || !this.isModelLoaded(lastModel)) return false;
-
-		try {
-			await this.selectModelById(matchingModel.id);
-			console.log(`[modelsStore] Automatically selected model: ${lastModel} from last message`);
-
-			return true;
-		} catch (error) {
-			console.warn('[modelsStore] Failed to automatically select model from last message:', error);
-
-			return false;
-		}
-	}
-
 	toDisplayName(id: string): string {
 		const segments = id.split(/\\|\//);
 		const candidate = segments.pop();
@@ -367,6 +273,25 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 		} catch {
 			toast.error('Failed to save favorite models to local storage');
 		}
+	}
+
+	private updateRouterModels(response: ApiRouterModelsListResponse): void {
+		const previouslyLoaded = new Set(this.loadedModelIds);
+		this.routerModels = response.data;
+		this.models = this.buildModelOptions(response);
+		this.syncSparkMoeFavorites();
+		if (this.selectedModelId && !this.selectedModel) this.clearSelection();
+
+		const newlyLoaded = this.routerModels.filter(
+			(model) => model.sparkmoe && this.isModelLoaded(model.id) && !previouslyLoaded.has(model.id)
+		);
+		const latest = newlyLoaded.find((model) => model.sparkmoe?.last_loaded) ?? newlyLoaded.at(-1);
+		if (latest) void this.selectModelById(latest.id);
+	}
+
+	onModelLoaded(modelId: string): void {
+		const row = this.routerModels.find((model) => model.id === modelId);
+		if (row?.sparkmoe && this.findModelById(modelId)) void this.selectModelById(modelId);
 	}
 
 	private syncSparkMoeFavorites(): void {
@@ -452,17 +377,8 @@ class ModelsStore implements ModelPropsHost, ModelStatusHost {
 			if (router) {
 				const response = await ModelsService.listRouter();
 
-				this.routerModels = response.data;
-				this.syncSparkMoeFavorites();
-				this.models = this.buildModelOptions(response);
-
+				this.updateRouterModels(response);
 				await this.props.fetchModalitiesForLoadedModels();
-
-				const visible = this.getVisibleModels();
-
-				if (visible.length === 1 && this.isModelLoaded(visible[0].model)) {
-					this.selectModelById(visible[0].id);
-				}
 			} else {
 				this.models = await this.fetchModelModeInternal();
 			}
